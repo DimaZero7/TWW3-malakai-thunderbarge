@@ -7,8 +7,8 @@ REPO = Path(__file__).resolve().parent.parent
 TIMER = "wh3_dlc25_unit_passive_unbinding_spirit_of_grungni"
 WANT_ACTIVE = {"wh3_dlc25_lord_abilities_cinderblast_cluster_bomb", "wh3_dlc25_lord_abilities_deranged_munitions",
                "wh3_dlc25_unit_abilities_spear_of_grungni", "wh3_dlc25_unit_abilities_thunderburner"}
-WANT_PASSIVE = {"wh_main_lord_passive_deathblow", "wh3_dlc25_character_passive_artillery_master",
-                "wh3_main_unit_passive_single_entity"}
+WANT_PASSIVE = {"wh3_dlc25_character_passive_artillery_master", "wh3_main_unit_passive_single_entity"}
+NOT_WANTED = "deathblow"
 
 
 def main():
@@ -31,6 +31,7 @@ def main():
           "type:", profile.get("type"), "men:", profile.get("initial_men"))
     active, passive = set(profile["abilities_active"]), set(profile["abilities_passive"])
     print("missing abilities:", sorted((WANT_ACTIVE - active) | (WANT_PASSIVE - passive)))
+    print("deathblow present:", sorted(a for a in active | passive if NOT_WANTED in a))
     print("timer ability present:", sorted(a for a in active | passive if a.startswith(TIMER)))
     if end_profile:
         late = set(end_profile["abilities_active"]) | set(end_profile["abilities_passive"])

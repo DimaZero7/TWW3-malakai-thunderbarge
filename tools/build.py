@@ -128,7 +128,8 @@ def derive(g, pattern):
             if row["ability"] not in seen:
                 seen.add(row["ability"])
                 abilities.append(dict(row, land_unit=UNIT))
-    t["land_units_to_unit_abilites_junctions"] = abilities
+    gone = set(json.loads((DATA / "malakai_removed_skills.json").read_text(encoding="utf-8"))["remove_from_unit"])
+    t["land_units_to_unit_abilites_junctions"] = [r for r in abilities if r["ability"] not in gone]
 
     t["unit_attributes_groups"] = [{"group_name": UNIT}]
     attrs = {r["attribute"] for r in g["unit_attributes_to_groups_junctions"] if r["attribute_group"] == BARGE}
@@ -274,6 +275,35 @@ UPGRADE_ROWS = {"thunderburner_dwf_spirit_of_grungni": "mtb_thunderburner", "thu
                 "awe_inspiring_sight_dwf_spirit_of_grungni": "mtb_awe_inspiring_sight"}
 
 
+def derive_skill_tree(g, t):
+    """Malakai's personal skills out of his tree (data/malakai_removed_skills.json): mod_disabled in his node set, so other
+    sets are untouched; the remaining nodes move up. Refuses a list that would leave a kept skill out of reach."""
+    spec = json.loads((DATA / "malakai_removed_skills.json").read_text(encoding="utf-8"))
+    prefix, tree = spec["node_prefix"], spec["set"]
+    remove = {prefix + n for n in spec["remove"]}
+    move = {prefix + n: {k: v for k, v in change.items() if not k.startswith("_")} for n, change in spec["move"].items()}
+    in_set = {r["item"] for r in g["character_skill_node_set_items"] if r["set"] == tree}
+    if not remove <= in_set or not set(move) <= in_set or remove & set(move):
+        raise SystemExit("data/malakai_removed_skills.json: a node is not in the set, or is both removed and moved")
+    owners = {r["set"] for r in g["character_skill_node_set_items"] if r["item"] in (remove | set(move))}
+    if owners != {tree}:
+        raise SystemExit(f"a node to change is shared with other sets: {sorted(owners - {tree})}")
+    t["character_skill_node_set_items"] = [dict(r, mod_disabled=True) for r in g["character_skill_node_set_items"]
+                                           if r["set"] == tree and r["item"] in remove]
+    nodes = {r["key"]: r for r in g["character_skill_nodes"]}
+    t["character_skill_nodes"] = [dict(nodes[key], **change) for key, change in sorted(move.items())]
+    # Every kept node must be reachable: no required parent gone, enough parents left for its count.
+    final = {key: dict(nodes[key], **move.get(key, {})) for key in in_set - remove}
+    for key, node in final.items():
+        parents = [r for r in g["character_skill_node_links"] if r["child_key"] == key]
+        if any(r["link_type"] == "REQUIRED" and r["parent_key"] in remove for r in parents):
+            raise SystemExit(f"{key}: a required parent is removed")
+        kept = [r for r in parents if r["parent_key"] not in remove]
+        if node["required_num_parents"] > len(kept):
+            raise SystemExit(f"{key}: needs {node['required_num_parents']} parents, {len(kept)} left")
+    return t
+
+
 def derive_campaign(g, t):
     """Adds the campaign's rows to the v1 rows t. New keys, except building_effects_junction, where the same keys override."""
     t["ancillaries"] = [dict(one(g["ancillaries"], key=ANCILLARY_LIKE), key=ANCILLARY, provided_bodyguard_unit=UNIT)]
@@ -301,6 +331,8 @@ def derive_campaign(g, t):
     t["effect_bonus_value_missile_weapon_junctions"] = [
         dict(r, missile_weapon_junction=new_id[r["missile_weapon_junction"]])
         for r in g["effect_bonus_value_missile_weapon_junctions"] if r["missile_weapon_junction"] in new_id]
+
+    derive_skill_tree(g, t)
 
     # No second barge in ordinary battles: the buildings stop enabling the summon. Quest battles enable it by their own bundle.
     t["building_effects_junction"] = [dict(r, value=0.0, value_damaged=0.0, value_ruined=0.0)

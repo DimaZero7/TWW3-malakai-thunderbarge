@@ -604,6 +604,105 @@
   ],
   "version": null
  },
+ "character_skill_node_links": {
+  "fields": [
+   [
+    "child_key",
+    "StringU8"
+   ],
+   [
+    "initial_descent_tiers",
+    "I32"
+   ],
+   [
+    "parent_key",
+    "StringU8"
+   ],
+   [
+    "parent_link_position",
+    "I32"
+   ],
+   [
+    "child_link_position",
+    "I32"
+   ],
+   [
+    "parent_link_position_offset",
+    "F32"
+   ],
+   [
+    "child_link_position_offset",
+    "F32"
+   ],
+   [
+    "link_type",
+    "StringU8"
+   ]
+  ],
+  "version": 3
+ },
+ "character_skill_node_set_items": {
+  "fields": [
+   [
+    "set",
+    "StringU8"
+   ],
+   [
+    "item",
+    "StringU8"
+   ],
+   [
+    "mod_disabled",
+    "Boolean"
+   ]
+  ],
+  "version": null
+ },
+ "character_skill_nodes": {
+  "fields": [
+   [
+    "campaign_key",
+    "OptionalStringU8"
+   ],
+   [
+    "character_skill_key",
+    "StringU8"
+   ],
+   [
+    "faction_key",
+    "OptionalStringU8"
+   ],
+   [
+    "indent",
+    "I32"
+   ],
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "tier",
+    "I32"
+   ],
+   [
+    "subculture",
+    "OptionalStringU8"
+   ],
+   [
+    "points_on_creation",
+    "I32"
+   ],
+   [
+    "required_num_parents",
+    "I32"
+   ],
+   [
+    "visible_in_ui",
+    "Boolean"
+   ]
+  ],
+  "version": 6
+ },
  "effect_bonus_value_ids_unit_sets": {
   "fields": [
    [
