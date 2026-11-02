@@ -23,6 +23,7 @@ OUT = REPO / "build" / "v1"
 DATA = REPO / "data"
 TABLE_NAME = "!tww3_mtb"
 PACK = "tww3_mtb_v1.pack"
+HARNESS_PACK = "tww3_mtb_harness.pack"
 SCENARIO = "script/battle/tww3_mtb/tww3_mtb_v1.xml"
 
 UNIT = "mtb_dwf_cha_malakai_thunderbarge"
@@ -257,10 +258,111 @@ def verify(blob, tables, stock):
             "attributes": [r["attribute"] for r in got["unit_attributes_to_groups_junctions"]]}
 
 
+# ---------------- campaign pack: everything of v1 plus the mount item, the summon switched off, the barge's upgrades ----------
+ANCILLARY = "mtb_anc_mount_dwf_malakai_thunderbarge"
+ANCILLARY_LIKE = "wh2_dlc12_anc_mount_skv_ikit_claw_doomwheel"
+UNIFORM = "mtb_uniform_dwf_malakai_thunderbarge"
+UNIFORM_STOCK = "wh3_dlc25_uniform_dwf_malakai_makaisson"
+ART_SET = "wh3_dlc25_art_set_dwf_malakai_makaisson"
+SUBTYPE = "wh3_dlc25_dwf_malakai_makaisson"
+UNIT_SET = "mtb_dwf_malakai_thunderbarge"
+SUMMON_SET = "dwf_spirit_of_grungni_summon"
+SUMMON_EFFECT = "wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1"
+CAMPAIGN_PACK = "tww3_mtb_campaign.pack"
+# The rows of the summon's set that are the barge's upgrades, not its timer.
+UPGRADE_ROWS = {"thunderburner_dwf_spirit_of_grungni": "mtb_thunderburner", "thunderburner_upgraded_dwf_spirit_of_grungni": "mtb_thunderburner_upgraded",
+                "awe_inspiring_sight_dwf_spirit_of_grungni": "mtb_awe_inspiring_sight"}
+
+
+def derive_campaign(g, t):
+    """Adds the campaign's rows to the v1 rows t. New keys, except building_effects_junction, where the same keys override."""
+    t["ancillaries"] = [dict(one(g["ancillaries"], key=ANCILLARY_LIKE), key=ANCILLARY, provided_bodyguard_unit=UNIT)]
+    t["ancillaries_included_agent_subtypes"] = [{"agent_subtype": SUBTYPE, "ancillary": ANCILLARY}]
+    # The map keeps Malakai's own model (filename) and animation; only the battle model (battle_filename) changes.
+    t["agent_uniforms"] = [dict(one(g["agent_uniforms"], uniform_name=UNIFORM_STOCK), uniform_name=UNIFORM, battle_filename=VARIANT)]
+    t["campaign_character_uniform_ancillary_junctions"] = [{"ancillary": ANCILLARY, "art_set": ART_SET, "uniform": UNIFORM}]
+    t["campaign_map_attrition_unit_immunities"] = [dict(r, unit=UNIT) for r in g["campaign_map_attrition_unit_immunities"]
+                                                   if r["unit"] == BARGE]
+
+    # The barge's upgrades through our own unit set: never the summon's set, which carries the timer.
+    t["unit_sets"] = [dict(one(g["unit_sets"], key=SUMMON_SET), key=UNIT_SET)]
+    t["unit_set_to_unit_junctions"] = t["unit_set_to_unit_junctions"] + [
+        dict(next(r for r in g["unit_set_to_unit_junctions"] if r["unit_record"] == BARGE and r["unit_set"] == SUMMON_SET),
+             unit_record=UNIT, unit_set=UNIT_SET)]
+    t["unit_set_unit_ability_junctions"] = [dict(one(g["unit_set_unit_ability_junctions"], key=old), key=new, unit_set=UNIT_SET)
+                                            for old, new in UPGRADE_ROWS.items()]
+    t["effect_bonus_value_unit_set_unit_ability_junctions"] = [
+        dict(r, unit_set_ability=UPGRADE_ROWS[r["unit_set_ability"]])
+        for r in g["effect_bonus_value_unit_set_unit_ability_junctions"] if r["unit_set_ability"] in UPGRADE_ROWS]
+    t["effect_bonus_value_ids_unit_sets"] = [dict(r, unit_set=UNIT_SET) for r in g["effect_bonus_value_ids_unit_sets"]
+                                             if r["unit_set"] == SUMMON_SET]
+    stock_weapons = [r for r in g["unit_missile_weapon_junctions"] if r["unit"] == BARGE]
+    new_id = {old["id"]: new["id"] for old, new in zip(stock_weapons, t["unit_missile_weapon_junctions"])}
+    t["effect_bonus_value_missile_weapon_junctions"] = [
+        dict(r, missile_weapon_junction=new_id[r["missile_weapon_junction"]])
+        for r in g["effect_bonus_value_missile_weapon_junctions"] if r["missile_weapon_junction"] in new_id]
+
+    # No second barge in ordinary battles: the buildings stop enabling the summon. Quest battles enable it by their own bundle.
+    t["building_effects_junction"] = [dict(r, value=0.0, value_damaged=0.0, value_ruined=0.0)
+                                      for r in g["building_effects_junction"] if r["effect"] == SUMMON_EFFECT]
+    return t
+
+
+def build_campaign(blob_files, tables, stock):
+    """build/campaign/pack/tww3_mtb_campaign.pack from the v1 files (without the test battle and its probe)."""
+    sep = chr(92)
+    out = REPO / "build" / "campaign" / "pack"
+    out.mkdir(parents=True, exist_ok=True)
+    tables = derive_campaign(stock, dict(tables))
+    files = {k: v for k, v in blob_files.items() if not k.startswith(f"script{sep}battle") and not k.startswith(f"db{sep}")}
+    for table, rows in tables.items():
+        layout = LAYOUTS[table]
+        files[f"db{sep}{table}_tables{sep}{TABLE_NAME}"] = dbtable.encode(rows, [tuple(f) for f in layout["fields"]], layout["version"], table)
+    files[f"text{sep}db{sep}tww3_mtb.loc"] = loc_bytes(json.loads((DATA / "campaign_text.json").read_text(encoding="utf-8")) | {
+        f"land_units_onscreen_name_{UNIT}": "Malakai Makaisson, Spirit of Grungni"})
+    files[f"script{sep}campaign{sep}mod{sep}tww3_mtb_campaign.lua"] = (REPO / "src" / "tww3_mtb_campaign.lua").read_bytes()
+    blob = pfh5.pack_files(files)
+    (out / CAMPAIGN_PACK).write_bytes(blob)
+    # read back
+    read, _ = pfh5.read_pack(blob)
+    for table, rows in tables.items():
+        back = dbtable.decode(read[f"db{sep}{table}_tables{sep}{TABLE_NAME}"], [tuple(f) for f in LAYOUTS[table]["fields"]])
+        if back != rows:
+            raise SystemExit(f"{table}: read back differs")
+    if any(r["unit_set"] == SUMMON_SET for r in tables["unit_set_to_unit_junctions"]):
+        raise SystemExit("the unit is in the summon's set: the timer would come back")
+    if len(tables["building_effects_junction"]) != 6:
+        raise SystemExit("expected 6 building rows of the summon")
+    if any("unbinding" in r["unit_ability"] for r in tables["unit_set_unit_ability_junctions"]):
+        raise SystemExit("a timer ability in our unit set")
+    print("campaign tables:", {t: len(r) for t, r in tables.items()})
+    return {"campaign": CAMPAIGN_PACK}
+
+
+def build_harness(modes=("frontend", "campaign", "battle")):
+    """build/campaign/pack/tww3_mtb_harness.pack: only the test remote, for frontend, campaign and battle."""
+    sep = chr(92)
+    out = REPO / "build" / "campaign" / "pack"
+    out.mkdir(parents=True, exist_ok=True)
+    remote = (REPO / "src" / "tww3_mtb_remote.lua").read_bytes()
+    files = {f"script{sep}{m}{sep}mod{sep}tww3_mtb_remote.lua": remote for m in modes}
+    blob = pfh5.pack_files(files)
+    (out / HARNESS_PACK).write_bytes(blob)
+    return {"harness": HARNESS_PACK}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--pattern", choices=["rider", "barge"], default="rider")
+    ap.add_argument("--target", choices=["v1", "harness"], default="v1")
+    ap.add_argument("--harness-modes", nargs="+", default=["frontend", "campaign", "battle"])
     args = ap.parse_args(argv)
+    if args.target == "harness":
+        packs = build_harness(tuple(args.harness_modes))
+        out = REPO / "build" / "campaign" / "pack"
+        (out / "manifest.json").write_text(json.dumps({"packs": packs}, indent=1), encoding="utf-8")
+        print(packs)
+        return
 
     if OUT.exists():
         for item in ("pack",):
@@ -292,6 +394,9 @@ def main(argv=None):
     blob = pfh5.pack_files(files)
     (OUT / "pack" / PACK).write_bytes(blob)
     (OUT / "pack" / "tww3_mtb_probe.lua").write_bytes(lua)
+    camp_out = REPO / "build" / "campaign" / "pack"
+    camp_packs = dict(build_harness(), **build_campaign(files, tables, stock))
+    (camp_out / "manifest.json").write_text(json.dumps({"packs": camp_packs}, indent=1), encoding="utf-8")
     summary = verify(blob, tables, stock)
     manifest = {"pack": PACK, "pack_sha256": hashlib.sha256(blob).hexdigest(), "scenario": SCENARIO,
                 "unit": UNIT, "pattern": args.pattern, "entries": sorted(files), **summary}

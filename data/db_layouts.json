@@ -133,6 +133,140 @@
   ],
   "version": 10
  },
+ "ancillaries": {
+  "fields": [
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "type",
+    "StringU8"
+   ],
+   [
+    "applies_to",
+    "StringU8"
+   ],
+   [
+    "transferrable",
+    "Boolean"
+   ],
+   [
+    "unique_to_world",
+    "Boolean"
+   ],
+   [
+    "unique_to_faction",
+    "Boolean"
+   ],
+   [
+    "precedence",
+    "I32"
+   ],
+   [
+    "start_date",
+    "I32"
+   ],
+   [
+    "end_date",
+    "I32"
+   ],
+   [
+    "avatar_skill",
+    "OptionalStringU8"
+   ],
+   [
+    "avatar_special_ability",
+    "OptionalStringU8"
+   ],
+   [
+    "legendary_item",
+    "Boolean"
+   ],
+   [
+    "mp_exclusive",
+    "Boolean"
+   ],
+   [
+    "is_wife_ancillary",
+    "Boolean"
+   ],
+   [
+    "category",
+    "StringU8"
+   ],
+   [
+    "min_starting_age",
+    "I32"
+   ],
+   [
+    "max_starting_age",
+    "I32"
+   ],
+   [
+    "min_expiry_age",
+    "I32"
+   ],
+   [
+    "max_expiry_age",
+    "I32"
+   ],
+   [
+    "immortal",
+    "Boolean"
+   ],
+   [
+    "provided_bodyguard_unit",
+    "OptionalStringU8"
+   ],
+   [
+    "provided_banner",
+    "OptionalStringU8"
+   ],
+   [
+    "uniqueness_score",
+    "I32"
+   ],
+   [
+    "turns_before_swap_allowed",
+    "I32"
+   ],
+   [
+    "subcategory",
+    "OptionalStringU8"
+   ],
+   [
+    "randomly_dropped",
+    "Boolean"
+   ],
+   [
+    "can_be_stolen",
+    "Boolean"
+   ],
+   [
+    "can_be_destroyed",
+    "Boolean"
+   ],
+   [
+    "faction_set",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
+ "ancillaries_included_agent_subtypes": {
+  "fields": [
+   [
+    "agent_subtype",
+    "StringU8"
+   ],
+   [
+    "ancillary",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
  "battle_entities": {
   "fields": [
    [
@@ -406,6 +540,120 @@
    ]
   ],
   "version": 12
+ },
+ "building_effects_junction": {
+  "fields": [
+   [
+    "building",
+    "StringU8"
+   ],
+   [
+    "effect",
+    "StringU8"
+   ],
+   [
+    "effect_scope",
+    "StringU8"
+   ],
+   [
+    "value",
+    "F32"
+   ],
+   [
+    "value_damaged",
+    "F32"
+   ],
+   [
+    "value_ruined",
+    "F32"
+   ],
+   [
+    "context_requirement",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
+ "campaign_character_uniform_ancillary_junctions": {
+  "fields": [
+   [
+    "ancillary",
+    "StringU8"
+   ],
+   [
+    "art_set",
+    "StringU8"
+   ],
+   [
+    "uniform",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
+ "campaign_map_attrition_unit_immunities": {
+  "fields": [
+   [
+    "attrition",
+    "StringU8"
+   ],
+   [
+    "unit",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
+ "effect_bonus_value_ids_unit_sets": {
+  "fields": [
+   [
+    "bonus_value_id",
+    "StringU8"
+   ],
+   [
+    "effect",
+    "StringU8"
+   ],
+   [
+    "unit_set",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
+ "effect_bonus_value_missile_weapon_junctions": {
+  "fields": [
+   [
+    "bonus_value_id",
+    "StringU8"
+   ],
+   [
+    "effect",
+    "StringU8"
+   ],
+   [
+    "missile_weapon_junction",
+    "I32"
+   ]
+  ],
+  "version": null
+ },
+ "effect_bonus_value_unit_set_unit_ability_junctions": {
+  "fields": [
+   [
+    "bonus_value_id",
+    "StringU8"
+   ],
+   [
+    "effect",
+    "StringU8"
+   ],
+   [
+    "unit_set_ability",
+    "StringU8"
+   ]
+  ],
+  "version": null
  },
  "land_units": {
   "fields": [
@@ -1030,6 +1278,48 @@
    ]
   ],
   "version": 1
+ },
+ "unit_set_unit_ability_junctions": {
+  "fields": [
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "unit_ability",
+    "StringU8"
+   ],
+   [
+    "unit_set",
+    "StringU8"
+   ]
+  ],
+  "version": null
+ },
+ "unit_sets": {
+  "fields": [
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "use_unit_exp_level_range",
+    "Boolean"
+   ],
+   [
+    "min_unit_exp_level_inclusive",
+    "I32"
+   ],
+   [
+    "max_unit_exp_level_inclusive",
+    "I32"
+   ],
+   [
+    "special_category",
+    "OptionalStringU8"
+   ]
+  ],
+  "version": 2
  },
  "unit_variants": {
   "fields": [

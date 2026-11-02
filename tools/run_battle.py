@@ -144,8 +144,12 @@ def main(argv=None):
     ap.add_argument("--load-timeout", type=int, default=360)
     ap.add_argument("--start-timeout", type=int, default=240)
     ap.add_argument("--dry-run", action="store_true", help="only the checks; no file is written")
+    ap.add_argument("--low", action="store_true", help="low graphics, a small window")
     args = ap.parse_args(argv)
 
+    if args.low:
+        GRAPHICS.update(x_res=1280, y_res=720, gfx_aa=0, gfx_texture_quality=0, gfx_unit_quality=0, gfx_shadow_quality=0,
+                        gfx_sky_quality=0, gfx_terrain_quality=0, gfx_lighting_quality=0, gfx_effects_quality=0)
     busy = busy_reasons()
     if busy:
         print("BUSY, not launching:", "; ".join(busy))
@@ -189,7 +193,10 @@ def main(argv=None):
         modlist.write_bytes(mod_text.encode())
         set_prefs()
         arguments = f"game_startup_mode battle {manifest['scenario']}; {MODLIST_NAME};"
-        process = subprocess.Popen(f'"{GAME / "Warhammer3.exe"}" {arguments}', cwd=GAME)
+        info = subprocess.STARTUPINFO()
+        info.dwFlags = subprocess.STARTF_USESHOWWINDOW
+        info.wShowWindow = 4    # SW_SHOWNOACTIVATE: do not take the focus from whatever the user is doing
+        process = subprocess.Popen(f'"{GAME / "Warhammer3.exe"}" {arguments}', cwd=GAME, startupinfo=info)
         print(f"started PID {process.pid}, run {run}", flush=True)
         status = "timeout"
         offset, loaded, fighting, loaded_at = 0, False, False, 0.0

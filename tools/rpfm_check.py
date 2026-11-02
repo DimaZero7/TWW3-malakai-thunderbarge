@@ -1,7 +1,8 @@
 """Opens the built pack in RPFM 5.3.3 (tools_ext/rpfm/rpfm_server.exe, its MCP interface) and lists what RPFM reads.
-py -3.14 tools/rpfm_check.py [--tools] [--update-schemas]   --tools only prints the server's tool list.
+py -3.14 tools/rpfm_check.py [--campaign] [--tools] [--update-schemas]   --tools only prints the server's tool list.
 """
 import json
+import re
 import subprocess
 import sys
 import time
@@ -12,6 +13,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SERVER = REPO / "tools_ext" / "rpfm" / "rpfm_server.exe"
 PACK = REPO / "build" / "v1" / "pack" / "tww3_mtb_v1.pack"
+if "--campaign" in sys.argv:
+    PACK = REPO / "build" / "campaign" / "pack" / "tww3_mtb_campaign.pack"
 URL = "http://127.0.0.1:45127/mcp"
 
 
@@ -90,13 +93,10 @@ def main():
         listing = call("list_files", source=source)
         print("list_files:", listing[:1500])
         sep = chr(92)
-        manifest = json.loads((PACK.parent / "manifest.json").read_text(encoding="utf-8"))
-        for entry in manifest["entries"]:
-            if not entry.startswith("db" + sep):
-                continue
-            path = entry.replace(sep, "/")
+        paths = [f["path"] for f in json.loads(listing)["files"] if f["path"].startswith("db/")]
+        for path in paths:
             info = call("table_info", file={"source": source, "path": path})
-            print(path, info[:300])
+            print(path, re.search(r'"row_count":\s*(\d+)', info).group(0) if re.search(r'"row_count":\s*(\d+)', info) else info[-80:])
         rows = call("table_rows", file={"source": source, "path": "db/land_units_tables/!tww3_mtb"},
                     columns=["key", "class", "man_entity", "man_animation", "mount", "num_mounts", "attribute_group"])
         print("land_units:", rows[:500])
