@@ -1,0 +1,85 @@
+{
+ "tick_ms": 5000,
+ "end_s": 265,
+ "first_shot_ms": 2000,
+ "shot_settle_ms": 1200,
+ "shot_gap_ms": 500,
+ "fight_speed": 3,
+ "move_m": 40,
+ "attack_after_ms": 15000,
+ "ability_tries": [
+  {
+   "key": "wh3_dlc25_lord_abilities_deranged_munitions",
+   "at_ms": 60000
+  }
+ ],
+ "shots": [
+  {
+   "name": "seat_front",
+   "f": -1.0,
+   "r": 0,
+   "u": 5.7,
+   "tf": -4.5,
+   "tr": 0,
+   "tu": 5.0,
+   "fov": 35
+  },
+  {
+   "name": "seat_rear_r",
+   "f": -7.0,
+   "r": 2.5,
+   "u": 5.7,
+   "tf": -4.5,
+   "tr": 0,
+   "tu": 5.0,
+   "fov": 35
+  },
+  {
+   "name": "wide_ui",
+   "f": -60,
+   "r": -60,
+   "u": 60,
+   "tf": 0,
+   "tr": 0,
+   "tu": 15,
+   "fov": 45,
+   "select": true,
+   "hover": true
+  }
+ ],
+ "fight_shots": [
+  {
+   "name": "fight_30",
+   "at_ms": 30000,
+   "f": -60,
+   "r": -40,
+   "u": 45,
+   "tf": 40,
+   "tr": 0,
+   "tu": 0,
+   "fov": 50
+  },
+  {
+   "name": "fight_90",
+   "at_ms": 90000,
+   "f": -60,
+   "r": -40,
+   "u": 45,
+   "tf": 40,
+   "tr": 0,
+   "tu": 0,
+   "fov": 50
+  },
+  {
+   "name": "fight_180",
+   "at_ms": 180000,
+   "f": -60,
+   "r": -40,
+   "u": 45,
+   "tf": 40,
+   "tr": 0,
+   "tu": 0,
+   "fov": 50
+  }
+ ]
+}
