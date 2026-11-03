@@ -1,0 +1,1980 @@
+{
+ "groups": {
+  "rifles": [
+   "ap_crew_left_0",
+   "ap_crew_left_1",
+   "ap_crew_left_2",
+   "ap_crew_left_3",
+   "ap_crew_left_upper_0",
+   "ap_crew_left_upper_1",
+   "ap_crew_right_0",
+   "ap_crew_right_1",
+   "ap_crew_right_2",
+   "ap_crew_right_3",
+   "ap_crew_right_upper_0",
+   "ap_crew_right_upper_1"
+  ],
+  "cannons": [
+   "ap_cannon_left",
+   "ap_cannon_right"
+  ],
+  "cupolas": [
+   "ap_cupola_front",
+   "ap_cupola_rear"
+  ],
+  "bombs": [
+   "ap_bomb_bay_left_front",
+   "ap_bomb_bay_left_rear",
+   "ap_bomb_bay_right_front",
+   "ap_bomb_bay_right_rear"
+  ],
+  "deck": [
+   "ap_fireman",
+   "ap_lookout",
+   "ap_crew_barrel",
+   "ap_pub_left_front",
+   "ap_pub_left_rear",
+   "ap_pub_right_front",
+   "ap_pub_right_rear"
+  ],
+  "always": [
+   "ap_captain",
+   "ap_thunderburner"
+  ]
+ },
+ "options": {
+  "r_rakers": {
+   "group": "rifles",
+   "variant_file": "dwf_thunderers_grudge_rakers",
+   "variant_like": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle"
+  },
+  "r_thund": {
+   "group": "rifles",
+   "variant_file": "dwf_thunderers",
+   "variant_like": "wh_dwf_thunderers",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh_main_dwf_rifle",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_pirates": {
+   "group": "rifles",
+   "variant_file": "dwf_slayer_pirates",
+   "variant_like": "wh3_dlc25_dwf_inf_slayer_pirates",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh3_dlc25_dwf_slayer_pirate_pistol",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_quarr": {
+   "group": "rifles",
+   "variant_file": "dwf_quarrellers",
+   "variant_like": "wh_dwf_quarrellers",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh_main_dwf_crossbow",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_drake": {
+   "group": "rifles",
+   "variant_file": "dwf_irondrakes",
+   "variant_like": "wh_dwf_irondrakes",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh_main_dwf_drakegun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_torp": {
+   "group": "rifles",
+   "variant_file": "dwf_irondrakes_trollhammer_torpedo",
+   "variant_like": "wh_dwf_irondrakes_trollhammer_torpedo",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh_main_dwf_drakegun_trollhammer_torpedo",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_thund_inf": {
+   "group": "rifles",
+   "variant_file": "dwf_thunderers",
+   "variant_like": "wh_dwf_thunderers",
+   "scale": 1.15,
+   "table": "hu3_dwarf_axe_shield_rifle",
+   "weapon": "wh_main_dwf_rifle",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_pirates_inf": {
+   "group": "rifles",
+   "variant_file": "dwf_slayer_pirates",
+   "variant_like": "wh3_dlc25_dwf_inf_slayer_pirates",
+   "scale": 1.15,
+   "table": "hu3_dlc25_slayer_pirate_sword_and_pistol",
+   "weapon": "wh3_dlc25_dwf_slayer_pirate_pistol",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_quarr_inf": {
+   "group": "rifles",
+   "variant_file": "dwf_quarrellers",
+   "variant_like": "wh_dwf_quarrellers",
+   "scale": 1.15,
+   "table": "hu3_dwarf_axe_shield_and_crossbow",
+   "weapon": "wh_main_dwf_crossbow",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_drake_inf": {
+   "group": "rifles",
+   "variant_file": "dwf_irondrakes",
+   "variant_like": "wh_dwf_irondrakes",
+   "scale": 1.15,
+   "table": "hu3_dwarf_drakegun",
+   "weapon": "wh_main_dwf_drakegun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_torp_inf": {
+   "group": "rifles",
+   "variant_file": "dwf_irondrakes_trollhammer_torpedo",
+   "variant_like": "wh_dwf_irondrakes_trollhammer_torpedo",
+   "scale": 1.15,
+   "table": "hu3_dwarf_trollhammer",
+   "weapon": "wh_main_dwf_drakegun_trollhammer_torpedo",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "r_drake_p3": {
+   "group": "rifles",
+   "vmd": "irondrake_prop3.vmd",
+   "variant_like": "wh_dwf_irondrakes",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh_main_dwf_drakegun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "c_axes": {
+   "group": "cupolas",
+   "vmd": "cupola_axes.vmd",
+   "variant_like": "wh_dlc06_dwf_warriors_rangers",
+   "weapon": "wh_dlc06_dwf_rangers_throwing_axe",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grenade",
+   "scale": 1.2
+  },
+  "b_fire": {
+   "group": "bombs",
+   "weapon": "wh3_dlc25_dwf_thunderbarge_fire_bomb",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_bomb"
+  },
+  "g_flaming": {
+   "group": "cannons",
+   "weapon": "wh3_dlc25_dwf_thunderbarge_cannon_flaming",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon"
+  },
+  "g_clatter": {
+   "group": "cannons",
+   "gun": "clatter",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_clatter_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon"
+  },
+  "g_flame": {
+   "group": "cannons",
+   "gun": "flame",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_flame_cannon",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon"
+  },
+  "g_organ": {
+   "group": "cannons",
+   "gun": "organ",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_organ_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon"
+  },
+  "g_organ_one": {
+   "group": "cannons",
+   "gun": "organ",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_organ_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 1,
+    "projectile_number": 4,
+    "spread": 3.0
+   },
+   "volley": false
+  },
+  "r_torp_p3": {
+   "group": "rifles",
+   "vmd": "torpedo_prop3.vmd",
+   "variant_like": "wh_dwf_irondrakes_trollhammer_torpedo",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh_main_dwf_drakegun_trollhammer_torpedo",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni"
+  },
+  "g_organ_burst": {
+   "group": "cannons",
+   "gun": "organ",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_organ_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 1,
+    "burst_size": 4,
+    "burst_shot_delay": 0.25
+   },
+   "volley": false
+  },
+  "g_clatter_burst": {
+   "group": "cannons",
+   "gun": "clatter",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_clatter_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 1,
+    "burst_size": 8,
+    "burst_shot_delay": 0.12
+   },
+   "volley": false
+  },
+  "g_flame_burst": {
+   "group": "cannons",
+   "gun": "flame",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_flame_cannon",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 1,
+    "burst_size": 6,
+    "burst_shot_delay": 0.2
+   },
+   "volley": false
+  },
+  "g_clatter_num": {
+   "group": "cannons",
+   "gun": "clatter",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_clatter_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 1,
+    "projectile_number": 8,
+    "spread": 4.0
+   },
+   "volley": false
+  },
+  "g_flame_num": {
+   "group": "cannons",
+   "gun": "flame",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_flame_cannon",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 1,
+    "projectile_number": 6,
+    "spread": 3.0
+   },
+   "volley": false
+  },
+  "r_pirates_sec": {
+   "group": "rifles",
+   "variant_file": "dwf_slayer_pirates",
+   "variant_like": "wh3_dlc25_dwf_inf_slayer_pirates",
+   "scale": 1.15,
+   "table": "hu3_dlc25_zeppelin01_crew_rifle",
+   "weapon": "wh3_dlc25_dwf_slayer_pirate_pistol",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
+   "projectile": {},
+   "weapon_fields": {
+    "use_secondary_ammo_pool": true
+   }
+  },
+  "g_organ4": {
+   "group": "cannons",
+   "gun": "organ",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_organ_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 4
+   },
+   "volley": false
+  },
+  "g_clatter8": {
+   "group": "cannons",
+   "gun": "clatter",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+   "weapon": "wh_main_dwf_clatter_gun",
+   "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+   "projectile": {
+    "shots_per_volley": 8
+   },
+   "volley": false
+  }
+ },
+ "units": {
+  "full": {},
+  "e_all": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas",
+    "bombs",
+    "deck"
+   ]
+  },
+  "e_rifles": {
+   "drop": [
+    "rifles"
+   ]
+  },
+  "e_cannons": {
+   "drop": [
+    "cannons"
+   ]
+  },
+  "e_cupolas": {
+   "drop": [
+    "cupolas"
+   ]
+  },
+  "e_bombs": {
+   "drop": [
+    "bombs"
+   ]
+  },
+  "e_deck": {
+   "drop": [
+    "deck"
+   ]
+  },
+  "r_rakers": {
+   "use": [
+    "r_rakers"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_thund": {
+   "use": [
+    "r_thund"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_pirates": {
+   "use": [
+    "r_pirates"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_quarr": {
+   "use": [
+    "r_quarr"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_drake": {
+   "use": [
+    "r_drake"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_torp": {
+   "use": [
+    "r_torp"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_thund_inf": {
+   "use": [
+    "r_thund_inf"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_pirates_inf": {
+   "use": [
+    "r_pirates_inf"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_quarr_inf": {
+   "use": [
+    "r_quarr_inf"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_drake_inf": {
+   "use": [
+    "r_drake_inf"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_torp_inf": {
+   "use": [
+    "r_torp_inf"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_drake_p3": {
+   "use": [
+    "r_drake_p3"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "c_axes": {
+   "use": [
+    "c_axes"
+   ],
+   "drop": [
+    "rifles",
+    "cannons",
+    "bombs"
+   ]
+  },
+  "b_fire": {
+   "use": [
+    "b_fire"
+   ],
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas"
+   ]
+  },
+  "g_flaming": {
+   "use": [
+    "g_flaming"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_stock": {
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_clatter": {
+   "use": [
+    "g_clatter"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_flame": {
+   "use": [
+    "g_flame"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_organ": {
+   "use": [
+    "g_organ"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_organ_one": {
+   "use": [
+    "g_organ_one"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "c_stock": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "bombs"
+   ]
+  },
+  "b_stock": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas"
+   ]
+  },
+  "r_torp_p3": {
+   "use": [
+    "r_torp_p3"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_organ_burst": {
+   "use": [
+    "g_organ_burst"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_clatter_burst": {
+   "use": [
+    "g_clatter_burst"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_flame_burst": {
+   "use": [
+    "g_flame_burst"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_clatter_num": {
+   "use": [
+    "g_clatter_num"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_flame_num": {
+   "use": [
+    "g_flame_num"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "r_pirates_sec": {
+   "use": [
+    "r_pirates_sec"
+   ],
+   "drop": [
+    "cannons",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "f_base": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas",
+    "bombs",
+    "deck"
+   ]
+  },
+  "f_uv": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas",
+    "bombs",
+    "deck"
+   ],
+   "unit_variant_fields": {
+    "variant": "dummy_variant"
+   }
+  },
+  "f_anim": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas",
+    "bombs",
+    "deck"
+   ],
+   "land_unit_fields": {
+    "man_animation": "zeppelin01_dlc25_thunderbarge_grungni"
+   }
+  },
+  "f_barge": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas",
+    "bombs",
+    "deck"
+   ],
+   "land_unit_fields": {
+    "man_animation": "zeppelin01_dlc25_thunderbarge_grungni",
+    "man_entity": "wh3_dlc25_dwf_mnt_veh_thunderbarge"
+   }
+  },
+  "f_barge_uv": {
+   "drop": [
+    "rifles",
+    "cannons",
+    "cupolas",
+    "bombs",
+    "deck"
+   ],
+   "land_unit_fields": {
+    "man_animation": "zeppelin01_dlc25_thunderbarge_grungni",
+    "man_entity": "wh3_dlc25_dwf_mnt_veh_thunderbarge"
+   },
+   "unit_variant_fields": {
+    "variant": "wh_dwf_thunderers"
+   }
+  },
+  "f_stock": {
+   "stock": "wh3_dlc25_dwf_veh_thunderbarge_grungni",
+   "men": 29
+  },
+  "g_organ4": {
+   "use": [
+    "g_organ4"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  },
+  "g_clatter8": {
+   "use": [
+    "g_clatter8"
+   ],
+   "drop": [
+    "rifles",
+    "cupolas",
+    "bombs"
+   ]
+  }
+ },
+ "cameras": {
+  "ui": [
+   {
+    "name": "ui",
+    "f": -50,
+    "r": -40,
+    "u": 35,
+    "tf": 0,
+    "tr": 0,
+    "tu": 8,
+    "fov": 45
+   }
+  ],
+  "bays": [
+   {
+    "name": "left",
+    "f": 3,
+    "r": -20,
+    "u": 7,
+    "tf": 1,
+    "tr": 0,
+    "tu": 3,
+    "fov": 40
+   },
+   {
+    "name": "right",
+    "f": 3,
+    "r": 20,
+    "u": 7,
+    "tf": 1,
+    "tr": 0,
+    "tu": 3,
+    "fov": 40
+   },
+   {
+    "name": "front",
+    "f": 24,
+    "r": 7,
+    "u": 5,
+    "tf": 4,
+    "tr": 0,
+    "tu": 3,
+    "fov": 35
+   },
+   {
+    "name": "below",
+    "f": 2,
+    "r": -11,
+    "u": -7,
+    "tf": 0,
+    "tr": 0,
+    "tu": 0.5,
+    "fov": 45
+   },
+   {
+    "name": "deck",
+    "f": 1,
+    "r": -7,
+    "u": 9,
+    "tf": -3,
+    "tr": 0,
+    "tu": 3,
+    "fov": 50
+   },
+   {
+    "name": "top",
+    "f": -16,
+    "r": -10,
+    "u": 27,
+    "tf": -4,
+    "tr": 0,
+    "tu": 19,
+    "fov": 40
+   }
+  ],
+  "ai": [
+   {
+    "name": "wide",
+    "f": -45,
+    "r": -35,
+    "u": 35,
+    "tf": 15,
+    "tr": 0,
+    "tu": 0,
+    "fov": 50
+   }
+  ],
+  "fire": [
+   {
+    "name": "cl",
+    "f": 1.5,
+    "r": -11,
+    "u": 4,
+    "tf": 1,
+    "tr": -1.5,
+    "tu": 2.6,
+    "fov": 45
+   },
+   {
+    "name": "cu",
+    "f": 13,
+    "r": -7,
+    "u": 6.5,
+    "tf": 5,
+    "tr": -1,
+    "tu": 4.3,
+    "fov": 40
+   },
+   {
+    "name": "cr",
+    "f": 1.5,
+    "r": 11,
+    "u": 4,
+    "tf": 1,
+    "tr": 1.5,
+    "tu": 2.6,
+    "fov": 45
+   }
+  ],
+  "cannon": [
+   {
+    "name": "gl",
+    "f": 8,
+    "r": -11,
+    "u": 3,
+    "tf": 7,
+    "tr": -2,
+    "tu": 1.2,
+    "fov": 40
+   },
+   {
+    "name": "gf",
+    "f": 22,
+    "r": -6,
+    "u": 2,
+    "tf": 7,
+    "tr": -2,
+    "tu": 1.2,
+    "fov": 30
+   },
+   {
+    "name": "gr",
+    "f": 8,
+    "r": 11,
+    "u": 3,
+    "tf": 7,
+    "tr": 2,
+    "tu": 1.2,
+    "fov": 40
+   }
+  ],
+  "cupola": [
+   {
+    "name": "top",
+    "f": 6,
+    "r": -9,
+    "u": 29,
+    "tf": 3.6,
+    "tr": 0,
+    "tu": 22,
+    "fov": 40
+   }
+  ],
+  "bomb": [
+   {
+    "name": "below",
+    "f": 12,
+    "r": -16,
+    "u": -8,
+    "tf": 0,
+    "tr": 0,
+    "tu": -3,
+    "fov": 60
+   }
+  ],
+  "deck2": [
+   {
+    "name": "deck_aft",
+    "f": 7,
+    "r": -1,
+    "u": 6,
+    "tf": -4,
+    "tr": 0,
+    "tu": 3,
+    "fov": 55
+   },
+   {
+    "name": "deck_mid",
+    "f": -5,
+    "r": -1,
+    "u": 5.8,
+    "tf": 3,
+    "tr": 0,
+    "tu": 2.5,
+    "fov": 55
+   },
+   {
+    "name": "roof",
+    "f": 0,
+    "r": -13,
+    "u": 27,
+    "tf": 0,
+    "tr": 0,
+    "tu": 20.5,
+    "fov": 50
+   }
+  ],
+  "crew": [
+   {
+    "name": "side",
+    "f": 2,
+    "r": 1.4,
+    "u": 4.2,
+    "tf": 1.5,
+    "tr": -1.7,
+    "tu": 2.8,
+    "fov": 50
+   },
+   {
+    "name": "out",
+    "f": 0.5,
+    "r": -6.5,
+    "u": 5,
+    "tf": 0.5,
+    "tr": -1.5,
+    "tu": 2.7,
+    "fov": 45
+   },
+   {
+    "name": "up",
+    "f": 2,
+    "r": -0.5,
+    "u": 5.6,
+    "tf": 6,
+    "tr": -0.5,
+    "tu": 3.8,
+    "fov": 55
+   }
+  ],
+  "muzzle": [
+   {
+    "name": "m",
+    "f": 2,
+    "r": -7,
+    "u": 4,
+    "tf": 14,
+    "tr": -3,
+    "tu": -1,
+    "fov": 45
+   }
+  ],
+  "along": [
+   {
+    "name": "along",
+    "f": 8,
+    "r": -7.5,
+    "u": 5.5,
+    "tf": -1,
+    "tr": -4,
+    "tu": 2,
+    "fov": 55
+   }
+  ]
+ },
+ "battles": {
+  "empty": {
+   "units": [
+    "full",
+    "e_all",
+    "e_rifles",
+    "e_cannons",
+    "e_cupolas",
+    "e_bombs",
+    "e_deck"
+   ],
+   "spacing": 70,
+   "x": -40,
+   "enemies": [
+    {
+     "x": 60,
+     "z": -150
+    },
+    {
+     "x": 60,
+     "z": -50
+    },
+    {
+     "x": 60,
+     "z": 50
+    },
+    {
+     "x": 60,
+     "z": 150
+    }
+   ],
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 220,
+   "speed": 1,
+   "tour_at_ms": 2000,
+   "shot_settle_ms": 1200,
+   "shot_gap_ms": 300,
+   "end_after_tour_ms": 5000,
+   "tour": [
+    {
+     "cameras": "ui",
+     "select": true
+    },
+    {
+     "cameras": "bays"
+    }
+   ]
+  },
+  "empty_ai": {
+   "units": [
+    "e_all"
+   ],
+   "tests_ai": true,
+   "x": -150,
+   "enemies": [
+    {
+     "x": 60,
+     "z": -40
+    },
+    {
+     "x": 60,
+     "z": 40
+    }
+   ],
+   "tick_ms": 5000,
+   "end_s": 170,
+   "speed": 3,
+   "tour_at_ms": 20000,
+   "shot_settle_ms": 1500,
+   "shot_gap_ms": 25000,
+   "end_after_tour_ms": 100000,
+   "tour": [
+    {
+     "cameras": "ai",
+     "burst": 1
+    },
+    {
+     "cameras": "ai"
+    },
+    {
+     "cameras": "ai"
+    }
+   ]
+  },
+  "rifles_a": {
+   "spacing": 70,
+   "x": 0,
+   "orientation": 0,
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 320,
+   "speed": 1,
+   "tour_at_ms": 8000,
+   "shot_settle_ms": 1000,
+   "shot_gap_ms": 200,
+   "end_after_tour_ms": 60000,
+   "enemies": [
+    {
+     "x": 50,
+     "z": -135,
+     "width": 80
+    },
+    {
+     "x": 50,
+     "z": -45,
+     "width": 80
+    },
+    {
+     "x": 50,
+     "z": 45,
+     "width": 80
+    },
+    {
+     "x": 50,
+     "z": 135,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": -135,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": -45,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": 45,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": 135,
+     "width": 80
+    }
+   ],
+   "tour": [
+    {
+     "cameras": "crew",
+     "burst": 4,
+     "burst_ms": 700,
+     "speed": 0.3
+    }
+   ],
+   "units": [
+    "r_rakers",
+    "r_thund",
+    "r_pirates",
+    "r_quarr",
+    "r_drake",
+    "r_torp"
+   ]
+  },
+  "rifles_b": {
+   "spacing": 60,
+   "x": 0,
+   "orientation": 0,
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 320,
+   "speed": 1,
+   "tour_at_ms": 8000,
+   "shot_settle_ms": 1000,
+   "shot_gap_ms": 200,
+   "end_after_tour_ms": 60000,
+   "enemies": [
+    {
+     "x": 50,
+     "z": -135,
+     "width": 80
+    },
+    {
+     "x": 50,
+     "z": -45,
+     "width": 80
+    },
+    {
+     "x": 50,
+     "z": 45,
+     "width": 80
+    },
+    {
+     "x": 50,
+     "z": 135,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": -135,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": -45,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": 45,
+     "width": 80
+    },
+    {
+     "x": -50,
+     "z": 135,
+     "width": 80
+    }
+   ],
+   "tour": [
+    {
+     "cameras": "crew",
+     "burst": 4,
+     "burst_ms": 700,
+     "speed": 0.3
+    }
+   ],
+   "units": [
+    "r_drake_p3",
+    "r_torp_p3",
+    "r_thund_inf",
+    "r_pirates_inf",
+    "r_quarr_inf",
+    "r_drake_inf",
+    "r_torp_inf"
+   ]
+  },
+  "guns": {
+   "spacing": 70,
+   "x": -40,
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 380,
+   "speed": 1,
+   "tour_at_ms": 8000,
+   "shot_settle_ms": 1000,
+   "shot_gap_ms": 200,
+   "end_after_tour_ms": 60000,
+   "enemies": [
+    {
+     "x": 40,
+     "z": -210,
+     "width": 60
+    },
+    {
+     "x": 40,
+     "z": -140,
+     "width": 60
+    },
+    {
+     "x": 40,
+     "z": -70,
+     "width": 60
+    },
+    {
+     "x": 40,
+     "z": 0,
+     "width": 60
+    },
+    {
+     "x": 40,
+     "z": 70,
+     "width": 60
+    },
+    {
+     "x": 40,
+     "z": 140,
+     "width": 60
+    },
+    {
+     "x": 40,
+     "z": 210,
+     "width": 60
+    }
+   ],
+   "units": [
+    "g_stock",
+    "g_flaming",
+    "g_clatter",
+    "g_flame",
+    "g_organ",
+    "g_organ_one",
+    "c_axes"
+   ],
+   "tour": [
+    {
+     "cameras": "cannon",
+     "units": [
+      "g_stock",
+      "g_flaming",
+      "g_clatter",
+      "g_flame",
+      "g_organ",
+      "g_organ_one"
+     ],
+     "burst": 5,
+     "burst_ms": 500,
+     "speed": 0.3
+    },
+    {
+     "cameras": "cupola",
+     "units": [
+      "c_axes"
+     ],
+     "burst": 5,
+     "burst_ms": 700,
+     "speed": 0.3
+    }
+   ]
+  },
+  "top_bottom": {
+   "spacing": 70,
+   "x": 10,
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 160,
+   "speed": 1,
+   "tour_at_ms": 8000,
+   "shot_settle_ms": 1000,
+   "shot_gap_ms": 200,
+   "end_after_tour_ms": 60000,
+   "enemies": [
+    {
+     "x": 25,
+     "z": -100,
+     "width": 60
+    },
+    {
+     "x": 25,
+     "z": -30,
+     "width": 60
+    },
+    {
+     "x": 25,
+     "z": 30,
+     "width": 60
+    },
+    {
+     "x": 25,
+     "z": 100,
+     "width": 60
+    }
+   ],
+   "units": [
+    "c_stock",
+    "c_axes",
+    "b_stock",
+    "b_fire"
+   ],
+   "tour": [
+    {
+     "cameras": "cupola",
+     "units": [
+      "c_stock",
+      "c_axes"
+     ],
+     "burst": 4,
+     "burst_ms": 700,
+     "speed": 0.3
+    },
+    {
+     "cameras": "bomb",
+     "units": [
+      "b_stock",
+      "b_fire"
+     ],
+     "burst": 8,
+     "burst_ms": 1000,
+     "speed": 0.3
+    }
+   ]
+  },
+  "full_ai": {
+   "units": [
+    "full"
+   ],
+   "tests_ai": true,
+   "x": -150,
+   "enemies": [
+    {
+     "x": 60,
+     "z": -40
+    },
+    {
+     "x": 60,
+     "z": 40
+    }
+   ],
+   "tick_ms": 5000,
+   "end_s": 130,
+   "speed": 3,
+   "tour_at_ms": 20000,
+   "shot_settle_ms": 1500,
+   "shot_gap_ms": 25000,
+   "end_after_tour_ms": 60000,
+   "tour": [
+    {
+     "cameras": "ai",
+     "burst": 1
+    },
+    {
+     "cameras": "ai"
+    },
+    {
+     "cameras": "ai"
+    }
+   ]
+  },
+  "empty_decks": {
+   "units": [
+    "full",
+    "e_all",
+    "e_deck",
+    "e_cupolas"
+   ],
+   "spacing": 70,
+   "x": -40,
+   "enemies": [
+    {
+     "x": 60,
+     "z": -150
+    },
+    {
+     "x": 60,
+     "z": -50
+    },
+    {
+     "x": 60,
+     "z": 50
+    },
+    {
+     "x": 60,
+     "z": 150
+    }
+   ],
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 220,
+   "speed": 1,
+   "tour_at_ms": 2000,
+   "shot_settle_ms": 1200,
+   "shot_gap_ms": 300,
+   "end_after_tour_ms": 2000,
+   "tour": [
+    {
+     "cameras": "deck2"
+    }
+   ]
+  },
+  "mixed_ai": {
+   "units": [
+    "e_all",
+    "full"
+   ],
+   "tests_ai": true,
+   "x": -150,
+   "enemies": [
+    {
+     "x": 60,
+     "z": 0,
+     "men": 30,
+     "width": 15
+    }
+   ],
+   "tick_ms": 5000,
+   "end_s": 150,
+   "speed": 3,
+   "tour_at_ms": 20000,
+   "shot_settle_ms": 1500,
+   "shot_gap_ms": 25000,
+   "end_after_tour_ms": 70000,
+   "tour": [
+    {
+     "cameras": "ai",
+     "burst": 1
+    },
+    {
+     "cameras": "ai"
+    },
+    {
+     "cameras": "ai"
+    }
+   ],
+   "spacing": 80
+  },
+  "volley": {
+   "spacing": 100,
+   "x": -40,
+   "enemy_hold": true,
+   "enemy_hold_fire": true,
+   "tick_ms": 5000,
+   "watch_ms": 200,
+   "end_s": 200,
+   "speed": 1,
+   "tour_at_ms": 5000,
+   "shot_settle_ms": 800,
+   "shot_gap_ms": 100,
+   "end_after_tour_ms": 30000,
+   "enemies": [
+    {
+     "x": 40,
+     "z": -150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": -50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    }
+   ],
+   "units": [
+    "g_organ",
+    "g_organ_one",
+    "g_clatter",
+    "g_stock"
+   ],
+   "tour": [
+    {
+     "cameras": "muzzle",
+     "burst": 22,
+     "burst_ms": 300,
+     "speed": 0.2,
+     "units": [
+      "g_organ",
+      "g_organ_one",
+      "g_clatter"
+     ]
+    }
+   ],
+   "enemy_pos": {
+    "enemy_0": [
+     40,
+     -150
+    ],
+    "enemy_1": [
+     40,
+     -50
+    ],
+    "enemy_2": [
+     40,
+     50
+    ],
+    "enemy_3": [
+     40,
+     150
+    ],
+    "enemy_lord": [
+     600,
+     0
+    ]
+   }
+  },
+  "volley3": {
+   "spacing": 100,
+   "x": -40,
+   "enemy_hold": true,
+   "enemy_hold_fire": true,
+   "tick_ms": 5000,
+   "watch_ms": 200,
+   "end_s": 200,
+   "speed": 1,
+   "tour_at_ms": 5000,
+   "shot_settle_ms": 800,
+   "shot_gap_ms": 100,
+   "end_after_tour_ms": 30000,
+   "enemies": [
+    {
+     "x": 40,
+     "z": -150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": -50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    }
+   ],
+   "units": [
+    "g_organ_burst",
+    "g_clatter_burst",
+    "g_flame_burst",
+    "g_clatter"
+   ],
+   "tour": [
+    {
+     "cameras": "muzzle",
+     "burst": 24,
+     "burst_ms": 300,
+     "speed": 0.2,
+     "units": [
+      "g_organ_burst",
+      "g_clatter_burst",
+      "g_flame_burst"
+     ]
+    }
+   ],
+   "enemy_pos": {
+    "enemy_0": [
+     40,
+     -150
+    ],
+    "enemy_1": [
+     40,
+     -50
+    ],
+    "enemy_2": [
+     40,
+     50
+    ],
+    "enemy_3": [
+     40,
+     150
+    ],
+    "enemy_lord": [
+     600,
+     0
+    ]
+   }
+  },
+  "guns2": {
+   "spacing": 100,
+   "x": -40,
+   "enemy_hold": true,
+   "enemy_hold_fire": true,
+   "tick_ms": 5000,
+   "watch_ms": 200,
+   "end_s": 200,
+   "speed": 1,
+   "tour_at_ms": 5000,
+   "shot_settle_ms": 800,
+   "shot_gap_ms": 100,
+   "end_after_tour_ms": 30000,
+   "enemies": [
+    {
+     "x": 40,
+     "z": -150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": -50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    }
+   ],
+   "units": [
+    "g_organ_one",
+    "g_clatter_num",
+    "g_flame_num",
+    "g_flaming"
+   ],
+   "tour": [
+    {
+     "cameras": "cannon",
+     "burst": 2,
+     "burst_ms": 400,
+     "speed": 0.3
+    },
+    {
+     "cameras": "muzzle",
+     "burst": 20,
+     "burst_ms": 300,
+     "speed": 0.2,
+     "units": [
+      "g_clatter_num",
+      "g_flame_num"
+     ]
+    }
+   ],
+   "enemy_pos": {
+    "enemy_0": [
+     40,
+     -150
+    ],
+    "enemy_1": [
+     40,
+     -50
+    ],
+    "enemy_2": [
+     40,
+     50
+    ],
+    "enemy_3": [
+     40,
+     150
+    ],
+    "enemy_lord": [
+     600,
+     0
+    ]
+   }
+  },
+  "rifles_c": {
+   "spacing": 60,
+   "x": 0,
+   "orientation": 0,
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 320,
+   "speed": 1,
+   "tour_at_ms": 8000,
+   "shot_settle_ms": 1000,
+   "shot_gap_ms": 200,
+   "end_after_tour_ms": 60000,
+   "enemies": [
+    {
+     "x": 40,
+     "z": -135,
+     "width": 80
+    },
+    {
+     "x": 40,
+     "z": -45,
+     "width": 80
+    },
+    {
+     "x": 40,
+     "z": 45,
+     "width": 80
+    },
+    {
+     "x": 40,
+     "z": 135,
+     "width": 80
+    },
+    {
+     "x": -40,
+     "z": -135,
+     "width": 80
+    },
+    {
+     "x": -40,
+     "z": -45,
+     "width": 80
+    },
+    {
+     "x": -40,
+     "z": 45,
+     "width": 80
+    },
+    {
+     "x": -40,
+     "z": 135,
+     "width": 80
+    }
+   ],
+   "tour": [
+    {
+     "cameras": "along",
+     "burst": 12,
+     "burst_ms": 300,
+     "speed": 0.2,
+     "units": [
+      "r_quarr",
+      "r_torp_p3",
+      "r_drake_p3",
+      "r_thund"
+     ]
+    },
+    {
+     "cameras": "cupola",
+     "burst": 14,
+     "burst_ms": 300,
+     "speed": 0.2,
+     "units": [
+      "c_axes"
+     ]
+    },
+    {
+     "cameras": "cannon",
+     "units": [
+      "g_organ_one"
+     ],
+     "burst": 2,
+     "burst_ms": 400,
+     "speed": 0.3
+    }
+   ],
+   "units": [
+    "r_quarr",
+    "r_torp_p3",
+    "r_drake_p3",
+    "r_thund",
+    "r_pirates_sec",
+    "c_axes",
+    "g_organ_one"
+   ]
+  },
+  "figure": {
+   "units": [
+    "f_base",
+    "f_uv",
+    "f_anim",
+    "f_barge",
+    "f_barge_uv",
+    "f_stock"
+   ],
+   "spacing": 70,
+   "x": -40,
+   "enemies": [
+    {
+     "x": 60,
+     "z": -150
+    },
+    {
+     "x": 60,
+     "z": 150
+    }
+   ],
+   "enemy_hold": true,
+   "tick_ms": 5000,
+   "end_s": 120,
+   "speed": 1,
+   "tour_at_ms": 2000,
+   "shot_settle_ms": 1200,
+   "shot_gap_ms": 300,
+   "end_after_tour_ms": 3000,
+   "tour": [
+    {
+     "cameras": "bays"
+    }
+   ]
+  },
+  "ai_compare": {
+   "units": [
+    "full",
+    "f_stock"
+   ],
+   "tests_ai": true,
+   "x": -150,
+   "enemies": [
+    {
+     "x": 60,
+     "z": 0,
+     "men": 30,
+     "width": 15
+    }
+   ],
+   "tick_ms": 5000,
+   "end_s": 150,
+   "speed": 3,
+   "tour_at_ms": 20000,
+   "shot_settle_ms": 1500,
+   "shot_gap_ms": 25000,
+   "end_after_tour_ms": 70000,
+   "tour": [
+    {
+     "cameras": "ai",
+     "burst": 1
+    },
+    {
+     "cameras": "ai"
+    },
+    {
+     "cameras": "ai"
+    }
+   ],
+   "spacing": 80
+  },
+  "volley4": {
+   "spacing": 100,
+   "x": -40,
+   "enemy_hold": true,
+   "enemy_hold_fire": true,
+   "tick_ms": 5000,
+   "watch_ms": 200,
+   "end_s": 200,
+   "speed": 1,
+   "tour_at_ms": 5000,
+   "shot_settle_ms": 800,
+   "shot_gap_ms": 100,
+   "end_after_tour_ms": 30000,
+   "enemies": [
+    {
+     "x": 40,
+     "z": -150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": -50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 50,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    },
+    {
+     "x": 40,
+     "z": 150,
+     "men": 1,
+     "width": 5,
+     "type": "wh_main_emp_veh_steam_tank"
+    }
+   ],
+   "units": [
+    "g_organ",
+    "g_clatter",
+    "g_flame",
+    "g_stock"
+   ],
+   "tour": [
+    {
+     "cameras": "muzzle",
+     "burst": 16,
+     "burst_ms": 300,
+     "speed": 0.2,
+     "units": [
+      "g_organ",
+      "g_clatter"
+     ]
+    }
+   ],
+   "enemy_pos": {
+    "enemy_0": [
+     40,
+     -150
+    ],
+    "enemy_1": [
+     40,
+     -50
+    ],
+    "enemy_2": [
+     40,
+     50
+    ],
+    "enemy_3": [
+     40,
+     150
+    ],
+    "enemy_lord": [
+     600,
+     0
+    ]
+   }
+  }
+ }
+}

@@ -1,0 +1,1146 @@
+{
+ "_about": "Sessions of tools/crew_cycle.py.",
+ "cameras": [
+  {
+   "name": "left",
+   "f": 3,
+   "r": -20,
+   "u": 7,
+   "tf": 1,
+   "tr": 0,
+   "tu": 3,
+   "fov": 40
+  },
+  {
+   "name": "right",
+   "f": 3,
+   "r": 20,
+   "u": 7,
+   "tf": 1,
+   "tr": 0,
+   "tu": 3,
+   "fov": 40
+  },
+  {
+   "name": "front",
+   "f": 24,
+   "r": 7,
+   "u": 5,
+   "tf": 4,
+   "tr": 0,
+   "tu": 3,
+   "fov": 35
+  },
+  {
+   "name": "back",
+   "f": -28,
+   "r": -8,
+   "u": 9,
+   "tf": -3,
+   "tr": 0,
+   "tu": 4,
+   "fov": 40
+  },
+  {
+   "name": "below",
+   "f": 2,
+   "r": -11,
+   "u": -7,
+   "tf": 0,
+   "tr": 0,
+   "tu": 0.5,
+   "fov": 45
+  },
+  {
+   "name": "deck",
+   "f": 1,
+   "r": -7,
+   "u": 9,
+   "tf": -3,
+   "tr": 0,
+   "tu": 3,
+   "fov": 50
+  },
+  {
+   "name": "bow",
+   "f": 12,
+   "r": -8,
+   "u": 10,
+   "tf": 7,
+   "tr": 0,
+   "tu": 6.5,
+   "fov": 40
+  },
+  {
+   "name": "roof",
+   "f": 0,
+   "r": -13,
+   "u": 27,
+   "tf": 0,
+   "tr": 0,
+   "tu": 20.5,
+   "fov": 50
+  },
+  {
+   "name": "deck_aft",
+   "f": 7,
+   "r": -1,
+   "u": 6,
+   "tf": -4,
+   "tr": 0,
+   "tu": 3,
+   "fov": 55
+  },
+  {
+   "name": "pub_in",
+   "f": -1.5,
+   "r": -0.5,
+   "u": 3.2,
+   "tf": -5,
+   "tr": 0,
+   "tu": 2.4,
+   "fov": 60
+  },
+  {
+   "name": "roof2",
+   "f": 0,
+   "r": -13,
+   "u": 26,
+   "tf": 0,
+   "tr": 0,
+   "tu": 21,
+   "fov": 55
+  },
+  {
+   "name": "far_40",
+   "f": -20,
+   "r": -35,
+   "u": 12,
+   "tf": 0,
+   "tr": 0,
+   "tu": 4,
+   "fov": 40
+  },
+  {
+   "name": "far_100",
+   "f": -50,
+   "r": -85,
+   "u": 25,
+   "tf": 0,
+   "tr": 0,
+   "tu": 4,
+   "fov": 25
+  },
+  {
+   "name": "far_250",
+   "f": -120,
+   "r": -220,
+   "u": 60,
+   "tf": 0,
+   "tr": 0,
+   "tu": 4,
+   "fov": 12
+  },
+  {
+   "name": "far_500",
+   "f": -250,
+   "r": -430,
+   "u": 120,
+   "tf": 0,
+   "tr": 0,
+   "tu": 4,
+   "fov": 7
+  },
+  {
+   "name": "wheel_30",
+   "f": 24,
+   "r": -14,
+   "u": 10,
+   "tf": -4,
+   "tr": 0,
+   "tu": 4.5,
+   "fov": 14
+  },
+  {
+   "name": "wheel_60",
+   "f": 50,
+   "r": -25,
+   "u": 20,
+   "tf": -4,
+   "tr": 0,
+   "tu": 4.5,
+   "fov": 7
+  },
+  {
+   "name": "wheel_120",
+   "f": 105,
+   "r": -50,
+   "u": 38,
+   "tf": -4,
+   "tr": 0,
+   "tu": 4.5,
+   "fov": 4
+  },
+  {
+   "name": "wheel_250",
+   "f": 220,
+   "r": -100,
+   "u": 75,
+   "tf": -4,
+   "tr": 0,
+   "tu": 4.5,
+   "fov": 2
+  },
+  {
+   "name": "gun_40",
+   "f": 38,
+   "r": -18,
+   "u": 6,
+   "tf": 8,
+   "tr": -2,
+   "tu": 1.5,
+   "fov": 10
+  },
+  {
+   "name": "gun_90",
+   "f": 85,
+   "r": -40,
+   "u": 14,
+   "tf": 8,
+   "tr": -2,
+   "tu": 1.5,
+   "fov": 5
+  },
+  {
+   "name": "gun_200",
+   "f": 190,
+   "r": -85,
+   "u": 30,
+   "tf": 8,
+   "tr": -2,
+   "tu": 1.5,
+   "fov": 2.5
+  },
+  {
+   "name": "roof_close",
+   "f": 8,
+   "r": -8,
+   "u": 27,
+   "tf": 3.6,
+   "tr": 0,
+   "tu": 21.2,
+   "fov": 25
+  }
+ ],
+ "order": [
+  "a_new",
+  "b_load",
+  "c_rifles",
+  "d_cannons",
+  "e_tops",
+  "f_no_memreader",
+  "g_bad_pattern",
+  "h_ai_empty",
+  "i_ai_stock",
+  "j_stress"
+ ],
+ "sessions": {
+  "a_new": {
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 900,
+   "high": true,
+   "steps": [
+    {
+     "label": "r_thunderers",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "auto_pirates",
+     "choice": {
+      "rifles": "pirates",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "autoresolve": true
+    },
+    {
+     "save": "tww3_mtb_crew_a.save"
+    }
+   ]
+  },
+  "b_load": {
+   "save": "tww3_mtb_crew_a.save",
+   "limit": 1100,
+   "high": true,
+   "assume": {
+    "rifles": "pirates",
+    "cannons": "empty",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "expect_after_load": {
+    "rifles": "pirates",
+    "cannons": "empty",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "label": "r_pirates",
+     "choice": {
+      "rifles": "pirates",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "r_quarrellers",
+     "choice": {
+      "rifles": "quarrellers",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "r_rakers",
+     "choice": {
+      "rifles": "rakers",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "save": "tww3_mtb_crew_b.save"
+    }
+   ]
+  },
+  "c_rifles": {
+   "save": "tww3_mtb_crew_b.save",
+   "limit": 1100,
+   "high": true,
+   "assume": {
+    "rifles": "rakers",
+    "cannons": "empty",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "expect_after_load": {
+    "rifles": "rakers",
+    "cannons": "empty",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "label": "r_irondrakes",
+     "choice": {
+      "rifles": "irondrakes",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "r_torpedoes",
+     "choice": {
+      "rifles": "torpedoes",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "r_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "save": "tww3_mtb_crew_c.save"
+    }
+   ]
+  },
+  "d_cannons": {
+   "save": "tww3_mtb_crew_c.save",
+   "limit": 1400,
+   "high": true,
+   "assume": {
+    "rifles": "stock",
+    "cannons": "empty",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "expect_after_load": {
+    "rifles": "stock",
+    "cannons": "empty",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "label": "g_stock",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "stock",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "g_flaming",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "flaming",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "g_organ",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "organ",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "g_clatter",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "clatter",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "g_flame",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "flame",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "save": "tww3_mtb_crew_d.save"
+    }
+   ]
+  },
+  "e_tops": {
+   "save": "tww3_mtb_crew_d.save",
+   "limit": 1400,
+   "high": true,
+   "assume": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "expect_after_load": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "label": "c_axes",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "axes",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "c_stock",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "stock",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "b_fire",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "fire",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "b_stock",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "empty"
+     },
+     "shots": true
+    },
+    {
+     "label": "d_stock",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "stock"
+     },
+     "shots": true,
+     "fight": 40
+    },
+    {
+     "label": "all_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "fight": 120,
+     "stop_near": 25
+    },
+    {
+     "save": "tww3_mtb_crew_e.save"
+    }
+   ]
+  },
+  "f_no_memreader": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 500,
+   "memreader": false,
+   "high": true,
+   "steps": [
+    {
+     "shot": "no_memreader_map"
+    },
+    {
+     "label": "no_memreader",
+     "fight": 60,
+     "after_fire": 6
+    }
+   ]
+  },
+  "g_bad_pattern": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 400,
+   "high": true,
+   "steps": [
+    {
+     "lua": "local before = tww3_mtb_crew.status; tww3_mtb_crew.patterns.root = '00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF'; tww3_mtb_crew.forget_tables(); local ok = tww3_mtb_crew.apply(); return tostring(before) .. ' -> ' .. tostring(ok) .. ' ' .. tostring(tww3_mtb_crew.status)"
+    },
+    {
+     "shot": "bad_pattern_message"
+    },
+    {
+     "lua": "tww3_mtb_crew.apply(); tww3_mtb_crew.apply(); return tostring(tww3_mtb_crew.status) .. ' still running'"
+    }
+   ]
+  },
+  "h_ai_empty": {
+   "new_campaign": "wh_main_dwf_dwarfs",
+   "limit": 800,
+   "high": true,
+   "steps": [
+    {
+     "ai": true,
+     "label": "ai_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     }
+    }
+   ]
+  },
+  "i_ai_stock": {
+   "new_campaign": "wh_main_dwf_dwarfs",
+   "limit": 800,
+   "high": true,
+   "steps": [
+    {
+     "ai": true,
+     "label": "ai_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     }
+    }
+   ]
+  },
+  "j_stress": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 400,
+   "steps": [
+    {
+     "stress": 1000
+    }
+   ]
+  },
+  "p_hull": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 700,
+   "high": true,
+   "steps": [
+    {
+     "label": "hull_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 30,
+     "after_fire": 5,
+     "late_shots": [
+      "left",
+      "front",
+      "below",
+      "deck_aft",
+      "roof"
+     ]
+    },
+    {
+     "label": "hull_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "shots": false,
+     "fight": 30,
+     "after_fire": 5,
+     "late_shots": [
+      "left",
+      "front",
+      "below",
+      "deck_aft",
+      "roof"
+     ]
+    }
+   ]
+  },
+  "p_detail": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 950,
+   "high": true,
+   "steps": [
+    {
+     "label": "axes",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "axes",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 70,
+     "after_fire": 45,
+     "late_shots": [
+      "roof_close",
+      "roof"
+     ]
+    },
+    {
+     "label": "grenades",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "stock",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 70,
+     "after_fire": 45,
+     "late_shots": [
+      "roof_close"
+     ]
+    },
+    {
+     "label": "organ_seq",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "organ",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 50,
+     "after_fire": 25,
+     "late_shots": [
+      "left",
+      "front"
+     ]
+    }
+   ]
+  },
+  "p_far": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 950,
+   "high": true,
+   "steps": [
+    {
+     "label": "far_organ",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "organ",
+      "cupolas": "axes",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "shots": false,
+     "fight": 35,
+     "after_fire": 10,
+     "late_shots": [
+      "wheel_30",
+      "wheel_60",
+      "wheel_120",
+      "wheel_250",
+      "gun_40",
+      "gun_90",
+      "gun_200",
+      "far_100",
+      "deck_aft",
+      "roof2"
+     ]
+    },
+    {
+     "label": "far_flame",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "flame",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 35,
+     "after_fire": 10,
+     "late_shots": [
+      "wheel_30",
+      "wheel_60",
+      "wheel_120",
+      "wheel_250",
+      "gun_40",
+      "gun_90",
+      "gun_200"
+     ]
+    },
+    {
+     "label": "far_clatter",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "clatter",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 35,
+     "after_fire": 10,
+     "late_shots": [
+      "gun_40",
+      "gun_90",
+      "gun_200",
+      "left"
+     ]
+    },
+    {
+     "label": "far_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 25,
+     "after_fire": 5,
+     "late_shots": [
+      "below",
+      "left",
+      "roof2",
+      "deck_aft",
+      "far_100"
+     ]
+    }
+   ]
+  },
+  "p_hero": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 600,
+   "high": true,
+   "steps": [
+    {
+     "label": "hero_mix",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "organ",
+      "cupolas": "axes",
+      "bombs": "fire",
+      "deck": "stock"
+     },
+     "shots": false,
+     "fight": 45,
+     "after_fire": 25,
+     "late_shots": [
+      "left",
+      "right",
+      "deck_aft",
+      "roof2",
+      "wheel_60",
+      "front"
+     ]
+    },
+    {
+     "label": "hero_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "shots": false,
+     "fight": 45,
+     "after_fire": 20,
+     "late_shots": [
+      "left",
+      "right",
+      "deck_aft",
+      "roof2",
+      "wheel_60",
+      "front",
+      "below"
+     ]
+    }
+   ]
+  },
+  "p_rings": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 800,
+   "high": true,
+   "steps": [
+    {
+     "label": "rings_axes",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "axes",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 70,
+     "after_fire": 45,
+     "late_shots": [
+      "roof2",
+      "roof_close",
+      "front",
+      "left"
+     ]
+    },
+    {
+     "label": "rings_stock",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "stock",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 70,
+     "after_fire": 45,
+     "late_shots": [
+      "roof2",
+      "roof_close",
+      "front",
+      "left"
+     ]
+    },
+    {
+     "label": "rings_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 25,
+     "after_fire": 5,
+     "late_shots": [
+      "roof2",
+      "below",
+      "left",
+      "deck_aft"
+     ]
+    }
+   ]
+  },
+  "smoke_igpu": {
+   "save": "tww3_mtb_crew_d.save",
+   "limit": 1500,
+   "assume": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "label": "smoke",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 120,
+     "after_fire": 20,
+     "measure": true
+    }
+   ]
+  },
+  "join_e_j_g": {
+   "join": [
+    "e_tops",
+    "j_stress",
+    "g_bad_pattern"
+   ]
+  },
+  "ammo_main": {
+   "save": "tww3_mtb_crew_a.save",
+   "limit": 2700,
+   "steps": [
+    {
+     "label": "plain_start",
+     "ammo_plain": true,
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "wait_dry": "bombs",
+     "watch": 0,
+     "real_limit": 45
+    },
+    {
+     "label": "all_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "ammo": {
+      "rifles": 25,
+      "cannons": 4,
+      "cupolas": 12,
+      "bombs": 7
+     },
+     "watch": 40,
+     "speed": 3,
+     "real_limit": 420
+    },
+    {
+     "label": "cannons",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "empty",
+      "deck": "stock"
+     },
+     "ammo": {
+      "cannons": 6,
+      "rifles": 2000,
+      "cupolas": 2000
+     },
+     "units": "wh_main_grn_mon_giant,wh_main_grn_mon_giant,wh_main_grn_mon_giant,wh_main_grn_mon_giant",
+     "wait_dry": "cannons",
+     "watch": 150,
+     "refill": {
+      "cannons": 4
+     },
+     "refill_watch": 30,
+     "speed": 3,
+     "real_limit": 560
+    },
+    {
+     "label": "organ_fire_thunderers",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "organ",
+      "cupolas": "axes",
+      "bombs": "fire",
+      "deck": "stock"
+     },
+     "ammo": {
+      "rifles": 18,
+      "cannons": 16,
+      "cupolas": 9,
+      "bombs": 6
+     },
+     "watch": 30,
+     "speed": 3,
+     "real_limit": 300
+    },
+    {
+     "label": "clatter_drakes",
+     "choice": {
+      "rifles": "irondrakes",
+      "cannons": "clatter",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "ammo": {
+      "rifles": 16,
+      "cannons": 24,
+      "cupolas": 6,
+      "bombs": 5
+     },
+     "watch": 30,
+     "speed": 3,
+     "real_limit": 300
+    },
+    {
+     "label": "flaming_pirates",
+     "choice": {
+      "rifles": "pirates",
+      "cannons": "flaming",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "ammo": {
+      "rifles": 20,
+      "cannons": 6,
+      "cupolas": 5,
+      "bombs": 4
+     },
+     "watch": 30,
+     "speed": 3,
+     "real_limit": 300
+    }
+   ]
+  },
+  "ammo_ai": {
+   "new_campaign": "wh_main_dwf_dwarfs",
+   "limit": 900,
+   "steps": [
+    {
+     "label": "ai",
+     "ammo_ai": true,
+     "choice": {
+      "rifles": "irondrakes",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "ammo": {
+      "rifles": 30,
+      "cannons": 4,
+      "cupolas": 10,
+      "bombs": 6
+     },
+     "watch": 240
+    }
+   ]
+  },
+  "ammo_no_memreader": {
+   "save": "tww3_mtb_crew_a.save",
+   "limit": 500,
+   "memreader": false,
+   "steps": [
+    {
+     "label": "no_memreader",
+     "ammo_plain": true,
+     "expect_off": true,
+     "real_limit": 70,
+     "speed": 3
+    }
+   ]
+  }
+ }
+}

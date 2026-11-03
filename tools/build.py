@@ -15,6 +15,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
+import crew_options  # noqa: E402
 import dbtable  # noqa: E402
 import gamepack  # noqa: E402
 import pfh5  # noqa: E402
@@ -48,6 +49,7 @@ SET_NEVER = "dwf_spirit_of_grungni_summon"
 MALAKAI_SETS = {"dwf_malakai_only", "legendary_lord", "dwf_all_units_characters", "dwf_slayers_and_ungrim"}
 
 LAYOUTS = json.loads((DATA / "db_layouts.json").read_text(encoding="utf-8"))
+LAYOUTS.update(json.loads((DATA / "weapon_layouts.json").read_text(encoding="utf-8")))   # the crew options' weapons
 
 
 def game_tables():
@@ -345,8 +347,9 @@ def build_campaign(blob_files, tables, stock):
     sep = chr(92)
     out = REPO / "build" / "campaign" / "pack"
     out.mkdir(parents=True, exist_ok=True)
-    tables = derive_campaign(stock, dict(tables))
+    tables = derive_campaign(stock, {k: [dict(r) for r in v] for k, v in tables.items()})
     files = {k: v for k, v in blob_files.items() if not k.startswith(f"script{sep}battle") and not k.startswith(f"db{sep}")}
+    files.update(crew_options.extend(tables, stock, UNIT, BARGE))
     for table, rows in tables.items():
         layout = LAYOUTS[table]
         files[f"db{sep}{table}_tables{sep}{TABLE_NAME}"] = dbtable.encode(rows, [tuple(f) for f in layout["fields"]], layout["version"], table)

@@ -1,0 +1,259 @@
+{
+ "organ": {
+  "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
+  "material": "warmachines/materials/dwf_organ_gun_01_weighted2_alpha_off.xml.material",
+  "bind": "cannon_0",
+  "scale": 1.2,
+  "muzzle_z": 2.75,
+  "groups": [
+   {
+    "name": "upper_left",
+    "bones": [
+     10
+    ],
+    "axis_bones": [
+     10
+    ],
+    "to": [
+     0.22,
+     0.22
+    ]
+   },
+   {
+    "name": "lower_left",
+    "bones": [
+     11
+    ],
+    "axis_bones": [
+     11
+    ],
+    "to": [
+     0.22,
+     -0.22
+    ]
+   },
+   {
+    "name": "lower_right",
+    "bones": [
+     12
+    ],
+    "axis_bones": [
+     12
+    ],
+    "to": [
+     -0.22,
+     -0.22
+    ]
+   },
+   {
+    "name": "upper_right",
+    "bones": [
+     13
+    ],
+    "axis_bones": [
+     13
+    ],
+    "to": [
+     -0.22,
+     0.22
+    ]
+   }
+  ],
+  "volley": {
+   "tag": "organ",
+   "shots": [
+    [
+     0.22,
+     0.22
+    ],
+    [
+     -0.22,
+     -0.22
+    ],
+    [
+     -0.22,
+     0.22
+    ],
+    [
+     0.22,
+     -0.22
+    ]
+   ],
+   "spacing": 0.3
+  },
+  "lods": [
+   0,
+   2,
+   3,
+   4
+  ]
+ },
+ "clatter": {
+  "source": "warmachines/aircraft/dwf_gyrobomber/dwf_gyrobomber_01.rigid_model_v2",
+  "material": "warmachines/materials/dwf_gyrobomber_01_weighted2_alpha_off.xml.material",
+  "bind": "cannon_0",
+  "scale": 2.2,
+  "muzzle_z": 2.75,
+  "groups": [
+   {
+    "name": "gun",
+    "bones": [
+     6
+    ],
+    "to": [
+     0,
+     0
+    ]
+   }
+  ],
+  "base": {
+   "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+   "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+   "bones": [
+    1,
+    2
+   ]
+  },
+  "volley": {
+   "tag": "clatt",
+   "shots": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "spacing": 0.12
+  }
+ },
+ "flame": {
+  "source": "warmachines/engines/dwf_flame_cannon/dwf_flame_cannon.rigid_model_v2",
+  "material": "warmachines/materials/dwf_flame_cannon_weighted_01_weighted2_alpha_off.xml.material",
+  "bind": "cannon_0",
+  "scale": 0.85,
+  "muzzle_z": 2.75,
+  "groups": [
+   {
+    "name": "gun",
+    "bones": [
+     6,
+     10,
+     11
+    ],
+    "axis_bones": [
+     6
+    ],
+    "to": [
+     0,
+     0
+    ]
+   }
+  ],
+  "volley": {
+   "tag": "flame",
+   "shots": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "spacing": 0.2
+  },
+  "lods": [
+   0,
+   2,
+   4,
+   5
+  ]
+ },
+ "cap": {
+  "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+  "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+  "groups": [],
+  "base": {
+   "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+   "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+   "bones": [
+    1
+   ]
+  },
+  "static": true
+ },
+ "door_left": {
+  "source": "warmachines/aircraft/dwf_thunderbarge/doors_left/dwf_thunderbarge_doors_left_01.rigid_model_v2",
+  "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+  "groups": [],
+  "static": true,
+  "base": {
+   "source": "warmachines/aircraft/dwf_thunderbarge/doors_left/dwf_thunderbarge_doors_left_01.rigid_model_v2",
+   "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+   "bones": [
+    2,
+    3,
+    4
+   ]
+  }
+ },
+ "door_right": {
+  "source": "warmachines/aircraft/dwf_thunderbarge/doors_right/dwf_thunderbarge_doors_right_01.rigid_model_v2",
+  "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+  "groups": [],
+  "static": true,
+  "base": {
+   "source": "warmachines/aircraft/dwf_thunderbarge/doors_right/dwf_thunderbarge_doors_right_01.rigid_model_v2",
+   "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+   "bones": [
+    2,
+    3,
+    4
+   ]
+  }
+ }
+}

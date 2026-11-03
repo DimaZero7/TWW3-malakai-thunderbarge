@@ -1,0 +1,280 @@
+{
+ "_about": "Experiments of docs/design/modular-crew.md. Each battle: seats = {group or ap name: personality key or template with {seat}}.",
+ "groups": {
+  "rifles_left": [
+   "ap_crew_left_0",
+   "ap_crew_left_1",
+   "ap_crew_left_2",
+   "ap_crew_left_3",
+   "ap_crew_left_upper_0",
+   "ap_crew_left_upper_1"
+  ],
+  "rifles_right": [
+   "ap_crew_right_0",
+   "ap_crew_right_1",
+   "ap_crew_right_2",
+   "ap_crew_right_3",
+   "ap_crew_right_upper_0",
+   "ap_crew_right_upper_1"
+  ],
+  "cannons": [
+   "ap_cannon_left",
+   "ap_cannon_right"
+  ],
+  "cupolas": [
+   "ap_cupola_front",
+   "ap_cupola_rear"
+  ],
+  "bombs": [
+   "ap_bomb_bay_left_front",
+   "ap_bomb_bay_left_rear",
+   "ap_bomb_bay_right_front",
+   "ap_bomb_bay_right_rear"
+  ],
+  "deck": [
+   "ap_fireman",
+   "ap_lookout",
+   "ap_crew_barrel",
+   "ap_pub_left_front",
+   "ap_pub_left_rear",
+   "ap_pub_right_front",
+   "ap_pub_right_rear"
+  ]
+ },
+ "cameras": [
+  {
+   "name": "left",
+   "f": 3,
+   "r": -20,
+   "u": 7,
+   "tf": 1,
+   "tr": 0,
+   "tu": 3,
+   "fov": 40
+  },
+  {
+   "name": "right",
+   "f": 3,
+   "r": 20,
+   "u": 7,
+   "tf": 1,
+   "tr": 0,
+   "tu": 3,
+   "fov": 40
+  },
+  {
+   "name": "cl",
+   "f": 1.5,
+   "r": -11,
+   "u": 4,
+   "tf": 1,
+   "tr": -1.5,
+   "tu": 2.6,
+   "fov": 45
+  },
+  {
+   "name": "cr",
+   "f": 1.5,
+   "r": 11,
+   "u": 4,
+   "tf": 1,
+   "tr": 1.5,
+   "tu": 2.6,
+   "fov": 45
+  },
+  {
+   "name": "front",
+   "f": 24,
+   "r": 7,
+   "u": 5,
+   "tf": 4,
+   "tr": 0,
+   "tu": 3,
+   "fov": 35
+  },
+  {
+   "name": "below",
+   "f": 2,
+   "r": -11,
+   "u": -7,
+   "tf": 0,
+   "tr": 0,
+   "tu": 0.5,
+   "fov": 45
+  },
+  {
+   "name": "deck",
+   "f": 1,
+   "r": -7,
+   "u": 9,
+   "tf": -3,
+   "tr": 0,
+   "tu": 3,
+   "fov": 50
+  },
+  {
+   "name": "bow",
+   "f": 11,
+   "r": -8,
+   "u": 10,
+   "tf": 7,
+   "tr": 0,
+   "tu": 6.5,
+   "fov": 40
+  },
+  {
+   "name": "wheel",
+   "f": -3,
+   "r": -7,
+   "u": 9,
+   "tf": -5,
+   "tr": 0,
+   "tu": 6.5,
+   "fov": 40
+  }
+ ],
+ "scenarios": {
+  "e1": {
+   "battles": [
+    {
+     "label": "b1",
+     "seats": {
+      "rifles_left": "wh3_dlc25_dwf_veh_thunderbarge_{suffix}"
+     }
+    },
+    {
+     "label": "b2",
+     "seats": {
+      "rifles_left": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_{suffix}"
+     }
+    }
+   ]
+  },
+  "e3": {
+   "battles": [
+    {
+     "label": "hidden_all",
+     "fight": 100,
+     "seats": {
+      "rifles_left": "wh3_dlc23_chd_veh_hidden_rider",
+      "rifles_right": "wh3_dlc23_chd_veh_hidden_rider",
+      "cannons": "wh3_dlc23_chd_veh_hidden_rider",
+      "cupolas": "wh3_dlc23_chd_veh_hidden_rider",
+      "bombs": "wh3_dlc23_chd_veh_hidden_rider",
+      "deck": "wh3_dlc23_chd_veh_hidden_rider"
+     }
+    },
+    {
+     "label": "full",
+     "fight": 100,
+     "seats": {
+      "rifles_left": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cannons": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cupolas": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "bombs": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "deck": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}"
+     }
+    }
+   ]
+  },
+  "e3r": {
+   "battles": [
+    {
+     "label": "full",
+     "fight": 120,
+     "seats": {
+      "rifles_left": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cannons": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cupolas": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "bombs": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "deck": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}"
+     }
+    },
+    {
+     "label": "hidden_all",
+     "fight": 120,
+     "seats": {
+      "rifles_left": "wh3_dlc23_chd_veh_hidden_rider",
+      "rifles_right": "wh3_dlc23_chd_veh_hidden_rider",
+      "cannons": "wh3_dlc23_chd_veh_hidden_rider",
+      "cupolas": "wh3_dlc23_chd_veh_hidden_rider",
+      "bombs": "wh3_dlc23_chd_veh_hidden_rider",
+      "deck": "wh3_dlc23_chd_veh_hidden_rider"
+     }
+    }
+   ]
+  },
+  "goal": {
+   "battles": [
+    {
+     "label": "set_a",
+     "fight": 90,
+     "seats": {
+      "rifles_left": "wh3_dlc25_dwf_veh_thunderbarge_{suffix}",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_{suffix}",
+      "cannons": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cupolas": "wh3_dlc23_chd_veh_hidden_rider",
+      "bombs": "wh3_dlc23_chd_veh_hidden_rider",
+      "deck": "wh3_dlc23_chd_veh_hidden_rider"
+     }
+    },
+    {
+     "label": "set_b",
+     "fight": 90,
+     "seats": {
+      "rifles_left": "wh3_dlc23_chd_veh_hidden_rider",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cannons": "wh3_dlc23_chd_veh_hidden_rider",
+      "cupolas": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "bombs": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "deck": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}"
+     }
+    }
+   ]
+  },
+  "goal2": {
+   "battles": [
+    {
+     "label": "who",
+     "fight": 10,
+     "seats": {
+      "rifles_left": "wh3_dlc23_chd_veh_hidden_rider",
+      "rifles_right": "wh3_dlc23_chd_veh_hidden_rider",
+      "cannons": "wh3_dlc23_chd_veh_hidden_rider",
+      "cupolas": "wh3_dlc23_chd_veh_hidden_rider",
+      "bombs": "wh3_dlc23_chd_veh_hidden_rider",
+      "deck": "wh3_dlc23_chd_veh_hidden_rider",
+      "ap_captain": "wh3_dlc23_chd_veh_hidden_rider"
+     }
+    },
+    {
+     "label": "set_a",
+     "fight": 90,
+     "seats": {
+      "rifles_left": "wh3_dlc25_dwf_veh_thunderbarge_{suffix}",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_{suffix}",
+      "cannons": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cupolas": "wh3_dlc23_chd_veh_hidden_rider",
+      "bombs": "wh3_dlc23_chd_veh_hidden_rider",
+      "deck": "wh3_dlc23_chd_veh_hidden_rider"
+     }
+    },
+    {
+     "label": "set_b",
+     "fight": 90,
+     "seats": {
+      "rifles_left": "wh3_dlc23_chd_veh_hidden_rider",
+      "rifles_right": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "cannons": "wh3_dlc23_chd_veh_hidden_rider",
+      "cupolas": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "bombs": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}",
+      "deck": "wh3_dlc25_dwf_veh_thunderbarge_grungni_{suffix}"
+     }
+    }
+   ]
+  }
+ }
+}

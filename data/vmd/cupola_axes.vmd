@@ -1,0 +1,28 @@
+<VARIANT_MESH>
+	<SLOT name="head" >
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\head\dwf_rangers_head_01.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\head\dwf_rangers_head_02.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\head\dwf_rangers_head_03.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\head\dwf_rangers_head_04.wsmodel" />
+	</SLOT>
+	<SLOT name="body" >
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\torso\dwf_rangers_torso_01.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\torso\dwf_rangers_torso_02.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\torso\dwf_rangers_torso_03.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\torso\dwf_rangers_torso_04.wsmodel" />
+	</SLOT>
+	<SLOT name="legs" >
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\legs\dwf_rangers_legs_01.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\legs\dwf_rangers_legs_02.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\legs\dwf_rangers_legs_03.wsmodel" />
+		<VARIANT_MESH model="VariantMeshes\wh_variantmodels\hu3\dwf\dwf_rangers\legs\dwf_rangers_legs_04.wsmodel" />
+	</SLOT>
+	<SLOT name="weapon_1" attach_point="be_prop_0" />
+	<SLOT name="weapon_2" attach_point="be_prop_1" >
+		<VARIANT_MESH model="VariantMeshes/wh_variantmodels/hu3/dwf/dwf_props/dwf_rangers_throwing_axe_1h_01.wsmodel" />
+	</SLOT>
+	<SLOT name="shield" attach_point="be_prop_2" />
+	<SLOT name="weapon_3" attach_point="be_prop_3" />
+	<SLOT name="weapon_4" attach_point="be_prop_4" />
+	<SLOT name="weapon_5" attach_point="be_prop_5" />
+</VARIANT_MESH>

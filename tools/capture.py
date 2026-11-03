@@ -32,6 +32,12 @@ for _f, _r, _a in [
     _f.restype, _f.argtypes = _r, _a
 
 PW_RENDERFULLCONTENT = 3
+HWND_BOTTOM = 1
+SWP_BEHIND = 0x0001 | 0x0002 | 0x0010 | 0x0200  # NOSIZE, NOMOVE, NOACTIVATE, NOOWNERZORDER
+user32.SetWindowPos.restype = wt.BOOL
+user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.UINT]
+user32.GetForegroundWindow.restype = wt.HWND
+user32.GetForegroundWindow.argtypes = []
 
 
 def find_window(pid):
@@ -51,6 +57,41 @@ def find_window(pid):
         return True
     user32.EnumWindows(proto(visit), 0)
     return best[0]
+
+
+class KeepBehind:
+    """Keeps the game's own window under the user's windows; touches no other window and never moves the focus.
+
+    tick() does the work, call it often: the window goes to the bottom of the stack without activation. Every time the game
+    takes the foreground is written to log: giving the focus back would be a focus change of ours, so that is only reported.
+    """
+
+    def __init__(self, pid, log):
+        self.pid, self.log = pid, log
+        self.hwnd = None
+        self.had_focus = False
+        self.focus_taken = 0
+
+    def write(self, text):
+        with self.log.open("a", encoding="utf-8") as f:
+            f.write(time.strftime("%H:%M:%S ") + text + "\n")
+
+    def tick(self):
+        owner = wt.DWORD()
+        user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), ctypes.byref(owner))
+        focus = owner.value == self.pid
+        if focus and not self.had_focus:
+            self.focus_taken += 1
+            self.write("the game has the foreground")
+        elif self.had_focus and not focus:
+            self.write("the game lost the foreground")
+        hwnd = find_window(self.pid)    # a minimized window has no client area: nothing to find and nothing to move
+        if hwnd and hwnd != self.hwnd:
+            self.hwnd = hwnd
+            self.write(f"window {hwnd} shown")
+        if hwnd and (not focus or not self.had_focus):
+            user32.SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_BEHIND)
+        self.had_focus = focus
 
 
 def _png(w, h, bgra):

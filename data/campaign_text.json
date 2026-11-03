@@ -3,5 +3,8 @@
  "ancillaries_colour_text_mtb_anc_mount_dwf_malakai_thunderbarge": "В бою Малакай стоит за штурвалом своего воздушного корабля.",
  "mission_text_text_wh3_dlc25_camp_narrative_mission_description_dwarfs_malakai_spirit_of_grungni_army_ability": "Примените в бою способность «Испепеляющий гром».",
  "mission_text_text_scripted_use_ability_wh3_dlc25_mis_dwf_malakai_warpstone_bomb_6": "5 раз используйте в бою способность «Испепеляющий гром»\n\nСпособность использована: %n/5",
- "effects_description_wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1": "Способность армии: «Дух Грунгни» (только в легендарных битвах)"
+ "effects_description_wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1": "Способность армии: «Дух Грунгни» (только в легендарных битвах)",
+ "ui_text_replacements_localised_text_mtb_crew_failed_title": "Экипаж барки не настроен",
+ "ui_text_replacements_localised_text_mtb_crew_failed_primary": "Барка осталась со стоковым экипажем",
+ "ui_text_replacements_localised_text_mtb_crew_failed_secondary": "Модульному экипажу нужен мод memreader Plus. Он не подключён или не подошёл к этой версии игры. Кампании это не мешает: выбранные варианты вернутся, когда это будет исправлено."
 }

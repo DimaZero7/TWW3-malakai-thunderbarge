@@ -1,0 +1,62 @@
+{
+ "_about": "Details moved out of the Spirit of Grungni's hull, see tools/hull_parts.py. A box: min x, y, z, max x, y, z and optionally the least width of a piece.",
+ "source": "warmachines/aircraft/dwf_thunderbarge/dwf_thunderbarge_01.rigid_model_v2",
+ "wsmodel": "warmachines/aircraft/dwf_thunderbarge/dwf_thunderbarge_grungni_01.wsmodel",
+ "definition": "variantmeshes/variantmeshdefinitions/dwf_thunderbarge_grungni.variantmeshdefinition",
+ "out": "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_hull",
+ "details": [
+  {
+   "name": "rings",
+   "mesh": 2,
+   "seat": "ap_cupola_front",
+   "seat_origin": [
+    0.25,
+    20.71,
+    3.58
+   ],
+   "out": "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_cupola_rings",
+   "boxes": [
+    [
+     -0.95,
+     20.1,
+     -5.95,
+     1.0,
+     21.4,
+     -4.05,
+     1.0
+    ],
+    [
+     -0.95,
+     20.4,
+     2.6,
+     1.0,
+     21.4,
+     4.5,
+     1.0
+    ]
+   ],
+   "material": "warmachines/materials/dwf_thunderbarge_grungni_01_weighted2_alpha_off.xml.material"
+  },
+  {
+   "name": "pub",
+   "mesh": 0,
+   "seat": "ap_crew_barrel",
+   "seat_origin": [
+    -1.22,
+    1.95,
+    -6.44
+   ],
+   "out": "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_pub",
+   "boxes": [
+    [
+     -2.3,
+     1.5,
+     -7.5,
+     2.3,
+     3.3,
+     -2.75
+    ]
+   ]
+  }
+ ]
+}

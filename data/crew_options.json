@@ -1,0 +1,242 @@
+{
+ "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what a new campaign begins with. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua).",
+ "empty_like": "wh3_dlc23_chd_veh_hidden_rider",
+ "remove_bow_figure": false,
+ "fixed_seats": [
+  "ap_captain",
+  "ap_thunderburner"
+ ],
+ "groups": {
+  "rifles": {
+   "seats": [
+    "ap_crew_left_0",
+    "ap_crew_left_1",
+    "ap_crew_left_2",
+    "ap_crew_left_3",
+    "ap_crew_left_upper_0",
+    "ap_crew_left_upper_1",
+    "ap_crew_right_0",
+    "ap_crew_right_1",
+    "ap_crew_right_2",
+    "ap_crew_right_3",
+    "ap_crew_right_upper_0",
+    "ap_crew_right_upper_1"
+   ],
+   "start": "stock",
+   "options": {
+    "empty": {
+     "empty": true
+    },
+    "stock": {
+     "stock": true,
+     "ammo": 40
+    },
+    "rakers": {
+     "variant_file": "dwf_thunderers_grudge_rakers",
+     "variant_like": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
+     "scale": 1.15,
+     "table": "hu3_dlc25_zeppelin01_crew_rifle",
+     "ammo": 40
+    },
+    "thunderers": {
+     "variant_file": "dwf_thunderers",
+     "variant_like": "wh_dwf_thunderers",
+     "scale": 1.15,
+     "table": "hu3_dlc25_zeppelin01_crew_rifle",
+     "weapon": "wh_main_dwf_rifle",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
+     "projectile": {},
+     "weapon_fields": {
+      "use_secondary_ammo_pool": true
+     },
+     "ammo": 40
+    },
+    "pirates": {
+     "variant_file": "dwf_slayer_pirates",
+     "variant_like": "wh3_dlc25_dwf_inf_slayer_pirates",
+     "scale": 1.15,
+     "table": "hu3_dlc25_zeppelin01_crew_rifle",
+     "weapon": "wh3_dlc25_dwf_slayer_pirate_pistol",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
+     "projectile": {},
+     "weapon_fields": {
+      "use_secondary_ammo_pool": true
+     },
+     "ammo": 40
+    },
+    "quarrellers": {
+     "variant_file": "dwf_quarrellers",
+     "variant_like": "wh_dwf_quarrellers",
+     "scale": 1.15,
+     "table": "hu3_dlc25_zeppelin01_crew_rifle",
+     "weapon": "wh_main_dwf_crossbow",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
+     "projectile": {},
+     "weapon_fields": {
+      "use_secondary_ammo_pool": true
+     },
+     "ammo": 40
+    },
+    "irondrakes": {
+     "vmd": "irondrake_prop3.vmd",
+     "variant_like": "wh_dwf_irondrakes",
+     "scale": 1.15,
+     "table": "hu3_dlc25_zeppelin01_crew_rifle",
+     "weapon": "wh_main_dwf_drakegun",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
+     "projectile": {},
+     "weapon_fields": {
+      "use_secondary_ammo_pool": true
+     },
+     "ammo": 40
+    },
+    "torpedoes": {
+     "vmd": "torpedo_prop3.vmd",
+     "variant_like": "wh_dwf_irondrakes_trollhammer_torpedo",
+     "scale": 1.15,
+     "table": "hu3_dlc25_zeppelin01_crew_rifle",
+     "weapon": "wh_main_dwf_drakegun_trollhammer_torpedo",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
+     "projectile": {},
+     "weapon_fields": {
+      "use_secondary_ammo_pool": true
+     },
+     "ammo": 40
+    }
+   }
+  },
+  "cannons": {
+   "seats": [
+    "ap_cannon_left",
+    "ap_cannon_right"
+   ],
+   "start": "stock",
+   "options": {
+    "empty": {
+     "cover": "cap"
+    },
+    "stock": {
+     "stock": true,
+     "ammo": 30
+    },
+    "flaming": {
+     "weapon": "wh3_dlc25_dwf_thunderbarge_cannon_flaming",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+     "ammo": 30
+    },
+    "organ": {
+     "gun": "organ",
+     "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+     "weapon": "wh_main_dwf_organ_gun",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+     "ammo": 30
+    },
+    "clatter": {
+     "gun": "clatter",
+     "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+     "weapon": "wh_main_dwf_clatter_gun",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+     "ammo": 30
+    },
+    "flame": {
+     "gun": "flame",
+     "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+     "weapon": "wh_main_dwf_flame_cannon",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+     "ammo": 30
+    }
+   }
+  },
+  "cupolas": {
+   "seats": [
+    "ap_cupola_front",
+    "ap_cupola_rear"
+   ],
+   "start": "stock",
+   "options": {
+    "empty": {
+     "empty": true
+    },
+    "stock": {
+     "stock": true,
+     "ammo": 30
+    },
+    "axes": {
+     "vmd": "cupola_axes.vmd",
+     "variant_like": "wh_dlc06_dwf_warriors_rangers",
+     "weapon": "wh_dlc06_dwf_rangers_throwing_axe",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grenade",
+     "scale": 1.2,
+     "projectile": {
+      "trajectory_sight": "fixed",
+      "fixed_elevation": 5,
+      "max_elevation": 88,
+      "effective_range": 100,
+      "minimum_range": 5,
+      "muzzle_velocity": 55.0,
+      "calibration_distance": 100.0,
+      "calibration_area": 1.5,
+      "marksmanship_bonus": 40.0,
+      "projectile_number": 3,
+      "spread": 3.0,
+      "base_reload_time": 5.0
+     },
+     "ammo": 30
+    }
+   },
+   "seat_details": {
+    "ap_cupola_front": "rings"
+   }
+  },
+  "bombs": {
+   "seats": [
+    "ap_bomb_bay_left_front",
+    "ap_bomb_bay_left_rear",
+    "ap_bomb_bay_right_front",
+    "ap_bomb_bay_right_rear"
+   ],
+   "start": "stock",
+   "options": {
+    "empty": {
+     "cover_by_side": {
+      "left": "door_left",
+      "right": "door_right"
+     }
+    },
+    "stock": {
+     "stock": true,
+     "ammo": 20
+    },
+    "fire": {
+     "weapon": "wh3_dlc25_dwf_thunderbarge_fire_bomb",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_bomb",
+     "ammo": 20
+    }
+   }
+  },
+  "deck": {
+   "seats": [
+    "ap_fireman",
+    "ap_lookout",
+    "ap_crew_barrel",
+    "ap_pub_left_front",
+    "ap_pub_left_rear",
+    "ap_pub_right_front",
+    "ap_pub_right_rear"
+   ],
+   "start": "stock",
+   "options": {
+    "empty": {
+     "empty": true
+    },
+    "stock": {
+     "stock": true
+    }
+   },
+   "seat_details": {
+    "ap_crew_barrel": "pub"
+   }
+  }
+ },
+ "own_hull": true
+}

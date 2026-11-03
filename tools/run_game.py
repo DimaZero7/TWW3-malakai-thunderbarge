@@ -37,7 +37,10 @@ SESSION_FILES = ["tww3_mtb_events.jsonl", "tww3_mtb_cmd.lua", "tww3_mtb_rc.jsonl
 SETTINGS = dict(rb.GRAPHICS, campaign_difficulty=1, incremental_autosave_enabled="false")
 LOW_GRAPHICS = dict(SETTINGS, x_res=1280, y_res=720, gfx_aa=0, gfx_texture_quality=0, gfx_unit_quality=0, gfx_shadow_quality=0,
                     gfx_sky_quality=0, gfx_terrain_quality=0, gfx_lighting_quality=0, gfx_effects_quality=0)
+# Integrated GPU (the RTX is out of the machine): the same plus a lower render scale. Unit size stays: the men counted must not change.
+IGPU_GRAPHICS = dict(LOW_GRAPHICS, gfx_resolution_scale=0.5, gfx_texture_filtering=0, gfx_distortion="false", porthole_3d="false")
 SW_SHOWNOACTIVATE = 4
+SW_SHOWMINNOACTIVE = 7
 PLAIN_SETTINGS = {"battle_difficulty": 1, "campaign_difficulty": 1, "incremental_autosave_enabled": "false"}
 
 
@@ -104,6 +107,9 @@ def main(argv=None):
     ap.add_argument("--user-mods-file", help="a text file with one pack name per line")
     ap.add_argument("--high-graphics", action="store_true", help="full quality models, for pictures")
     ap.add_argument("--plain-settings", action="store_true", help="keep the user's graphics settings for this session")
+    ap.add_argument("--igpu", action="store_true", help="the lowest settings, for the integrated GPU")
+    ap.add_argument("--minimized", action="store_true", help="ask Windows to show the game minimized and not active")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="more settings for this session only, restored after it")
     args = ap.parse_args(argv)
 
     busy = rb.busy_reasons()
@@ -160,19 +166,22 @@ def main(argv=None):
             placed_save = USER / "save_games" / args.save
             shutil.copy2(SAVES / args.save, placed_save)
         rb.GRAPHICS.clear()
-        settings = PLAIN_SETTINGS if args.plain_settings else (SETTINGS if args.high_graphics else LOW_GRAPHICS)
+        settings = PLAIN_SETTINGS if args.plain_settings else IGPU_GRAPHICS if args.igpu else (SETTINGS if args.high_graphics else LOW_GRAPHICS)
+        settings = dict(settings, **dict(item.split("=", 1) for item in args.set))
         rb.GRAPHICS.update(settings)
         rb.set_prefs()
         start_args = f"{args.args}; {rb.MODLIST_NAME};" if args.args else f"{rb.MODLIST_NAME};"
         info = subprocess.STARTUPINFO()
         info.dwFlags = subprocess.STARTF_USESHOWWINDOW
-        info.wShowWindow = SW_SHOWNOACTIVATE
+        info.wShowWindow = SW_SHOWMINNOACTIVE if args.minimized else SW_SHOWNOACTIVATE
         process = subprocess.Popen(f'"{rb.GAME / "Warhammer3.exe"}" {start_args}', cwd=rb.GAME, startupinfo=info)
         STATE.write_text(json.dumps({"pid": process.pid, "run": str(run), "started": started,
                                      "x_res": settings.get("x_res", 2560), "y_res": settings.get("y_res", 1440)}), encoding="utf-8")
         print(f"started PID {process.pid}, run {run}", flush=True)
         status = "timeout"
+        behind = rb.capture.KeepBehind(process.pid, run / "window.log")
         while time.time() - started < args.timeout:
+            behind.tick()
             if process.poll() is not None:
                 status = f"process_exited_{process.returncode}"
                 break
