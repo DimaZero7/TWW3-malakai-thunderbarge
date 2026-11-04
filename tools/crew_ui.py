@@ -119,7 +119,6 @@ def button_layout(key, base, margin="24.00,24.00,24.00,24.00"):
     w, h = (214, 70) if base == "plate" else (400, 86)
     s = lambda name, image, trans, **kw: state_xml(name, key, w, h, [(img[image], margin, False)], trans, **kw)
     states = [
-        s("ordered", "hover", {}),
         s("active", "normal", {0: "hover"}),
         s("hover", "hover", {1: "active", 2: "down"}),
         s("down", "selected", {1: "down_off", 3: "hover"}),
@@ -127,6 +126,7 @@ def button_layout(key, base, margin="24.00,24.00,24.00,24.00"):
         s("selected", "selected", {0: "selected_hover"}),
         s("selected_hover", "selected", {1: "selected"}),
         s("inactive", "locked", {}, disabled=True),
+        s("invalid", "hover", {1: "invalid"}),     # ordered for the next turn. A state that nothing moves away from by itself
     ]
     return layout(key, "button", paths, states, "active", sound="UI_GBL_TMP_Parchment_Row")
 
@@ -209,12 +209,17 @@ def data(config, t, stock, bindings):
         rows = []
         for key, opt in group["options"].items():
             ui = opt.get("ui") or {}
-            if ui.get("hidden"):
+            if ui.get("hidden") or ui.get("none"):
                 continue
             rows.append(dict(ui, key=key, numbers=group_numbers(t, group_key, key, opt, group), building=unlocked_by.get((group_key, key), ""), upkeep=upkeep(opt, stock)))
         # empty first, then in the order of the buildings table
         order = list(bindings)
         rows.sort(key=lambda r: -1 if r["key"] == "empty" else order.index(r["building"]) if r["building"] in order else 99)
         groups[group_key] = dict(group["ui"], rows=rows, seats=len(group["seats"]))
+        none = group["options"].get("none")
+        if none:
+            groups[group_key]["none_name"] = none["ui"]["name"]
+            groups[group_key]["mount_name"] = group["mount_name"]
+            groups[group_key]["mount_building"] = unlocked_by[(group_key, group["mount"])]
     order = [g for g in ("cupolas", "harpoon", "cannons", "rifles", "bombs", "deck") if not config["groups"][g].get("always")]
     return {"groups": groups, "art": art, "order": order, "drawn": ["cupolas", "harpoon", "cannons", "rifles", "bombs", "deck"]}

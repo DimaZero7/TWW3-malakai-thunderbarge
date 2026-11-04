@@ -315,8 +315,6 @@ def derive_campaign(g, t):
     t["effects"] = [dict(one(g["effects"], effect="wh3_dlc25_effect_ability_enable_thunderburner_upgraded"), effect=HARPOON_EFFECT)]
     t["effect_bundles"] = [dict(next(r for r in g["effect_bundles"] if r["bundle_target"] == "force"), key=HARPOON_BUNDLE, localised_title="Гарпун снят",
                                 localised_description="Стрела на носу шара снята: способности в бою нет. Поставить можно в панели экипажа.", ui_icon="general_ability.png")]
-    # The crew's upkeep: its value is set by src/tww3_mtb_crew.lua on a custom bundle with the game's own flat income effect.
-    t["effect_bundles"].append(dict(t["effect_bundles"][0], key="mtb_bundle_crew_upkeep", localised_title="Содержание экипажа барки", localised_description="Золото за ход на экипаж барки. Считается в панели экипажа."))
     t["effect_bundles_to_effects_junctions"] = [{"effect_bundle_key": HARPOON_BUNDLE, "effect_key": HARPOON_EFFECT, "effect_scope": "force_to_force_own", "value": 1.0, "advancement_stage": "start_turn_completed"}]
     t["effect_bonus_value_unit_set_unit_ability_junctions"].append({"bonus_value_id": "disable", "effect": HARPOON_EFFECT, "unit_set_ability": "mtb_harpoon"})
 

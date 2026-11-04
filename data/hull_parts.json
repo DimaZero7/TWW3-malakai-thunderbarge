@@ -63,5 +63,69 @@
     ]
    ]
   }
- ]
+ ],
+ "patches": {
+  "seat": "ap_thunderburner",
+  "seat_origin": [
+   0.0,
+   0.58,
+   0.0
+  ],
+  "scale": 0.8333,
+  "bombs": {
+   "out": "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_patch_bombs",
+   "y": 0.3,
+   "x": [
+    0.7,
+    1.82
+   ],
+   "z": [
+    [
+     1.95,
+     3.55
+    ],
+    [
+     -3.82,
+     -2.2
+    ]
+   ],
+   "template": {
+    "x": [
+     1.0,
+     1.5
+    ],
+    "z": [
+     0.5,
+     1.75
+    ],
+    "y_below": 0.7
+   }
+  },
+  "port": {
+   "out": "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_patch_port",
+   "template": {
+    "x": [
+     1.8,
+     2.3
+    ],
+    "z": [
+     3.8,
+     5.0
+    ],
+    "y": [
+     1.0,
+     1.7
+    ]
+   },
+   "centre_y": 1.42,
+   "centre_z": 6.45,
+   "radius": 0.66,
+   "x_at": [
+    5.79,
+    2.08,
+    7.11,
+    1.66
+   ]
+  }
+ }
 }

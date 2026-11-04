@@ -114,7 +114,7 @@ local function damage_text(row)
     return table.concat(parts, ', ')
 end
 
-local function tooltip(row, locked_by, spent)
+local function tooltip(row, locked_by, spent, need_text)
     local lines = {'[[col:yellow]]' .. row.name .. '[[/col]]'}
     if row.about then lines[#lines + 1] = row.about end
     local n = row.numbers or {}
@@ -128,6 +128,7 @@ local function tooltip(row, locked_by, spent)
     end
     if (row.upkeep or 0) > 0 then lines[#lines + 1] = 'Содержание: ' .. row.upkeep .. ' золота за ход' end
     if locked_by then lines[#lines + 1] = 'Откроет постройка: ' .. locked_by end
+    if need_text then lines[#lines + 1] = need_text end
     if spent then lines[#lines + 1] = 'Уже менялся в этот ход: следующий заказ в новом ходу' end
     return table.concat(lines, '\n')
 end
@@ -138,15 +139,17 @@ local function grey(c, on)
     c:ShaderVarsSet(1, 1, 0, 0, true)
 end
 
-local function fill_row(view, row, active, open, order, changed)
+local function fill_row(view, row, active, open, order, changed, needs)
     view.button:SetVisible(true)
-    local closed = row.key ~= 'empty' and not open[row.key]
+    local closed = not open[row.key]
     local ordered = order == row.key
     -- changed: this group's change of the turn is used; only what stands now can still be picked, to take an order back
     local spent = changed and not active and not ordered and not closed
-    local locked = closed or spent
+    -- needs: the variant is open but its group has no bay yet
+    local no_mount = needs ~= nil and not closed
+    local locked = closed or spent or no_mount
     local state = 'active'
-    if locked then state = 'inactive' elseif active then state = 'selected' elseif ordered then state = 'ordered' end
+    if locked then state = 'inactive' elseif active then state = 'selected' elseif ordered then state = 'invalid' end
     view.button:SetState(state)
     view.card:SetImagePath(card_path(row), 0)
     grey(view.card, locked)
@@ -181,8 +184,9 @@ local function fill_row(view, row, active, open, order, changed)
     view.note:SetVisible(not locked)
     view.note_grey:SetVisible(locked)
     view.note:SetStateText(note)
-    view.note_grey:SetStateText(locked_by and ('Откроет: ' .. locked_by) or (spent and 'Уже менялся в этот ход' or ''))
-    view.button:SetTooltipText(tooltip(row, locked_by, spent), true)
+    local need_text = no_mount and ('Нужны: ' .. needs) or nil
+    view.note_grey:SetStateText(locked_by and ('Откроет: ' .. locked_by) or need_text or (spent and 'Уже менялся в этот ход' or ''))
+    view.button:SetTooltipText(tooltip(row, locked_by, spent, need_text), true)
     view.row = row
     view.locked = locked
 end
@@ -192,20 +196,24 @@ local function refresh()
     local c = crew()
     local choice, open, orders = c.get(), c.unlocked(), c.orders()
     for group, plate in pairs(ui.plates) do
-        local row = row_of(group, choice[group]) or {name = tostring(choice[group])}
+        local row = row_of(group, choice[group]) or {name = DATA.groups[group].none_name or tostring(choice[group])}
         plate.button:SetState(group == M.selected and 'selected' or 'active')
         plate.card:SetImagePath(card_path(row), 0)
         local next_row = orders[group] and row_of(group, orders[group])
-        plate.variant:SetStateText(next_row and (row.name .. ' → ' .. next_row.name) or row.name)
+        plate.variant:SetStateText(next_row and ('→ ' .. next_row.name) or row.name)
         ui.sel[group]:SetVisible(group == M.selected)
     end
     for group, layer in pairs(ui.occ) do
-        layer:SetVisible(choice[group] ~= 'empty')
+        layer:SetVisible(choice[group] ~= 'empty' and choice[group] ~= 'none')
+    end
+    for group, layer in pairs(ui.mount) do
+        layer:SetVisible(choice[group] == 'empty')
     end
     local spec = DATA.groups[M.selected]
     ui.head:SetStateText(spec.name)
     ui.about:SetStateText(spec.about)
-    local now_row = row_of(M.selected, choice[M.selected]) or {name = tostring(choice[M.selected])}
+    local now_row = row_of(M.selected, choice[M.selected]) or {name = spec.none_name or tostring(choice[M.selected])}
+    local needs = spec.mount_name and not c.mount_ready(M.selected) and (spec.mount_name .. ' (постройка «' .. building_name(spec.mount_building) .. '»)') or nil
     local order = orders[M.selected]
     local changed = c.changed(M.selected)
     ui.now:SetStateText('Сейчас: ' .. now_row.name)
@@ -213,7 +221,7 @@ local function refresh()
     for i, view in ipairs(ui.rows) do
         local row = spec.rows[i]
         if row then
-            fill_row(view, row, choice[M.selected] == row.key, open[M.selected], order, changed)
+            fill_row(view, row, choice[M.selected] == row.key, open[M.selected], order, changed, needs)
         else
             view.button:SetVisible(false)
         end
@@ -260,7 +268,7 @@ local function make_row(parent, i, x, y, w, h)
         view.stats[s] = stat
         sx = sx + widths[s]
     end
-    view.upkeep = {icon = image(b, 'upkeep_icon', 'ui/skins/default/icon_income.png', sx, stat_y, 18, 18),
+    view.upkeep = {icon = image(b, 'upkeep_icon', 'ui/skins/default/icon_treasury.png', sx, stat_y, 18, 18),
                    value = text(b, 'upkeep', 'text_line', sx + 20, stat_y - 1, short - 22, 20, ''),
                    value_grey = text(b, 'upkeep_grey', 'text_line_grey', sx + 20, stat_y - 1, short - 22, 20, '')}
     view.note = text(b, 'note', 'text_line', tx, h - 28, tw - 12, 22, '')
@@ -333,12 +341,13 @@ local function build()
     -- the scheme and its layers
     local sx, sy = pad, top
     local sheet = image(frame, 'scheme', LAYOUTS .. 'blueprint.png', sx, sy, scheme_w, scheme_h)
-    local view = {plates = {}, occ = {}, sel = {}, rows = {}}
+    local view = {plates = {}, occ = {}, sel = {}, rows = {}, mount = {}}
     local function layer(name)
         local place = DATA.art.layers[name]
         return image(sheet, name, LAYOUTS .. name .. '.png', place[1] * scale, place[2] * scale, place[3] * scale, place[4] * scale)
     end
     for _, group in ipairs(DATA.drawn) do
+        if DATA.art.layers['mount_' .. group] then view.mount[group] = layer('mount_' .. group) end
         view.occ[group] = layer('occ_' .. group)
     end
     for _, group in ipairs(DATA.order) do

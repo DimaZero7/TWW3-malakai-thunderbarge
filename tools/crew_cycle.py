@@ -689,7 +689,7 @@ class Session:
                 continue
             if changed and changed == last:
                 self.saves = getattr(self, "saves", []) + [(changed[0][0], name)]
-                self.log("saved as", self.save_source, changed[0][1])
+                self.log("saved as", changed[0][0], changed[0][1])
                 return
             last = changed
         raise TimeoutError("no save file appeared")

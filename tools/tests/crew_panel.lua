@@ -30,8 +30,8 @@ function Q.state()
     button = d.button, blocked = d.blocked, selected = d.selected, rows = d.rows, plates = d.plates, alert = tostring(mark and mark:Visible()),
     crew = tww3_mtb_crew.get(), unlocked = table.concat(open, ' '), status = tww3_mtb_crew.status, writes = tww3_mtb_crew.writes,
     orders = tww3_mtb_crew.orders(), upkeep = table.concat({tww3_mtb_crew.upkeep()}, '/'), gold = cm:get_faction('wh3_dlc25_dwf_malakai'):treasury(), turn = cm:turn_number(),
-    income = tostring(common.get_context_value('CcoCampaignFaction', tostring(cm:get_faction('wh3_dlc25_dwf_malakai'):command_queue_index()), 'FactionIncomeBreakdown')),
-    net = tostring(common.get_context_value('CcoCampaignFaction', tostring(cm:get_faction('wh3_dlc25_dwf_malakai'):command_queue_index()), 'NetIncome')),
+    income = tostring((select(2, pcall(common.get_context_value, 'CcoCampaignFaction', tostring(cm:get_faction('wh3_dlc25_dwf_malakai'):command_queue_index()), 'Income')))),
+    net = tostring((select(2, pcall(common.get_context_value, 'CcoCampaignFaction', tostring(cm:get_faction('wh3_dlc25_dwf_malakai'):command_queue_index()), 'NetIncome')))),
   })
 end
 
@@ -50,7 +50,13 @@ function Q.unhover_button()
   return 1
 end
 
+-- A panel of the game opening closes ours: the player opens it again.
+local function reopen()
+  if not tww3_mtb_crew_ui.is_open() then Q.click_button() end
+end
+
 function Q.plate(group)
+  reopen()
   local b = mtb.find('mtb_crew_plate_' .. group, true)
   if not b then return 'no plate ' .. group end
   b:SimulateLClick()
@@ -66,6 +72,7 @@ end
 
 -- The row of an option of the selected group: by what it shows.
 function Q.row(option)
+  reopen()
   for part in string.gmatch(tww3_mtb_crew_ui.describe().rows or '', '%S+') do
     local i, key = string.match(part, '^(%d+):(%w+)%[')
     if key == option then
@@ -77,6 +84,7 @@ function Q.row(option)
 end
 
 function Q.hover_row(option)
+  reopen()
   for part in string.gmatch(tww3_mtb_crew_ui.describe().rows or '', '%S+') do
     local i, key = string.match(part, '^(%d+):(%w+)%[')
     if key == option then
@@ -89,7 +97,8 @@ function Q.hover_row(option)
 end
 
 function Q.close()
-  mtb.find('mtb_crew_close', true):SimulateLClick()
+  local b = mtb.find('mtb_crew_close', true)      -- a panel of the game may have closed ours already
+  if b then b:SimulateLClick() end
   return 'close clicked'
 end
 

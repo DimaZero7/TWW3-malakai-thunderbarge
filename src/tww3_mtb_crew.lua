@@ -25,7 +25,7 @@
 -- One order per group per turn, kept in the save; picking what stands now takes the order back, which uses that turn's change. A demolished building acts at
 -- once and takes back an order for what it unlocked, and does not count as the group's change. The first barge's pirates (CONFIG.auto_active) stand at once.
 --
--- Upkeep: a custom bundle with the game's flat income effect, value minus the sum of what stands. Only while he is on the barge and the crew can be written.
+-- Upkeep: paid from the treasury at the faction's turn start for what stands, only while he is on the barge and the crew can be written.
 --
 -- Two kinds of group are not seats to choose. always: the group holds that option whatever is saved (the deck crew). off_bundle: no seats, an ability the unit
 -- has by its tables; an effect bundle on Malakai's force takes it away while the group is on its start (the harpoon). Without memreader Plus and under the AI
@@ -38,8 +38,7 @@ local HOME_FACTION = 'wh3_dlc25_dwf_malakai'
 local PROFILE = SAVE_PREFIX .. 'profile'    -- saved: 'player' or 'ai', decided once, when the campaign starts
 local BUILT = SAVE_PREFIX .. 'built'        -- saved: 'key@turn,key@turn', oldest first
 local ORDER, CHANGED = SAVE_PREFIX .. 'order_', SAVE_PREFIX .. 'changed_'    -- saved per group: the option ordered; the turn of its last change
-local UPKEEP = SAVE_PREFIX .. 'upkeep'      -- saved: what the bundle holds now
-local UPKEEP_BUNDLE, UPKEEP_EFFECT, UPKEEP_SCOPE = 'mtb_bundle_crew_upkeep', 'wh2_main_effect_background_income_mod', 'faction_to_faction_own_unseen'
+local PAID = SAVE_PREFIX .. 'paid'          -- saved: the turn the upkeep was last paid on
 local ANCILLARY = 'mtb_anc_mount_dwf_malakai_thunderbarge'
 local DB_ROOT = '48 8B 0D ?? ?? ?? ?? 4C 8B C0 48 8B 91 ?? ?? ?? ?? 48 8B CB E8 ?? ?? ?? ?? 48 85 C0 74 ?? 48 8B 0D ?? ?? ?? ?? 48 89 81'
 local TABLE_MARK = '48 8D 41 28 48 89 02 48 8B 41 58 49 89 00 C3'
@@ -170,6 +169,9 @@ local function write_seats()
     for group, spec in pairs(CONFIG.groups) do
         for _, seat in ipairs(spec.seats) do wanted[seat] = CONFIG.seats[seat][choice[group]] end
     end
+    -- The plain ship: the holes of the bays that are not there.
+    local patch_code = (choice.cannons == 'none' and 'c' or '') .. (choice.bombs == 'none' and 'b' or '')
+    wanted[CONFIG.patch_seat] = CONFIG.patch_rows[patch_code == '' and 'none' or patch_code]
     local plan, seen = {}, 0
     for i = 0, size - 1 do
         local name = mr.read_string(mr.read_pointer(data, i * SEAT_STRIDE + SEAT_NAME), 0)
@@ -236,9 +238,17 @@ local function sum_upkeep(choice)
     return total
 end
 
+-- On foot, under the AI or with a stock crew nothing is paid.
+local function paying()
+    if profile() ~= 'player' or string.sub(tostring(M.status), 1, 5) == 'stock' then return false end
+    local malakai = _G.tww3_mtb_campaign and _G.tww3_mtb_campaign.find_malakai()
+    return malakai and malakai:has_ancillary(ANCILLARY) or false
+end
+
 function M.upkeep()
-    local now = cm:get_saved_value(UPKEEP) or 0
+    if not paying() then return 0, 0 end
     local choice = M.get()
+    local now = sum_upkeep(choice)
     for group in pairs(CONFIG.groups) do
         choice[group] = cm:get_saved_value(ORDER .. group) or choice[group]
     end
@@ -249,23 +259,16 @@ function M.upkeep_of(group, option)
     return (CONFIG.upkeep[group] or {})[option] or 0
 end
 
--- Worked out at the turn start from what stands: on foot, under the AI or with a stock crew nothing is paid.
-function M.sync_upkeep()
-    if profile() ~= 'player' then return end
-    local malakai = _G.tww3_mtb_campaign and _G.tww3_mtb_campaign.find_malakai()
-    local mounted = malakai and malakai:has_ancillary(ANCILLARY)
-    local stock = string.sub(tostring(M.status), 1, 5) == 'stock'
-    local total = (mounted and not stock) and sum_upkeep(M.get()) or 0
-    if total == (cm:get_saved_value(UPKEEP) or 0) then return end
-    cm:remove_effect_bundle(UPKEEP_BUNDLE, HOME_FACTION)
+-- Paid once at each of the faction's turn starts, for what stands then. The game's flat income effect does not take a negative value (run panel_main, 04.11):
+-- so straight from the treasury, and the panel and the log show it.
+function M.pay_upkeep()
+    if profile() ~= 'player' or cm:get_saved_value(PAID) == cm:turn_number() then return end
+    cm:set_saved_value(PAID, cm:turn_number())
+    local total = M.upkeep()
     if total > 0 then
-        local bundle = cm:create_new_custom_effect_bundle(UPKEEP_BUNDLE)
-        bundle:add_effect(UPKEEP_EFFECT, UPKEEP_SCOPE, -total)
-        bundle:set_duration(0)
-        cm:apply_custom_effect_bundle_to_faction(bundle, cm:get_faction(HOME_FACTION))
+        cm:treasury_mod(HOME_FACTION, -total)
+        log('upkeep paid ' .. total .. ' on turn ' .. cm:turn_number())
     end
-    cm:set_saved_value(UPKEEP, total)
-    log('upkeep ' .. total .. ' per turn')
 end
 
 function M.set(group, option)
@@ -276,7 +279,6 @@ function M.set(group, option)
             cm:set_saved_value(SAVE_PREFIX .. group, option)
             local ok = M.apply()
             pcall(M.sync_abilities)
-            pcall(M.sync_upkeep)
             if M.on_changed then pcall(M.on_changed) end
             return ok
         end
@@ -309,6 +311,12 @@ function M.unlocked()
     return out
 end
 
+-- Has the group its bay? The building of its mount option makes it. A group without a mount always has.
+function M.mount_ready(group)
+    local spec = CONFIG.groups[group]
+    return not spec.mount or M.unlocked()[group][spec.mount] == true
+end
+
 -- Has he the hull that makes a barge? The panel's button asks this.
 function M.has_barge()
     for _, item in ipairs(read_built()) do
@@ -337,6 +345,8 @@ function M.choose(group, option)
     if not open then return false, 'unknown group ' .. tostring(group) end
     if CONFIG.groups[group].always then return false, 'not a choice ' .. group end
     if not open[option] then return false, 'locked ' .. tostring(option) end
+    if not M.mount_ready(group) then return false, 'no mount ' .. group end
+    if option == CONFIG.groups[group].start and CONFIG.groups[group].mount then return false, 'not a choice ' .. option end
     local current, order = M.get()[group], cm:get_saved_value(ORDER .. group)
     if M.changed(group) then
         if order and option == current then
@@ -377,7 +387,9 @@ function M.on_built(key)
     write_built(list)
     log('built ' .. key .. ': unlocked ' .. binding.group .. '=' .. binding.option)
     if M.on_unlocked then pcall(M.on_unlocked, binding.group, binding.option) end
-    if CONFIG.auto_active[key] then return M.set(binding.group, binding.option) end
+    -- The first pirates, and a bare mount: it appears at once, in a group that had nothing.
+    if CONFIG.auto_active[key] and M.get()[binding.group] == CONFIG.groups[binding.group].start then return M.set(binding.group, binding.option) end
+    if M.on_changed then pcall(M.on_changed) end
     return true
 end
 
@@ -424,17 +436,19 @@ function M.reconcile()
     write_built(kept)
     local open, active, lost = M.unlocked(), M.get(), false
     for group, option in pairs(M.orders()) do
-        if not open[group][option] then
+        if not open[group][option] or not M.mount_ready(group) then
             cm:set_saved_value(ORDER .. group, false)
             log('order gone with its building ' .. group .. '=' .. option)
         end
     end
     for group, spec in pairs(CONFIG.groups) do
-        if not open[group][active[group]] then
+        if not open[group][active[group]] or (active[group] ~= spec.start and not M.mount_ready(group)) then
             local option = spec.start
-            for _, item in ipairs(kept) do
-                local binding = CONFIG.buildings[item.key]
-                if binding and binding.group == group then option = binding.option end
+            if M.mount_ready(group) then
+                for _, item in ipairs(kept) do
+                    local binding = CONFIG.buildings[item.key]
+                    if binding and binding.group == group then option = binding.option end
+                end
             end
             log('locked ' .. group .. '=' .. active[group] .. ', now ' .. option)
             M.set(group, option)
@@ -479,7 +493,6 @@ cm:add_first_tick_callback(function()
     guarded(M.reconcile)()
     guarded(M.apply)()
     guarded(M.sync_abilities)()
-    guarded(M.sync_upkeep)()
     -- the new campaign's first tick converts his force: looked at again when that is over
     core:get_tm():real_callback(guarded(M.sync_abilities), 1500, 'mtb_crew_sync_abilities')
     core:add_listener('tww3_mtb_crew_built', 'MilitaryForceBuildingCompleteEvent',
@@ -491,7 +504,7 @@ cm:add_first_tick_callback(function()
             M.reconcile()
             M.carry_out()
             M.sync_abilities()
-            M.sync_upkeep()
+            M.pay_upkeep()
             if M.on_changed then pcall(M.on_changed) end
         end), true)
 end)

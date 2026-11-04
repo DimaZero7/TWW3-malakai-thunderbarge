@@ -14,7 +14,5 @@
  "ui_text_replacements_localised_text_mtb_crew_lost_secondary": "Снесённая постройка открывала вариант, который стоял на барке. Его группа перешла на другой открытый вариант или осталась пустой. Выбрать заново можно в панели экипажа: кнопка внизу справа, рядом с концом хода.",
  "effect_bundles_localised_title_mtb_bundle_harpoon_off": "Гарпун снят",
  "effect_bundles_localised_description_mtb_bundle_harpoon_off": "Стрела на носу шара снята: способности в бою нет. Открывает её постройка «Радиус поддержки» второго уровня, поставить можно в панели экипажа.",
- "effects_description_mtb_effect_harpoon_off": "Способность «Копьё Грунгни» недоступна",
- "effect_bundles_localised_title_mtb_bundle_crew_upkeep": "Содержание экипажа барки",
- "effect_bundles_localised_description_mtb_bundle_crew_upkeep": "Золото за ход на экипаж барки. Считается в панели экипажа. Пока Малакай пеший, содержания нет."
+ "effects_description_mtb_effect_harpoon_off": "Способность «Копьё Грунгни» недоступна"
 }

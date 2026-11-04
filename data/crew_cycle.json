@@ -240,6 +240,16 @@
    "tr": 0,
    "tu": 18,
    "fov": 38
+  },
+  {
+   "name": "top",
+   "f": -6,
+   "r": -26,
+   "u": 40,
+   "tf": 0,
+   "tr": 0,
+   "tu": 24,
+   "fov": 42
   }
  ],
  "order": [
@@ -2369,7 +2379,7 @@
   },
   "panel_main": {
    "new_campaign": "wh3_dlc25_dwf_malakai",
-   "limit": 3400,
+   "limit": 3500,
    "wait_end_turn": 200,
    "steps": [
     {
@@ -2377,6 +2387,9 @@
      "expect": [
       "slots=airship_hull_1,",
       "rifles=empty",
+      "cannons=none",
+      "bombs=none",
+      "cupolas=none",
       "profile=player",
       "deck=stock"
      ]
@@ -2448,9 +2461,9 @@
      "expect": [
       "unit=mtb_dwf_cha_malakai_thunderbarge",
       "rifles=pirates",
-      "cannons=empty",
-      "bombs=empty",
-      "cupolas=empty",
+      "cannons=none",
+      "bombs=none",
+      "cupolas=none",
       "deck=stock",
       "harpoon=empty"
      ]
@@ -2476,7 +2489,7 @@
       "rifles=Мстители-пираты[selected]",
       ":pirates[selected]",
       ":quarrellers[inactive]",
-      ":torpedoes[inactive]",
+      "cannons=Нет портов",
       "alert=false"
      ],
      "wait": 1.5
@@ -2503,14 +2516,16 @@
     {
      "panel": "Q.zone(\"cannons_1\"); return Q.state()",
      "label": "pn_zone_cannons",
+     "shot_as": "n_panel_no_mount",
      "expect": [
       "selected=cannons",
-      ":clatter[inactive]"
+      ":clatter[inactive]",
+      ":empty[inactive]"
      ],
      "absent": [
-      "plates=deck",
-      "deck=Команда"
-     ]
+      "plates=deck"
+     ],
+     "wait": 1.5
     },
     {
      "panel": "Q.close(); return \"closed\"",
@@ -2527,18 +2542,23 @@
      ]
     },
     {
-     "label": "pn_pirates",
+     "label": "pn_state1",
      "from_game": true,
-     "fight": 25,
+     "fight": 20,
      "after_fire": 4,
-     "shots": false,
+     "shots": [
+      "left",
+      "below",
+      "top",
+      "nose"
+     ],
      "abilities": false
     },
     {
      "prog_lua": "return P.peace()"
     },
     {
-     "prog_build": "crew_weapons_1,engines_1,cargo_hold_1",
+     "prog_build": "crew_weapons_1,engines_1,cargo_hold_1,beer_hall_1",
      "dev": 8
     },
     {
@@ -2560,8 +2580,9 @@
      "prog_state": "pn_chains",
      "expect": [
       "rifles=pirates",
-      "cannons=empty",
+      "cannons=none",
       "bombs=empty",
+      "cupolas=empty",
       "deck=stock",
       "crew_weapons_1",
       "engines_1",
@@ -2569,17 +2590,88 @@
      ]
     },
     {
-     "panel": "return Q.state()",
-     "label": "pn_chains_button",
-     "shot_as": "n_button_new",
+     "panel": "Q.click_button(); Q.plate(\"cannons\"); return Q.state()",
+     "label": "pn_needs_port",
+     "shot_as": "n_panel_needs",
      "expect": [
-      "alert=true",
-      "rifles:empty+pirates+quarrellers",
-      "cannons:clatter+empty",
-      "bombs:empty+stock",
-      "deck:stock"
+      ":clatter[inactive]",
+      "cannons:clatter+none",
+      "alert=false"
      ],
-     "wait": 1
+     "wait": 1.5
+    },
+    {
+     "panel": "return Q.hover_row(\"clatter\")",
+     "label": "pn_needs_tip",
+     "shot_as": "n_tip_needs",
+     "expect": [
+      "Нужны: порты пушек"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"clatter\"); Q.close(); return Q.state()",
+     "label": "pn_needs_refused",
+     "expect": [
+      "cannons=none"
+     ],
+     "absent": [
+      "orders={cannons"
+     ],
+     "wait": 2
+    },
+    {
+     "prog_build": "airship_hull_3",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_state": "pn_ports",
+     "expect": [
+      "cannons=empty",
+      "bombs=empty",
+      "cupolas=empty",
+      "rifles=pirates"
+     ]
+    },
+    {
+     "label": "pn_state2",
+     "from_game": true,
+     "fight": 20,
+     "after_fire": 4,
+     "shots": [
+      "left",
+      "below",
+      "top",
+      "nose"
+     ],
+     "abilities": false
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
     },
     {
      "panel": "Q.click_button(); Q.plate(\"rifles\"); return Q.state()",
@@ -2598,10 +2690,10 @@
      "expect": [
       "rifles=pirates",
       "orders={rifles=quarrellers}",
-      ":quarrellers[ordered]",
+      ":quarrellers[invalid]",
       ":pirates[selected]",
       ":empty[inactive]",
-      "rifles=Мстители-пираты → Арбалетчики"
+      "rifles=→ Арбалетчики"
      ],
      "wait": 1.5
     },
@@ -2624,44 +2716,34 @@
      "wait": 1.5
     },
     {
-     "panel": "Q.plate(\"cannons\"); Q.row(\"clatter\"); return Q.state()",
-     "label": "pn_order_cannons",
-     "expect": [
-      "cannons=empty",
-      "cannons=clatter",
-      ":clatter[ordered]",
-      "upkeep=28/"
-     ],
-     "wait": 1
-    },
-    {
-     "panel": "Q.plate(\"bombs\"); Q.row(\"stock\"); return Q.state()",
-     "label": "pn_order_bombs",
-     "expect": [
-      "bombs=stock",
-      ":stock[ordered]"
-     ]
-    },
-    {
-     "panel": "Q.row(\"empty\"); return Q.state()",
+     "panel": "Q.row(\"pirates\"); return Q.state()",
      "label": "pn_order_back",
      "shot_as": "n_panel_order_back",
      "expect": [
-      "bombs=empty",
-      ":stock[inactive]",
-      ":empty[selected]"
+      "orders={}",
+      ":quarrellers[inactive]",
+      ":pirates[selected]"
      ],
      "wait": 1.5
     },
     {
-     "panel": "Q.row(\"stock\"); return Q.state()",
+     "panel": "Q.row(\"quarrellers\"); return Q.state()",
      "label": "pn_order_back_spent",
      "expect": [
-      ":stock[inactive]"
-     ],
-     "absent": [
-      "bombs=stock"
+      "orders={}",
+      ":quarrellers[inactive]"
      ]
+    },
+    {
+     "panel": "Q.plate(\"cannons\"); Q.row(\"clatter\"); return Q.state()",
+     "label": "pn_order_cannons",
+     "expect": [
+      "cannons=empty",
+      "orders={cannons=clatter}",
+      ":clatter[invalid]",
+      "upkeep=28/172"
+     ],
+     "wait": 1
     },
     {
      "panel": "Q.esc(); return \"esc\"",
@@ -2685,7 +2767,7 @@
     {
      "label": "pn_same_turn",
      "from_game": true,
-     "fight": 25,
+     "fight": 20,
      "after_fire": 4,
      "shots": false,
      "abilities": false
@@ -2695,13 +2777,6 @@
      "expect": [
       "rifles=pirates",
       "cannons=empty"
-     ]
-    },
-    {
-     "panel": "return Q.state()",
-     "label": "pn_limit_after_battle",
-     "expect": [
-      "orders={cannons=clatter, rifles=quarrellers}"
      ]
     },
     {
@@ -2726,22 +2801,78 @@
      "panel": "return Q.state()",
      "label": "pn_order_done",
      "expect": [
-      "rifles=quarrellers",
       "cannons=clatter",
       "orders={}",
-      "upkeep=165/165"
+      "upkeep=172/172"
      ]
     },
     {
-     "panel": "Q.click_button(); Q.plate(\"bombs\"); Q.row(\"stock\"); return Q.state()",
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); Q.row(\"quarrellers\"); Q.close(); return Q.state()",
      "label": "pn_limit_reset",
      "expect": [
-      "bombs=stock",
-      ":stock[ordered]"
+      "orders={rifles=quarrellers}",
+      "upkeep=172/165"
+     ],
+     "wait": 2
+    },
+    {
+     "prog_build": "airship_hull_4",
+     "dev": 8
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_build": "beer_hall_2,cargo_hold_2",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_state": "pn_weapons_open",
+     "expect": [
+      "rifles=quarrellers",
+      "cannons=clatter",
+      "bombs=empty",
+      "cupolas=empty"
      ]
     },
     {
-     "panel": "Q.close(); return \"closed\"",
+     "panel": "Q.click_button(); Q.plate(\"cupolas\"); Q.row(\"stock\"); Q.plate(\"bombs\"); Q.row(\"stock\"); Q.close(); return Q.state()",
+     "label": "pn_order_two",
+     "expect": [
+      "bombs=stock",
+      "cupolas=stock",
+      "upkeep=165/330"
+     ],
      "wait": 2
     },
     {
@@ -2761,28 +2892,28 @@
     },
     {
      "panel": "return Q.state()",
-     "label": "pn_order_done2",
+     "label": "pn_gold_1",
      "expect": [
       "bombs=stock",
-      "upkeep=275/275"
+      "cupolas=stock",
+      "upkeep=330/330"
      ]
     },
     {
-     "label": "pn_chosen",
+     "label": "pn_state3",
      "from_game": true,
      "fight": 45,
      "after_fire": 10,
      "shots": [
-      "left"
+      "left",
+      "below",
+      "top",
+      "nose"
      ],
      "abilities": false
     },
     {
      "prog_lua": "return P.peace()"
-    },
-    {
-     "panel": "return Q.state()",
-     "label": "pn_gold_1"
     },
     {
      "prog_turn": 1
@@ -2873,12 +3004,12 @@
      ]
     },
     {
-     "prog_dismantle": "cargo_hold_1"
+     "prog_dismantle": "cargo_hold_2"
     },
     {
      "prog_state": "pn_demolish_active",
      "expect": [
-      "bombs=empty",
+      "bombs=none",
       "rifles=pirates",
       "cannons=clatter"
      ]
@@ -2889,12 +3020,14 @@
      "shot_as": "n_panel_demolished",
      "expect": [
       ":stock[inactive]",
-      "upkeep=172/172"
+      ":empty[inactive]",
+      "bombs=Нет отсеков",
+      "upkeep=227/227"
      ],
      "wait": 1.5
     },
     {
-     "panel": "Q.row(\"empty\"); Q.close(); return \"closed\"",
+     "panel": "Q.close(); return \"closed\"",
      "wait": 2
     },
     {
@@ -2955,46 +3088,8 @@
      "panel": "return Q.state()",
      "label": "pn_back_on",
      "expect": [
-      "upkeep=172/172"
+      "upkeep=227/227"
      ]
-    },
-    {
-     "prog_build": "airship_hull_3",
-     "dev": 4
-    },
-    {
-     "prog_turn": 1
-    },
-    {
-     "prog_lua": "return P.peace()"
-    },
-    {
-     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
-    },
-    {
-     "wait": 2
-    },
-    {
-     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
-    },
-    {
-     "prog_build": "airship_hull_4",
-     "dev": 8
-    },
-    {
-     "prog_turn": 1
-    },
-    {
-     "prog_lua": "return P.peace()"
-    },
-    {
-     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
-    },
-    {
-     "wait": 2
-    },
-    {
-     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
     },
     {
      "prog_build": "support_radius_1",
@@ -3091,7 +3186,7 @@
      "shot_as": "n_panel_harpoon_on",
      "expect": [
       "orders={harpoon=on}",
-      ":on[ordered]",
+      ":on[invalid]",
       "harpoon=empty"
      ],
      "wait": 1.5
@@ -3166,9 +3261,9 @@
    "limit": 1500,
    "assume": {
     "rifles": "pirates",
-    "cannons": "clatter",
-    "cupolas": "empty",
-    "bombs": "empty",
+    "cannons": "empty",
+    "cupolas": "stock",
+    "bombs": "none",
     "deck": "stock",
     "harpoon": "on"
    },
@@ -3177,12 +3272,19 @@
      "prog_state": "pl_loaded",
      "expect": [
       "rifles=pirates",
-      "cannons=clatter",
-      "bombs=empty",
+      "cannons=empty",
+      "bombs=none",
+      "cupolas=stock",
       "deck=stock",
       "harpoon=on",
       "crew_status=applied"
      ]
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
     },
     {
      "panel": "return Q.state()",
@@ -3191,9 +3293,8 @@
      "expect": [
       "button=active",
       "orders={rifles=empty}",
-      "cannons:clatter+empty",
       "harpoon:empty+on",
-      "upkeep=200/172"
+      "upkeep=111/83"
      ],
      "wait": 1
     },
@@ -3202,18 +3303,27 @@
      "label": "pl_order_kept",
      "shot_as": "l_panel_order",
      "expect": [
-      ":empty[ordered]",
+      ":empty[invalid]",
       ":pirates[selected]",
-      ":quarrellers[inactive]"
+      ":torpedoes[inactive]"
      ],
      "wait": 2
     },
     {
-     "panel": "Q.row(\"empty\"); Q.plate(\"harpoon\"); return Q.state()",
+     "panel": "Q.row(\"torpedoes\"); return Q.state()",
+     "label": "pl_limit_kept",
+     "expect": [
+      "orders={rifles=empty}",
+      ":torpedoes[inactive]"
+     ]
+    },
+    {
+     "panel": "Q.plate(\"harpoon\"); return Q.state()",
      "label": "pl_panel_harpoon",
      "shot_as": "l_panel_harpoon",
      "expect": [
-      ":on[selected]"
+      "plates=",
+      "harpoon=Гарпун"
      ],
      "wait": 1.5
     },
@@ -3222,9 +3332,9 @@
      "label": "pl_panel_cannons",
      "shot_as": "l_panel_cannons",
      "expect": [
-      ":clatter[selected]",
+      ":empty[selected]",
       ":organ[inactive]",
-      "plates=bombs=Пусто"
+      "plates=bombs=Нет отсеков"
      ],
      "wait": 1.5
     },
@@ -3239,7 +3349,7 @@
      "wait": 1.5
     },
     {
-     "panel": "tww3_mtb_crew.set(\"rifles\", \"rakers\"); tww3_mtb_crew.set(\"cannons\", \"organ\"); tww3_mtb_crew.set(\"cupolas\", \"stock\"); tww3_mtb_crew.set(\"bombs\", \"stock\"); Q.plate(\"rifles\"); return Q.state()",
+     "panel": "tww3_mtb_crew.set(\"rifles\", \"rakers\"); tww3_mtb_crew.set(\"cannons\", \"organ\"); tww3_mtb_crew.set(\"bombs\", \"stock\"); Q.plate(\"rifles\"); return Q.state()",
      "label": "pl_full_view",
      "shot_as": "l_panel_full",
      "wait": 2
@@ -3250,7 +3360,7 @@
      "wait": 1.5
     },
     {
-     "panel": "tww3_mtb_crew.set(\"rifles\", \"pirates\"); tww3_mtb_crew.set(\"cannons\", \"clatter\"); tww3_mtb_crew.set(\"cupolas\", \"empty\"); tww3_mtb_crew.set(\"bombs\", \"empty\"); Q.close(); return \"closed\"",
+     "panel": "tww3_mtb_crew.set(\"rifles\", \"pirates\"); tww3_mtb_crew.set(\"cannons\", \"empty\"); tww3_mtb_crew.set(\"bombs\", \"none\"); Q.close(); return \"closed\"",
      "wait": 2
     },
     {
@@ -3284,9 +3394,27 @@
      "prog_state": "pl_after_battle",
      "expect": [
       "rifles=pirates",
-      "cannons=clatter",
       "harpoon=on"
      ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "tww3_mtb_crew.set(\"cannons\", \"none\"); tww3_mtb_crew.set(\"bombs\", \"none\"); tww3_mtb_crew.set(\"cupolas\", \"none\"); return tww3_mtb_crew.status"
+    },
+    {
+     "label": "pl_plain",
+     "from_game": true,
+     "fight": 15,
+     "after_fire": 3,
+     "shots": [
+      "left",
+      "below",
+      "front",
+      "top"
+     ],
+     "abilities": true
     },
     {
      "prog_lua": "return P.peace()"
@@ -3445,6 +3573,68 @@
     {
      "panel": "Q.close(); return \"closed\"",
      "wait": 2
+    }
+   ]
+  },
+  "panel_save": {
+   "_about": "A save with an order waiting, made quickly from an earlier save: the crew set by command. panel_main ends with the same kind of save.",
+   "save": "tww3_mtb_prog_main.save",
+   "limit": 500,
+   "steps": [
+    {
+     "prog_mount": "on"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "lua": "tww3_mtb_crew.set(\"rifles\", \"pirates\"); tww3_mtb_crew.set(\"cannons\", \"empty\"); tww3_mtb_crew.set(\"bombs\", \"none\"); tww3_mtb_crew.set(\"cupolas\", \"stock\"); tww3_mtb_crew.set(\"harpoon\", \"on\"); return tww3_mtb_crew.status"
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); Q.row(\"empty\"); Q.close(); return Q.state()",
+     "label": "ps_order",
+     "expect": [
+      "orders={rifles=empty}",
+      "rifles=pirates",
+      "upkeep=111/83"
+     ],
+     "wait": 2
+    },
+    {
+     "save": "tww3_mtb_panel.save"
+    }
+   ]
+  },
+  "panel_plain": {
+   "save": "tww3_mtb_panel.save",
+   "limit": 500,
+   "steps": [
+    {
+     "lua": "tww3_mtb_crew.set(\"cannons\", \"none\"); tww3_mtb_crew.set(\"bombs\", \"none\"); tww3_mtb_crew.set(\"cupolas\", \"none\"); return tww3_mtb_crew.status"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "pp",
+     "from_game": true,
+     "fight": 30,
+     "after_fire": 6,
+     "shots": [
+      "left",
+      "below",
+      "front",
+      "nose"
+     ]
     }
    ]
   }

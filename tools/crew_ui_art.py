@@ -418,29 +418,51 @@ def malakai():
 def bay_marks():
     """What stands in the drawing when a group is empty: a shut port, closed doors, the dashed places of the rings and of the pub."""
     out = []
-    # cannon port, shut with a round lid
-    x, y = CANNON
-    out.append(circle(x, y, 17, 2.0, INK, "#fff1dc"))
-    out.append(circle(x, y, 12, 1.2, INK, "#8f5a2c"))
-    for a_ in range(0, 360, 45):
-        out.append(dot(x + 14.5 * math.cos(math.radians(a_)), y + 14.5 * math.sin(math.radians(a_)), 1.0))
-    # bomb doors in the bottom: a front pair and a rear pair, seen from the side as one each
-    for x0, x1 in BOMB_DOORS:
-        y0, y1 = hull_bottom(x0), hull_bottom(x1)
-        out.append(shape(poly([(x0, y0 - 10), (x1, y1 - 10), (x1, y1 + 1), (x0, y0 + 1)], True), "#fff1dc"))
-        out.append(path(poly([(x0, y0 - 10), (x1, y1 - 10), (x1, y1 + 1), (x0, y0 + 1)], True), 1.7))
-        out.append(path(f"M{(x0 + x1) / 2:.1f} {y0 - 10:.1f} L{(x0 + x1) / 2:.1f} {y1 + 1:.1f}", 1.1))
-        for hx in (x0 + 4, x1 - 4):
-            out.append(dot(hx, y0 - 5, 1.2))
-    # the places of the cupolas on top of the balloon: nothing stands there while they are empty
-    for x, y in CUPOLAS:
-        out.append(f'<ellipse cx="{x}" cy="{y}" rx="24" ry="6" fill="none" stroke="{INK}" stroke-width="1.2" stroke-dasharray="5 3"/>')
     # the pub under the stern deck
     x0, y0, x1, y1 = PUB
     out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0}" fill="none" stroke="{INK}" stroke-width="1.2" stroke-dasharray="6 3"/>')
     return out
 
 
+def mount_cannons():
+    """Only the port: a round lid with rivets."""
+    x, y = CANNON
+    out = [circle(x, y, 17, 2.0, INK, "#d9a76a"), circle(x, y, 12, 1.2, INK, "#8f5a2c")]
+    for a_ in range(0, 360, 45):
+        out.append(dot(x + 14.5 * math.cos(math.radians(a_)), y + 14.5 * math.sin(math.radians(a_)), 1.0))
+    return out
+
+
+def mount_bombs():
+    """Only the bomb doors in the bottom: a front pair and a rear pair, seen from the side as one each."""
+    out = []
+    for x0, x1 in BOMB_DOORS:
+        y0, y1 = hull_bottom(x0), hull_bottom(x1)
+        out.append(shape(poly([(x0, y0 - 10), (x1, y1 - 10), (x1, y1 + 1), (x0, y0 + 1)], True), "#d9a76a"))
+        out.append(path(poly([(x0, y0 - 10), (x1, y1 - 10), (x1, y1 + 1), (x0, y0 + 1)], True), 1.7))
+        out.append(path(f"M{(x0 + x1) / 2:.1f} {y0 - 10:.1f} L{(x0 + x1) / 2:.1f} {y1 + 1:.1f}", 1.1))
+        for hx in (x0 + 4, x1 - 4):
+            out.append(dot(hx, y0 - 5, 1.2))
+    return out
+
+
+def ring(x, y):
+    top = y - 26
+    out = [shape(f"M{x - 24} {top} L{x + 24} {top} L{x + 24} {y} Q {x} {y + 8} {x - 24} {y} Z", "#a06c38")]
+    for dx in (-18, -9, 0, 9, 18):
+        out.append(path(f"M{x + dx} {top + 2} L{x + dx} {y + (3 if abs(dx) < 10 else 1)}", 0.9))
+    out.append(path(f"M{x - 24} {top} L{x - 24} {y} Q {x} {y + 8} {x + 24} {y} L{x + 24} {top}", 1.9))
+    out.append(f'<ellipse cx="{x}" cy="{top + 1}" rx="25" ry="5" fill="#57504a" stroke="{INK}" stroke-width="1.7"/>')
+    out.append(f'<ellipse cx="{x}" cy="{top + 1}" rx="18" ry="3" fill="#2a1a10"/>')
+    return out
+
+
+def mount_cupolas():
+    """Only the crow's nests on the balloon, nobody in them."""
+    return [p for x, y in CUPOLAS for p in ring(x, y)]
+
+
+MOUNT = {"cannons": mount_cannons, "bombs": mount_bombs, "cupolas": mount_cupolas}
 BOMB_DOORS = [(418, 480), (625, 687)]
 CUPOLAS = [(382, 64), (668, 64)]
 CANNON = (339, 552)
@@ -509,14 +531,8 @@ def occ_cupolas():
     """The model's cupolas: a wooden ring with an iron rim on top of the balloon, a dwarf standing in it."""
     out = []
     for x, y in CUPOLAS:
-        top = y - 26
-        out.append(shape(f"M{x - 24} {top} L{x + 24} {top} L{x + 24} {y} Q {x} {y + 8} {x - 24} {y} Z", "#a06c38"))
-        for dx in (-18, -9, 0, 9, 18):
-            out.append(path(f"M{x + dx} {top + 2} L{x + dx} {y + (3 if abs(dx) < 10 else 1)}", 0.9))
-        out.append(path(f"M{x - 24} {top} L{x - 24} {y} Q {x} {y + 8} {x + 24} {y} L{x + 24} {top}", 1.9))
-        out.append(f'<ellipse cx="{x}" cy="{top + 1}" rx="25" ry="5" fill="#57504a" stroke="{INK}" stroke-width="1.7"/>')
-        out.append(f'<ellipse cx="{x}" cy="{top + 1}" rx="18" ry="3" fill="#2a1a10"/>')
-        out += dwarf(x, top + 3, 0.95, -1, False, "#5b5247", "#b98a42")
+        out += ring(x, y)
+        out += dwarf(x, y - 23, 0.95, -1, False, "#5b5247", "#b98a42")
     return out
 
 
@@ -833,6 +849,8 @@ def main():
     bp.save(OUT / "blueprint.png", optimize=True)
     places = {}
     layers = {}
+    for group, fn in MOUNT.items():
+        layers[f"mount_{group}"] = layer(f"mount_{group}", fn(), places)
     for group, fn in OCC.items():
         layers[f"occ_{group}"] = layer(f"occ_{group}", fn(), places)
         layers[f"sel_{group}"] = layer(f"sel_{group}", chalk(group), places)
