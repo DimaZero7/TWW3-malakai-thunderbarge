@@ -14,7 +14,66 @@ local MISSION_ABILITY = 'wh3_dlc25_unit_abilities_thunderburner'
 local M = {}
 _G.tww3_mtb_campaign = M
 
+
+-- The mod's own log, in the game's folder: lua_mod_log.txt has only what the game's loader writes, and other mods' lines. Short: one campaign load.
+local function file_log(text)
+    local f = io.open('tww3_mtb_log.txt', 'a')
+    if f then
+        f:write(os.date('%H:%M:%S ') .. tostring(text) .. '\n')
+        f:close()
+    end
+end
+
+do
+    local f = io.open('tww3_mtb_log.txt', 'w')
+    if f then f:close() end
+end
+M.file_log = file_log
+
+-- When the campaign is ready. Not cm:add_first_tick_callback: the game calls its lists one after another with no protection, and the failing callback of any
+-- other mod stops all that come later, and the rest of the event's listeners too (mixer_unlocker.lua in the user's mods, 04.11.2026). So cm:first_tick itself is
+-- wrapped: ours run after it however it ended, and its error goes on as it would, with one line in our log. A failure before that: the first click or turn start.
+local ready_list, is_ready = {}, false
+function M.when_ready(callback)
+    ready_list[#ready_list + 1] = callback
+end
+
+local function get_ready(how)
+    if is_ready then return end
+    is_ready = true
+    file_log('ready by ' .. how)
+    for _, callback in ipairs(ready_list) do
+        local ok, err = pcall(callback)
+        if not ok then file_log('ERROR at start: ' .. tostring(err)) end
+    end
+end
+local process = cm.process_first_tick_callbacks
+cm.process_first_tick_callbacks = function(self, context)
+    -- A failing callback of another mod does not stop the rest: the game's own campaign start is in these lists too.
+    for _, name in ipairs({'pre_first_tick_callbacks', 'first_tick_callbacks_sp_new', 'first_tick_callbacks_sp_each', 'first_tick_callbacks', 'first_tick_callbacks_mp_new', 'first_tick_callbacks_mp_each', 'post_first_tick_callbacks'}) do
+        local list = self[name] or {}
+        for i, callback in ipairs(list) do
+            list[i] = function(...)
+                local ok, err = pcall(callback, ...)
+                if not ok then file_log('a first tick script of another mod failed, the others go on: ' .. tostring(err)) end
+            end
+        end
+    end
+    return process(self, context)
+end
+local game_first_tick = cm.first_tick
+cm.first_tick = function(self, context)
+    local ok, err = pcall(game_first_tick, self, context)
+    if not ok then file_log('the first tick of the game stopped on a script of another mod: ' .. tostring(err)) end
+    get_ready('first tick')
+    if not ok then error(err, 0) end
+end
+for _, event in ipairs({'ComponentLClickUp', 'FactionTurnStart'}) do
+    core:add_listener('tww3_mtb_ready_' .. event, event, function() return not is_ready and cm.game_is_running end, function() get_ready(event) end, true)
+end
+
 local function log(text)
+    pcall(file_log, '[campaign] ' .. tostring(text))
     if _G.mtb and _G.mtb.log then pcall(_G.mtb.log, 'mod', text) end
 end
 
@@ -147,7 +206,7 @@ local function guarded(fn)
     end
 end
 
-cm:add_first_tick_callback(guarded(function()
+M.when_ready(guarded(function()
     log('first tick: new=' .. tostring(cm:is_new_game()) .. ' missions=' .. patch_missions())
     if cm:is_new_game() then new_campaign() end
     core:add_listener('tww3_mtb_barge_built', 'MilitaryForceBuildingCompleteEvent',

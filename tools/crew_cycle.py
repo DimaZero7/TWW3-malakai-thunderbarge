@@ -710,8 +710,13 @@ def run_session(name):
     session = Session(name, started + limit)
     session.current = {g: v["start"] for g, v in OPTIONS["groups"].items()}
     session.current.update(spec.get("assume", {}))
-    cmd = [sys.executable, str(REPO / "tools" / "crew_session.py"), "--label", "cycle_" + name, "--timeout", str(limit + 120), "--packs", "harness", "campaign"]
-    if spec.get("memreader", True):
+    cmd = [sys.executable, str(REPO / "tools" / "crew_session.py"), "--label", "cycle_" + name, "--timeout", str(limit + 120), "--packs", *spec.get("packs", ["harness", "campaign"])]
+    if spec.get("mods_file"):       # the user's mods, as his used_mods.txt has them
+        # faster_loading_script_cache looks only at the packs of used_mods.txt: a changed test pack would run from its old cache. The cache is made again by itself.
+        for cached in rg.rb.GAME.glob("loadfast_cache_*.bin"):
+            cached.unlink()
+        cmd += ["--user-mods-file", str(REPO / spec["mods_file"])]
+    elif spec.get("memreader", True):
         cmd += ["--user-mods", "memreader_plus.pack"]
     if spec.get("save"):
         cmd += ["--save", spec["save"], "--args", f"game_startup_mode campaign_load {spec['save']}"]

@@ -138,7 +138,35 @@ end
 if mode == 'battle' then
     start(bm.tm)
 elseif mode == 'campaign' then
-    cm:add_first_tick_callback(function()
+    -- Which first tick callback stops the others: the game runs its lists with no protection. Each one's error is logged and raised again, so the run stays as without the harness.
+    local process = cm.process_first_tick_callbacks
+    cm.process_first_tick_callbacks = function(self, context)
+        for _, name in ipairs({'pre_first_tick_callbacks', 'first_tick_callbacks_sp_new', 'first_tick_callbacks_sp_each', 'first_tick_callbacks', 'post_first_tick_callbacks'}) do
+            local list = self[name] or {}
+            M.log('first_tick_list', name .. ' ' .. #list)
+            for i, callback in ipairs(list) do
+                list[i] = function(...)
+                    local ok, err = pcall(callback, ...)
+                    if not ok then
+                        local info = debug.getinfo(callback, 'S')
+                        M.log('first_tick_error', name .. ' ' .. tostring(info and info.source) .. ':' .. tostring(info and info.linedefined) .. ' ' .. tostring(err))
+                        error(err, 0)
+                    end
+                end
+            end
+        end
+        return process(self, context)
+    end
+    -- Without the mod: its way of getting past a first tick that stops on another mod's script.
+    local when_ready = _G.tww3_mtb_campaign and _G.tww3_mtb_campaign.when_ready or function(callback)
+        local first_tick = cm.first_tick
+        cm.first_tick = function(self, context)
+            local ok, err = pcall(first_tick, self, context)
+            callback()
+            if not ok then error(err, 0) end
+        end
+    end
+    when_ready(function()
         start(cm.tm)
         for _, event in ipairs({'MissionSucceeded', 'MissionFailed', 'MissionCancelled'}) do
             core:add_listener('tww3_mtb_remote_' .. event, event, true, function(context)

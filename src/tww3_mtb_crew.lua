@@ -54,6 +54,7 @@ local reported = false
 local tables = nil      -- {name = table pointer}; only read, one scan per game mode
 
 local function log(text)
+    pcall(function() _G.tww3_mtb_campaign.file_log('[crew] ' .. tostring(text)) end)
     pcall(ModLog, '[tww3_mtb_crew] ' .. tostring(text))
     if _G.mtb and _G.mtb.log then pcall(_G.mtb.log, 'crew', text) end
 end
@@ -488,7 +489,7 @@ local function guarded(fn)
     end
 end
 
-cm:add_first_tick_callback(function()
+_G.tww3_mtb_campaign.when_ready(function()
     guarded(profile)()
     guarded(M.reconcile)()
     guarded(M.apply)()

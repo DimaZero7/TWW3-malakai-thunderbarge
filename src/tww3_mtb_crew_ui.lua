@@ -21,6 +21,7 @@ _G.tww3_mtb_crew_ui = M
 local ui = nil      -- the panel's components while it is open
 
 local function log(text)
+    pcall(function() _G.tww3_mtb_campaign.file_log('[panel] ' .. tostring(text)) end)
     pcall(ModLog, '[tww3_mtb_crew_ui] ' .. tostring(text))
     if _G.mtb and _G.mtb.log then pcall(_G.mtb.log, 'crew_ui', text) end
 end
@@ -453,7 +454,10 @@ end
 function M.refresh_button()
     if not ours() then return end
     local ring = find_uicomponent(core:get_ui_root(), 'hud_campaign', 'faction_buttons_docker', 'button_group_management')
-    if not ring then return end
+    if not ring then
+        log('no button group in the HUD yet')
+        return
+    end
     local b = find_uicomponent(ring, BUTTON)
     if not b then
         b = UIComponent(ring:CreateComponent(BUTTON, 'ui/templates/round_hud_button_toggle'))
@@ -506,6 +510,7 @@ M.on_click = guarded(on_click)
 
 M.start = guarded(function()
     local c = crew()
+    log('start: crew=' .. tostring(c ~= nil) .. ' profile=' .. tostring(c and c.profile()) .. ' local=' .. tostring(cm:get_local_faction_name(true)) .. ' status=' .. tostring(c and c.status))
     if not c or not ours() then return end
     c.on_changed = guarded(function()
         refresh()
@@ -536,4 +541,4 @@ M.start = guarded(function()
     core:add_listener('tww3_mtb_crew_ui_turn_start', 'FactionTurnStart', function(context) return context:faction():name() == HOME_FACTION end, guarded(M.refresh_button), true)
 end)
 
-cm:add_first_tick_callback(M.start)
+_G.tww3_mtb_campaign.when_ready(M.start)

@@ -33,7 +33,7 @@ STOP = CAMPAIGN / "STOP"
 USER = rb.PREFS.parent.parent
 GUARDED = ["save_games", "advice_history", "army_setups", "battle_preferences", "event_feed", "resume", "replays", "scripts"]
 BACKUP = REPO / "build" / "user_backup"
-SESSION_FILES = ["tww3_mtb_events.jsonl", "tww3_mtb_cmd.lua", "tww3_mtb_rc.jsonl"]
+SESSION_FILES = ["tww3_mtb_events.jsonl", "tww3_mtb_cmd.lua", "tww3_mtb_rc.jsonl", "tww3_mtb_log.txt"]
 SETTINGS = dict(rb.GRAPHICS, campaign_difficulty=1, incremental_autosave_enabled="false")
 LOW_GRAPHICS = dict(SETTINGS, x_res=1280, y_res=720, gfx_aa=0, gfx_texture_quality=0, gfx_unit_quality=0, gfx_shadow_quality=0,
                     gfx_sky_quality=0, gfx_terrain_quality=0, gfx_lighting_quality=0, gfx_effects_quality=0)

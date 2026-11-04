@@ -3637,6 +3637,275 @@
      ]
     }
    ]
+  },
+  "user_mods": {
+   "_about": "A new campaign as Malakai with all the user's mods, as his launcher starts it: the harness only reads and clicks.",
+   "mods_file": "build/crew_ui/user_mods.txt",
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 420,
+   "wait_end_turn": 25,
+   "steps": [
+    {
+     "lua": "local r = find_uicomponent(core:get_ui_root(), \"hud_campaign\", \"faction_buttons_docker\", \"button_group_management\"); if not r then return \"no ring\" end; local t = {}; for i = 0, r:ChildCount() - 1 do local c = UIComponent(r:Find(i)); if c:Visible() then t[#t + 1] = c:Id() .. \"[\" .. c:CurrentState() .. \"]\" end end; return table.concat(t, \" \")"
+    },
+    {
+     "shot": "u_first"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "u_after_accept"
+    },
+    {
+     "prog_state": "um_start"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "um_no_barge",
+     "shot_as": "u_no_barge",
+     "expect": [
+      "button=inactive",
+      "Барки ещё нет"
+     ],
+     "wait": 1
+    },
+    {
+     "prog_tree": "open_tab"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "u_tab"
+    },
+    {
+     "prog_tree": "close_panel"
+    },
+    {
+     "wait": 1
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "prog_state": "um_hull2",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "rifles=pirates",
+      "deck=stock"
+     ]
+    },
+    {
+     "lua": "local r = find_uicomponent(core:get_ui_root(), \"hud_campaign\", \"faction_buttons_docker\", \"button_group_management\"); if not r then return \"no ring\" end; local t = {}; for i = 0, r:ChildCount() - 1 do local c = UIComponent(r:Find(i)); if c:Visible() then t[#t + 1] = c:Id() .. \"[\" .. c:CurrentState() .. \"]\" end end; return table.concat(t, \" \")"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "um_button",
+     "shot_as": "u_button",
+     "expect": [
+      "button=active",
+      "alert=true"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "Q.click_button(); return Q.state()",
+     "label": "um_panel",
+     "shot_as": "u_panel",
+     "expect": [
+      "panel_open=true"
+     ],
+     "wait": 2
+    },
+    {
+     "panel": "Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "um_closed",
+     "shot_as": "u_closed",
+     "expect": [
+      "panel_open=false",
+      "panel_exists=false"
+     ],
+     "wait": 1
+    }
+   ]
+  },
+  "user_mods_only": {
+   "_about": "The user's mods without this mod, the same new campaign and turns: does the game hold on its own?",
+   "packs": [
+    "harness"
+   ],
+   "mods_file": "build/crew_ui/user_mods.txt",
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 400,
+   "wait_end_turn": 25,
+   "steps": [
+    {
+     "wait": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "shot": "o_turn2"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "shot": "o_turn3"
+    }
+   ]
+  },
+  "user_mods_no_mixer": {
+   "_about": "The user's mods without !b_mixer.pack.",
+   "mods_file": "build/crew_ui/user_mods_no_mixer.txt",
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 520,
+   "wait_end_turn": 25,
+   "steps": [
+    {
+     "lua": "local r = find_uicomponent(core:get_ui_root(), \"hud_campaign\", \"faction_buttons_docker\", \"button_group_management\"); if not r then return \"no ring\" end; local t = {}; for i = 0, r:ChildCount() - 1 do local c = UIComponent(r:Find(i)); if c:Visible() then t[#t + 1] = c:Id() .. \"[\" .. c:CurrentState() .. \"]\" end end; return table.concat(t, \" \")"
+    },
+    {
+     "shot": "u_first"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "u_after_accept"
+    },
+    {
+     "prog_state": "um_start"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "um_no_barge",
+     "shot_as": "u_no_barge",
+     "expect": [
+      "button=inactive",
+      "Барки ещё нет"
+     ],
+     "wait": 1
+    },
+    {
+     "prog_tree": "open_tab"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "u_tab"
+    },
+    {
+     "prog_tree": "close_panel"
+    },
+    {
+     "wait": 1
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "prog_state": "um_hull2",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "rifles=pirates",
+      "deck=stock"
+     ]
+    },
+    {
+     "lua": "local r = find_uicomponent(core:get_ui_root(), \"hud_campaign\", \"faction_buttons_docker\", \"button_group_management\"); if not r then return \"no ring\" end; local t = {}; for i = 0, r:ChildCount() - 1 do local c = UIComponent(r:Find(i)); if c:Visible() then t[#t + 1] = c:Id() .. \"[\" .. c:CurrentState() .. \"]\" end end; return table.concat(t, \" \")"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "um_button",
+     "shot_as": "u_button",
+     "expect": [
+      "button=active",
+      "alert=true"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "Q.click_button(); return Q.state()",
+     "label": "um_panel",
+     "shot_as": "u_panel",
+     "expect": [
+      "panel_open=true"
+     ],
+     "wait": 2
+    },
+    {
+     "panel": "Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "um_closed",
+     "shot_as": "u_closed",
+     "expect": [
+      "panel_open=false",
+      "panel_exists=false"
+     ],
+     "wait": 1
+    }
+   ]
   }
  },
  "far_views": {
