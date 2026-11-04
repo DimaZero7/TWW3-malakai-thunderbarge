@@ -120,7 +120,11 @@ def build():
         for new_li, li in enumerate(lods):
             mesh = next(p for l, _, p in parts if l == li).copy()
             for v in mesh.verts:
-                v.x, v.y, v.z = v.x - ox, v.y - oy, v.z - oz
+                # The hull is drawn at the variant's scale (1.2 for the Spirit of Grungni), a rider's model is not: the detail needs it in its numbers.
+                s = detail.get("scale", 1.0)
+                near = detail.get("move_rear")      # measured from pictures: a ring goes where its man stands
+                dz = near["dz"] if near and v.z < near["z_below"] else 0.0
+                v.x, v.y, v.z = (v.x - ox) * s, (v.y - oy) * s, (v.z - oz) * s + dz
                 v.rebind(0)
             mesh.attachments = list(RIDER_ATTACHMENTS)
             model["lods"].append([mesh])

@@ -27,6 +27,7 @@ sys.path.insert(0, str(REPO / "tools"))
 import capture  # noqa: E402
 import crew_lua  # noqa: E402
 import crew_session  # noqa: E402
+import far_view  # noqa: E402
 import rc  # noqa: E402
 import run_game as rg  # noqa: E402
 
@@ -90,6 +91,7 @@ class Session:
 
     def shot(self, name):
         s = rc.state()
+        capture.unminimize_behind(s["pid"])     # the user may have minimized the game: a minimized window paints nothing
         hwnd = capture.find_window(s["pid"])
         if not hwnd:
             self.log("shot", name, "no window")
@@ -194,10 +196,34 @@ class Session:
                     bad.append(seat)
         return good, bad
 
+    def gpu_note(self):
+        """Which card runs the game: the process table of nvidia-smi, written to the log."""
+        try:
+            out = subprocess.run(["nvidia-smi", "pmon", "-c", "1"], capture_output=True, text=True, errors="replace", timeout=30).stdout
+            line = next((x for x in out.splitlines() if "warhammer" in x.lower()), "Warhammer3 is not on the NVIDIA card")
+            used = subprocess.run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used", "--format=csv,noheader"], capture_output=True, text=True, errors="replace", timeout=30).stdout.strip()
+            self.log("gpu", " ".join(line.split()), "|", used)
+        except (OSError, subprocess.SubprocessError) as e:
+            self.log("gpu check failed", e)
+
+    def hold(self, seconds):
+        """Waits for commands from outside (tools/rc.py, tools/far_view.py) until build/crew/cycle/CONTINUE appears."""
+        flag = OUT / getattr(self, "hold_flag", "CONTINUE")
+        flag.unlink(missing_ok=True)
+        self.log("hold", seconds)
+        end = time.time() + seconds
+        while time.time() < end and not flag.exists():
+            self.check_time()
+            time.sleep(1)
+        flag.unlink(missing_ok=True)
+        self.log("hold over")
+
     def battle(self, spec):
         self.battle_no += 1
         label = spec["label"]
         self.log("=== battle", label, spec.get("choice"))
+        if spec.get("from_game"):       # the crew the buildings chose: nothing is set by the test
+            self.sync_current()
         row = self.choose(spec.get("choice", {}))
         if not row["ok"]:
             raise RuntimeError(row["result"])
@@ -205,7 +231,8 @@ class Session:
         result = {"session": self.name, "label": label, "choice": dict(self.current), "status": row["result"], "memory_before_mb": self.memory_mb()}
         if spec.get("expect_status"):
             result["status_ok"] = spec["expect_status"] in str(row["result"])
-        self.log("spawn", self.script("spawn_fight.lua")["result"])
+        units = {"mtb_units": spec["units"]} if spec.get("units") else {}
+        self.log("spawn", self.script("spawn_fight.lua", **units)["result"])
         self.open_panel()
         if spec.get("autoresolve"):
             self.log(self.click("button_autoresolve"))
@@ -220,18 +247,32 @@ class Session:
         time.sleep(4)
         men = self.lua("return C.men()", 20)
         (self.dir / f"men_{label}.txt").write_text(str(men["result"]), encoding="utf-8")
+        if spec.get("from_game"):
+            (self.dir / f"read_{label}.txt").write_text(str(self.plain((TESTS / "battle_read.lua").read_text(encoding="utf-8"), 15)["result"]), encoding="utf-8")
         if men["ok"]:
             result["seats_ok"], result["seats_bad"] = self.seats_ok(men["result"], {})
             self.log("seats", result["seats_ok"], result["seats_bad"][:6])
         else:
             result["seats_ok"], result["seats_bad"] = None, ["no memory access: " + str(men["result"])[:80]]
-        for cam in SPEC["cameras"] if spec.get("shots", True) else []:
+        self.gpu_note()
+        wanted = spec.get("shots", True)
+        for cam in SPEC["cameras"] if wanted else []:
+            if isinstance(wanted, list) and cam["name"] not in wanted:
+                continue
             self.lua(f'return C.camera({cam["f"]},{cam["r"]},{cam["u"]},{cam["tf"]},{cam["tr"]},{cam["tu"]},{cam["fov"]})', 10)
             time.sleep(1.5)
             self.shot(f'{label}_{cam["name"]}')
         self.plain("bm:end_current_battle_phase(); return 1", 5)
         time.sleep(3)
         self.log("fight", self.lua((TESTS / "crew_fight.lua").read_text(encoding="utf-8"), 10)["result"])
+        if "abilities" in spec:     # the unit's abilities, as the battle has them: is the harpoon there
+            read = str(self.plain((TESTS / "battle_read.lua").read_text(encoding="utf-8"), 15)["result"])
+            result["harpoon"] = "spear_of_grungni" in read
+            result["harpoon_ok"] = result["harpoon"] == spec["abilities"]
+            self.log("harpoon", result["harpoon"], "expected", spec["abilities"])
+        if spec.get("burner"):      # the barge's own ability: the mission "Призыв Духа" counts it
+            time.sleep(4)
+            self.log("burner", self.script("battle_ability.lua")["result"])
         fired_at = None
         started = time.time()
         stats = []
@@ -261,6 +302,9 @@ class Session:
             result.update(near=last.group(1), ammo=float(last.group(2)), kills=int(last.group(3)), hp=last.group(4))
         result["min_near"] = min((int(x) for s in stats for x in re.findall(r"near=(\d+)", s)), default=None)
         result["fired"] = fired_at is not None
+        if spec.get("from_game") or spec.get("ammo_report"):
+            result["ammo_report"] = str(self.plain("return tostring(tww3_mtb_ammo.status) .. ' | ' .. tww3_mtb_ammo.report()", 8)["result"])
+            self.log("ammo", result["ammo_report"])
         self.shot(f"{label}_fight")
         if spec.get("late_shots"):
             self.lua("bm:modify_battle_speed(1); if _G.mtb_crew_uc then _G.mtb_crew_uc:halt() end; return 1", 8)
@@ -270,6 +314,14 @@ class Session:
             self.lua(f'return C.camera({cam["f"]},{cam["r"]},{cam["u"]},{cam["tf"]},{cam["tr"]},{cam["tu"]},{cam["fov"]})', 10)
             time.sleep(1.5)
             self.shot(f"{label}_late_{name}")
+        if spec.get("far_views") or spec.get("hold"):
+            self.lua("bm:modify_battle_speed(1); if _G.mtb_crew_uc then _G.mtb_crew_uc:halt() end; return 1", 8)
+            time.sleep(4)
+            if spec.get("far_views"):
+                far_view.standard(label, spec["far_views"] if isinstance(spec["far_views"], str) else "far_views")
+            if spec.get("hold"):
+                self.hold(spec["hold"])
+            self.lua("bm:modify_battle_speed(1); return 1", 8)
         self.log(self.script("battle_kill_enemy.lua")["result"])
         for attempt in range(round(scaled(25))):
             if self.visible("button_dismiss_results") != "-":
@@ -460,6 +512,154 @@ class Session:
         result["stats"] = [stats[0], stats[len(stats) // 2], stats[-1]] if stats else []
         self.save_result(result)
 
+    # ---------------- the progression (docs/design/progression-proposal.md): real orders, the game's own panels ----------------
+    def prog(self, code, wait=15):
+        """Lua with tools/tests/prog_lib.lua first. Its result goes to the log."""
+        lib = (TESTS / "prog_lib.lua").read_text(encoding="utf-8")
+        return self.plain(lib + "\nlocal P = _G.mtb_prog\n" + code, wait)
+
+    def prog_file(self, name, **values):
+        code = "".join(f'{k} = "{v}"\n' for k, v in values.items()) + (TESTS / name).read_text(encoding="utf-8")
+        return self.prog(code)
+
+    def state(self, label, expect=None):
+        """The campaign's state: a line of the log and of results.jsonl. expect: parts that must be in the line."""
+        row = self.prog("return P.state()")
+        text = str(row["result"])
+        missing = [part for part in (expect or []) if part not in text]
+        self.log("state", label, text)
+        self.save_result({"session": self.name, "label": label, "kind": "state", "state": text, "ok": not missing, "missing": missing})
+        if not row["ok"]:
+            raise RuntimeError(text)
+        return text
+
+    def safe_end_turn(self, limit=300):
+        """Ends the turn and waits for the player's next one. Another army's attack on the way is autoresolved."""
+        begin = self.prog("return cm:turn_number()")["result"]
+        self.log("turn", self.script("end_turn.lua")["result"])
+        end = time.time() + scaled(limit)
+        step = ('for _, n in ipairs({"button_autoresolve", "button_captive_option_kill", "button_dismiss", "button_set_win", "button_continue", "button_dismiss_results"}) do '
+                'if mtb.find(n, true) then mtb.click(n); return "clicked " .. n end end '
+                'local e = mtb.find("events", true); local a = e and (mtb.find("choice_button", true, e) or mtb.find("button_accept", true, e)); if a then a:SimulateLClick() end '
+                'local b = mtb.find("button_end_turn", true); return cm:turn_number() .. " " .. (b and b:CurrentState() or "-")')
+        ticks = 0
+        while time.time() < end:
+            self.check_time()
+            row = self.plain(step, 8)
+            text = str(row["result"])
+            if text.startswith("clicked"):
+                self.log(text)
+            ticks += 1
+            if ticks % 4 == 0:      # an offer of the AI's, for example, stops the turn with the end turn button hidden
+                found = self.script("dismiss_blockers.lua")["result"]
+                if found != "{}":
+                    self.log("blockers", found)
+            if text == f"{int(float(begin)) + 1} active":
+                self.log("blockers", self.script("dismiss_blockers.lua")["result"])
+                time.sleep(1)
+                return
+            if text == f"{int(float(begin))} active":      # still the same turn with the button free: something took the first order away
+                self.log("blockers", self.script("dismiss_blockers.lua")["result"])
+                time.sleep(4)
+                if str(self.plain(step, 8)["result"]) == text:
+                    self.log("turn again", self.script("end_turn.lua")["result"])
+            time.sleep(3)
+        self.shot("turn_stuck")
+        raise TimeoutError("the next turn did not come")
+
+    # ---------------- the crew panel: clicks inside the game, tools/tests/crew_panel.lua ----------------
+    def panel(self, step):
+        """step: panel: Lua after the helpers (Q), wait, shot_as, expect: parts that must be in the result, absent: parts that must not."""
+        code = (TESTS / "crew_panel.lua").read_text(encoding="utf-8") + "\nlocal Q = _G.mtb_panel\n" + step["panel"]
+        row = self.plain(code, 15)
+        text = str(row["result"])
+        time.sleep(step.get("wait", 0.5))
+        if step.get("shot_as"):
+            self.shot(step["shot_as"])
+        missing = [part for part in step.get("expect", []) if part not in text] + ["NOT " + part for part in step.get("absent", []) if part in text]
+        self.log("panel", step.get("label", ""), text)
+        if step.get("label") or missing:
+            self.save_result({"session": self.name, "label": step.get("label", step["panel"]), "kind": "panel", "state": text, "ok": not missing, "missing": missing})
+
+    def open_character_panel(self):
+        self.prog("return P.select_malakai()")
+        time.sleep(2)
+        self.log(self.click("button_general"))
+        time.sleep(3)
+
+    def mount(self, to, shot=None):
+        """Steps off or back on through the game's Mount block, by clicks, as the player does."""
+        self.open_character_panel()
+        self.log(self.prog_file("prog_mount_ui.lua", mtb_step="open")["result"])
+        time.sleep(1.5)
+        if shot:
+            self.shot(shot + "_list")
+        self.log(self.prog_file("prog_mount_ui.lua", mtb_step=to)["result"])
+        time.sleep(2)
+        if shot:
+            self.shot(shot)
+        self.log(self.click("button_ok"))
+        time.sleep(1)
+
+    def order(self, spec):
+        """Orders buildings with the game's own command; points and gold come from the script."""
+        self.prog("return P.select_malakai()")      # right after a battle the selection is not there yet: an order then does nothing, silently
+        time.sleep(3)
+        values = {"mtb_build": spec["prog_build"]}
+        if spec.get("dev"):
+            values["mtb_dev"] = spec["dev"]
+        self.prog(f"cm:treasury_mod(P.malakai():faction():name(), {spec.get('gold', 30000)}); return 1")
+        self.log("order", self.prog_file("prog_build.lua", **values)["result"])
+
+    def demolish(self, spec):
+        """Dismantles one building, ends turns until it is gone. Returns how many turns it took."""
+        self.log("dismantle", self.prog_file("prog_build.lua", mtb_dismantle=spec["prog_dismantle"])["result"])
+        for turns in range(1, spec.get("max_turns", 8) + 1):
+            self.safe_end_turn()
+            slots = str(self.prog("return P.slots()")["result"])
+            self.log("slots", turns, slots)
+            if spec["prog_dismantle"] not in slots.split(","):
+                return turns
+        return None
+
+    def sync_current(self):
+        row = self.plain("return tww3_mtb_crew.get()", 8)
+        for group, option in re.findall(r"(\w+)=(\w+)", str(row["result"])):
+            self.current[group] = option
+
+    def foot_battle(self, spec):
+        """A battle on foot: his stock unit, no barge module, no summon on the ability bar."""
+        label = spec["label"]
+        self.log("=== battle on foot", label)
+        self.log("spawn", self.script("spawn_fight.lua")["result"])
+        self.open_panel()
+        self.shot(f"{label}_panel")
+        self.log(self.click("button_attack"))
+        self.wait_mode("battle", 300)
+        time.sleep(4)
+        read = self.plain((TESTS / "battle_read.lua").read_text(encoding="utf-8"), 15)
+        (self.dir / f"foot_{label}.txt").write_text(str(read["result"]), encoding="utf-8")
+        self.plain("bm:end_current_battle_phase(); return 1", 5)
+        time.sleep(3)
+        buttons = self.plain((TESTS / "prog_ability_bar.lua").read_text(encoding="utf-8"), 10)
+        self.log("ability bar", buttons["result"])
+        self.shot(f"{label}_battle")
+        status = self.plain("return tostring(tww3_mtb_ammo and tww3_mtb_ammo.status)", 5)["result"]
+        result = {"session": self.name, "label": label, "kind": "foot", "stock_unit": "type=wh3_dlc25_dwf_cha_malakai_makaisson" in str(read["result"]),
+                  "summon_button": "spirit_of_grungni" in str(buttons["result"]), "ability_bar": str(buttons["result"])[:400], "ammo_status": status}
+        self.log(self.script("battle_kill_enemy.lua")["result"])
+        for attempt in range(round(scaled(25))):
+            if self.visible("button_dismiss_results") != "-":
+                break
+            if attempt == round(scaled(8)):
+                self.plain("bm:end_battle(); return 1", 5)
+            time.sleep(3)
+        self.log(self.click("button_dismiss_results"))
+        self.wait_mode("campaign", 300)
+        time.sleep(4)
+        result["back_on_map"] = self.back_on_map()
+        self.save_result(result)
+
     def stress(self, spec):
         code = ("local n = %d; collectgarbage('collect'); local a = collectgarbage('count'); local t0 = os.clock()\n"
                 "for i = 1, n do tww3_mtb_crew.apply() end\n"
@@ -488,8 +688,7 @@ class Session:
             except OSError:
                 continue
             if changed and changed == last:
-                self.save_source = changed[0][0]
-                self.save_name = name
+                self.saves = getattr(self, "saves", []) + [(changed[0][0], name)]
                 self.log("saved as", self.save_source, changed[0][1])
                 return
             last = changed
@@ -543,8 +742,12 @@ def run_session(name):
             session.wait_mode("frontend", 240)
             time.sleep(10)
             session.log(session.plain(f'frontend.start_campaign("wh3_main_combi", "wh3_main_combi", "{spec["new_campaign"]}"); return 1', 10)["result"])
-        session.wait_mode("campaign", 420)
+        session.wait_mode("campaign", 900)
         time.sleep(8)
+        if spec.get("wait_end_turn"):      # the intro video of a new campaign plays first
+            end = time.time() + scaled(spec["wait_end_turn"])
+            while time.time() < end and session.visible("button_end_turn") in ("-", "inactive"):
+                time.sleep(3)
         session.shot("map")
         row = session.plain("return tostring(tww3_mtb_crew and tww3_mtb_crew.status) .. ' ' .. mtb.dump(tww3_mtb_crew and tww3_mtb_crew.get())", 15)
         session.log("loaded", row["result"])
@@ -572,6 +775,28 @@ def run_session(name):
                 session.ai_battle(step)
             elif step.get("stress"):
                 session.stress(step)
+            elif step.get("prog_state"):
+                session.state(step["prog_state"], step.get("expect"))
+            elif step.get("panel"):
+                session.panel(step)
+            elif step.get("prog_lua"):
+                session.log("lua", session.prog(step["prog_lua"])["result"])
+            elif step.get("prog_build"):
+                session.order(step)
+            elif step.get("prog_turn"):
+                session.safe_end_turn()
+            elif step.get("prog_mount"):
+                session.mount(step["prog_mount"], step.get("shot_as"))
+            elif step.get("prog_dismantle"):
+                session.save_result({"session": name, "label": "dismantle " + step["prog_dismantle"], "kind": "dismantle", "turns": session.demolish(step)})
+            elif step.get("prog_foot"):
+                session.foot_battle(step)
+            elif step.get("prog_tree"):
+                session.log("tree", session.prog_file("prog_tree.lua", mtb_tree=step["prog_tree"])["result"])
+            elif step.get("hold") and not step.get("label"):
+                session.hold(step["hold"])
+            elif step.get("wait"):
+                time.sleep(step["wait"])
             elif step.get("shot"):
                 session.shot(step["shot"])
             else:
@@ -587,13 +812,13 @@ def run_session(name):
         except subprocess.TimeoutExpired:
             session.log("session did not end in 180 s")
         session.log("session", name, outcome, "seconds", round(time.time() - started))
-        if getattr(session, "save_name", None):
-            moved = SAVES / session.save_source
+        for source, target in getattr(session, "saves", []):
+            moved = SAVES / source
             if moved.exists():
-                shutil.move(str(moved), SAVES / session.save_name)
-                session.log("kept save", session.save_name)
+                shutil.move(str(moved), SAVES / target)
+                session.log("kept save", target)
             else:
-                session.log("SAVE MISSING", session.save_source)
+                session.log("SAVE MISSING", source)
     return outcome == "done"
 
 

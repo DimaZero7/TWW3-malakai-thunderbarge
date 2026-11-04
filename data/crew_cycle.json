@@ -230,6 +230,16 @@
    "tr": 0,
    "tu": 21.2,
    "fov": 25
+  },
+  {
+   "name": "nose",
+   "f": 30,
+   "r": 14,
+   "u": 22,
+   "tf": 15,
+   "tr": 0,
+   "tu": 18,
+   "fov": 38
   }
  ],
  "order": [
@@ -356,7 +366,7 @@
     {
      "label": "r_irondrakes",
      "choice": {
-      "rifles": "irondrakes",
+      "rifles": "torpedoes",
       "cannons": "empty",
       "cupolas": "empty",
       "bombs": "empty",
@@ -1067,7 +1077,7 @@
     {
      "label": "clatter_drakes",
      "choice": {
-      "rifles": "irondrakes",
+      "rifles": "torpedoes",
       "cannons": "clatter",
       "cupolas": "stock",
       "bombs": "stock",
@@ -1112,7 +1122,7 @@
      "label": "ai",
      "ammo_ai": true,
      "choice": {
-      "rifles": "irondrakes",
+      "rifles": "torpedoes",
       "cannons": "stock",
       "cupolas": "stock",
       "bombs": "stock",
@@ -1141,6 +1151,2895 @@
      "speed": 3
     }
    ]
+  },
+  "prog_main": {
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 3300,
+   "wait_end_turn": 200,
+   "steps": [
+    {
+     "prog_state": "start",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "slots=airship_hull_1,",
+      "built=,",
+      "rifles=empty",
+      "cannons=empty",
+      "profile=player"
+     ]
+    },
+    {
+     "shot": "p_map_start"
+    },
+    {
+     "prog_lua": "return P.texts()"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_tree": "open_tab"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "p_tab_start"
+    },
+    {
+     "prog_tree": "open_slot"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "p_side_buildings_start"
+    },
+    {
+     "prog_tree": "close_slot"
+    },
+    {
+     "wait": 1
+    },
+    {
+     "prog_tree": "open_panel"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "prog_tree": "skills"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "prog_tree": "skill_nodes"
+    },
+    {
+     "shot": "p_skills_start"
+    },
+    {
+     "prog_tree": "close_panel"
+    },
+    {
+     "wait": 1
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "hull_2",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "item_on=true",
+      "slots=airship_hull_2",
+      "rifles=pirates",
+      "cannons=empty",
+      "bombs=empty",
+      "cupolas=empty",
+      "deck=empty"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "p_pirates",
+     "from_game": true,
+     "burner": true,
+     "fight": 120
+    },
+    {
+     "prog_lua": "return P.missions()"
+    },
+    {
+     "shot": "p_after_pirates"
+    },
+    {
+     "prog_mount": "off",
+     "shot_as": "p_panel_off"
+    },
+    {
+     "prog_state": "off",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false"
+     ]
+    },
+    {
+     "prog_foot": true,
+     "label": "p_foot"
+    },
+    {
+     "prog_state": "off_after_battle",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false"
+     ]
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "off_after_turn",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "rifles=pirates"
+     ]
+    },
+    {
+     "prog_mount": "on",
+     "shot_as": "p_panel_on"
+    },
+    {
+     "prog_state": "on",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "item_on=true"
+     ]
+    },
+    {
+     "prog_build": "crew_weapons_1,engines_1,cargo_hold_1,beer_hall_1",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "chains_1",
+     "expect": [
+      "rifles=quarrellers",
+      "cannons=clatter",
+      "bombs=stock",
+      "deck=stock",
+      "cupolas=empty"
+     ]
+    },
+    {
+     "label": "p_chains_1",
+     "from_game": true,
+     "fight": 120
+    },
+    {
+     "prog_build": "airship_hull_3,support_radius_1,beer_hall_2",
+     "dev": 7
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "chains_2",
+     "expect": [
+      "rifles=torpedoes",
+      "cannons=stock",
+      "bombs=stock",
+      "deck=stock",
+      "cupolas=stock"
+     ]
+    },
+    {
+     "label": "p_chains_2",
+     "from_game": true,
+     "fight": 120
+    },
+    {
+     "prog_dismantle": "support_radius_1"
+    },
+    {
+     "prog_state": "demolish_rifles",
+     "expect": [
+      "rifles=quarrellers"
+     ]
+    },
+    {
+     "prog_dismantle": "beer_hall_2"
+    },
+    {
+     "prog_state": "demolish_beer",
+     "expect": [
+      "cupolas=empty",
+      "deck=empty"
+     ]
+    },
+    {
+     "prog_build": "crew_weapons_2"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "last_wins",
+     "expect": [
+      "rifles=thunderers",
+      "cupolas=empty",
+      "deck=empty"
+     ]
+    },
+    {
+     "prog_mount": "off"
+    },
+    {
+     "prog_state": "to_save",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "rifles=thunderers"
+     ]
+    },
+    {
+     "save": "tww3_mtb_prog_main.save"
+    }
+   ]
+  },
+  "prog_load": {
+   "save": "tww3_mtb_prog_main.save",
+   "limit": 1200,
+   "steps": [
+    {
+     "prog_state": "loaded",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "rifles=thunderers",
+      "cannons=stock",
+      "given=true",
+      "profile=player"
+     ]
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "loaded_turn",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false"
+     ]
+    },
+    {
+     "prog_mount": "on",
+     "shot_as": "l_panel_on"
+    },
+    {
+     "prog_state": "loaded_on",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "item_on=true"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "l_loaded",
+     "from_game": true,
+     "fight": 120
+    },
+    {
+     "prog_state": "loaded_after_battle",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "item_on=true"
+     ]
+    }
+   ]
+  },
+  "prog_no_memreader": {
+   "save": "tww3_mtb_prog_main.save",
+   "limit": 900,
+   "memreader": false,
+   "steps": [
+    {
+     "prog_state": "no_mr",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "rifles=thunderers",
+      "crew_status=stock:"
+     ]
+    },
+    {
+     "shot": "n_map"
+    },
+    {
+     "prog_mount": "on"
+    },
+    {
+     "prog_state": "no_mr_on",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "item_on=true",
+      "rifles=thunderers"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "n_stock",
+     "ammo_plain": true,
+     "expect_off": true,
+     "real_limit": 70,
+     "speed": 3
+    }
+   ]
+  },
+  "prog_ai": {
+   "new_campaign": "wh_main_dwf_dwarfs",
+   "limit": 900,
+   "steps": [
+    {
+     "prog_state": "ai_start",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "item_on=true",
+      "profile=ai",
+      "rifles=stock",
+      "cannons=stock",
+      "bombs=stock",
+      "cupolas=stock",
+      "deck=stock",
+      "human=false",
+      "barracks_1"
+     ]
+    },
+    {
+     "label": "p_ai",
+     "ai": true,
+     "watch": 90
+    }
+   ],
+   "assume": {
+    "rifles": "stock",
+    "cannons": "stock",
+    "cupolas": "stock",
+    "bombs": "stock",
+    "deck": "stock"
+   }
+  },
+  "prog_rest": {
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 1500,
+   "wait_end_turn": 200,
+   "steps": [
+    {
+     "prog_state": "r_start",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "slots=airship_hull_1,",
+      "built=,",
+      "rifles=empty",
+      "cannons=empty",
+      "profile=player"
+     ]
+    },
+    {
+     "shot": "r_map_start"
+    },
+    {
+     "prog_lua": "return P.texts()"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_tree": "open_tab"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "p_tab_start"
+    },
+    {
+     "prog_tree": "open_slot"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "shot": "p_side_buildings_start"
+    },
+    {
+     "prog_tree": "close_slot"
+    },
+    {
+     "wait": 1
+    },
+    {
+     "prog_tree": "open_panel"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "prog_tree": "skills"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "prog_tree": "skill_nodes"
+    },
+    {
+     "shot": "p_skills_start"
+    },
+    {
+     "prog_tree": "close_panel"
+    },
+    {
+     "wait": 1
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_build": "crew_weapons_1,engines_1,cargo_hold_1,beer_hall_1",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_build": "airship_hull_3,support_radius_1,beer_hall_2",
+     "dev": 7
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "r_chains_2",
+     "expect": [
+      "rifles=torpedoes",
+      "cannons=stock",
+      "bombs=stock",
+      "deck=stock",
+      "cupolas=stock"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_dismantle": "support_radius_1"
+    },
+    {
+     "prog_state": "r_demolish_rifles",
+     "expect": [
+      "rifles=quarrellers"
+     ]
+    },
+    {
+     "prog_dismantle": "beer_hall_2"
+    },
+    {
+     "prog_state": "r_demolish_beer",
+     "expect": [
+      "cupolas=empty",
+      "deck=empty"
+     ]
+    },
+    {
+     "prog_build": "crew_weapons_2"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "r_last_wins",
+     "expect": [
+      "rifles=thunderers",
+      "cupolas=empty",
+      "deck=empty"
+     ]
+    },
+    {
+     "prog_mount": "off"
+    },
+    {
+     "prog_state": "r_to_save",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "rifles=thunderers"
+     ]
+    },
+    {
+     "save": "tww3_mtb_prog_main.save"
+    }
+   ]
+  },
+  "rtx_far": {
+   "save": "tww3_mtb_crew_d.save",
+   "limit": 3600,
+   "high": true,
+   "assume": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "label": "rtx_b_stock_1",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "empty"
+     },
+     "shots": false,
+     "ammo_report": true
+    },
+    {
+     "label": "rtx_b_stock_2",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "empty"
+     },
+     "shots": false,
+     "ammo_report": true
+    },
+    {
+     "label": "rtx_b_stock_3",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "empty"
+     },
+     "shots": false,
+     "ammo_report": true
+    },
+    {
+     "label": "far_organ",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "organ",
+      "cupolas": "axes",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "shots": false,
+     "fight": 35,
+     "after_fire": 10,
+     "far_views": true
+    },
+    {
+     "label": "far_flame",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "flame",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 35,
+     "after_fire": 10,
+     "far_views": true
+    },
+    {
+     "label": "far_clatter",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "clatter",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 35,
+     "after_fire": 10,
+     "far_views": true
+    },
+    {
+     "label": "far_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "shots": false,
+     "fight": 25,
+     "after_fire": 5,
+     "far_views": true
+    },
+    {
+     "label": "rtx_b_stock_4",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "empty"
+     },
+     "shots": false,
+     "ammo_report": true
+    },
+    {
+     "label": "rtx_b_stock_5",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "empty"
+     },
+     "shots": false,
+     "ammo_report": true
+    },
+    {
+     "label": "rtx_b_fire_1",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "fire",
+      "deck": "empty"
+     },
+     "shots": false,
+     "ammo_report": true
+    }
+   ]
+  },
+  "rtx_stages": {
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 5400,
+   "wait_end_turn": 200,
+   "high": true,
+   "steps": [
+    {
+     "prog_state": "s_start",
+     "expect": [
+      "unit=wh3_dlc25_dwf_cha_malakai_makaisson",
+      "item_on=false",
+      "slots=airship_hull_1,",
+      "rifles=empty",
+      "cannons=empty",
+      "profile=player"
+     ]
+    },
+    {
+     "shot": "s_map_start"
+    },
+    {
+     "prog_lua": "return P.texts()"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "hold": 900
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_hull_2",
+     "expect": [
+      "rifles=pirates",
+      "cannons=empty"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "s_pirates",
+     "from_game": true,
+     "units": "wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_orc_boyz,wh_main_grn_inf_orc_boyz,wh_main_grn_mon_giant,wh_main_grn_mon_giant",
+     "shots": [
+      "left",
+      "deck_aft",
+      "front",
+      "bow"
+     ],
+     "fight": 150,
+     "after_fire": 70
+    },
+    {
+     "prog_build": "crew_weapons_1,engines_1,cargo_hold_1,beer_hall_1",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_first",
+     "expect": [
+      "rifles=quarrellers",
+      "cannons=clatter",
+      "bombs=stock",
+      "deck=stock"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "s_first",
+     "from_game": true,
+     "units": "wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_orc_boyz,wh_main_grn_inf_orc_boyz,wh_main_grn_mon_giant,wh_main_grn_mon_giant",
+     "shots": [
+      "left",
+      "deck_aft",
+      "front",
+      "bow"
+     ],
+     "fight": 150,
+     "after_fire": 70
+    },
+    {
+     "prog_build": "airship_hull_3,support_radius_1,beer_hall_2",
+     "dev": 7
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_mid",
+     "expect": [
+      "rifles=torpedoes",
+      "cannons=stock",
+      "cupolas=stock"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_build": "airship_hull_4,crew_weapons_2",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_hull_4",
+     "expect": [
+      "rifles=thunderers"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_build": "airship_hull_5,crew_weapons_3,cargo_hold_2",
+     "dev": 16
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_top_a",
+     "expect": [
+      "rifles=rakers",
+      "cannons=flaming"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "s_rakers_flaming",
+     "from_game": true,
+     "units": "wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_orc_boyz,wh_main_grn_inf_orc_boyz,wh_main_grn_mon_giant,wh_main_grn_mon_giant",
+     "shots": [
+      "left",
+      "deck_aft",
+      "front",
+      "bow"
+     ],
+     "fight": 150,
+     "after_fire": 70
+    },
+    {
+     "prog_build": "engines_2,support_radius_2,beer_hall_3,cargo_hold_3",
+     "dev": 0
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_top_b",
+     "expect": [
+      "rifles=torpedoes",
+      "cannons=flame",
+      "cupolas=axes",
+      "bombs=fire"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "s_torpedoes_flame_axes_fire",
+     "from_game": true,
+     "units": "wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_orc_boyz,wh_main_grn_inf_orc_boyz,wh_main_grn_mon_giant,wh_main_grn_mon_giant",
+     "shots": [
+      "left",
+      "deck_aft",
+      "front",
+      "bow"
+     ],
+     "fight": 150,
+     "after_fire": 70
+    },
+    {
+     "prog_build": "engines_3",
+     "dev": 0
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "s_flagship",
+     "expect": [
+      "rifles=torpedoes",
+      "cannons=organ",
+      "cupolas=axes",
+      "bombs=fire",
+      "deck=stock"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "s_flagship",
+     "from_game": true,
+     "units": "wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_spearmen,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_goblin_archers,wh_main_grn_inf_orc_boyz,wh_main_grn_inf_orc_boyz,wh_main_grn_mon_giant,wh_main_grn_mon_giant",
+     "shots": [
+      "left",
+      "deck_aft",
+      "front",
+      "bow"
+     ],
+     "fight": 150,
+     "after_fire": 70,
+     "far_views": true
+    },
+    {
+     "save": "tww3_mtb_prog_top.save"
+    }
+   ]
+  },
+  "rtx_no_memreader": {
+   "save": "tww3_mtb_crew_e.save",
+   "limit": 900,
+   "memreader": false,
+   "high": true,
+   "steps": [
+    {
+     "shot": "no_memreader_map"
+    },
+    {
+     "label": "no_memreader",
+     "fight": 60,
+     "after_fire": 6,
+     "shots": [
+      "left",
+      "right",
+      "deck_aft",
+      "front"
+     ]
+    },
+    {
+     "label": "no_memreader_2",
+     "fight": 60,
+     "after_fire": 6,
+     "shots": false
+    }
+   ]
+  },
+  "rtx_drive": {
+   "save": "tww3_mtb_crew_d.save",
+   "limit": 3400,
+   "high": true,
+   "assume": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "hold": 3300
+    }
+   ]
+  },
+  "rtx_guns": {
+   "save": "tww3_mtb_crew_d.save",
+   "limit": 3000,
+   "high": true,
+   "assume": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "hold": 2900
+    }
+   ],
+   "battles": [
+    {
+     "shots": false,
+     "ammo_report": true,
+     "fight": 40,
+     "after_fire": 6,
+     "label": "walk_mix",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "organ",
+      "cupolas": "axes",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "far_views": "close_walk"
+    },
+    {
+     "shots": false,
+     "ammo_report": true,
+     "fight": 40,
+     "after_fire": 6,
+     "label": "walk_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "far_views": "close_walk"
+    },
+    {
+     "shots": false,
+     "ammo_report": true,
+     "fight": 20,
+     "after_fire": 3,
+     "label": "walk_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_walk"
+    },
+    {
+     "shots": false,
+     "ammo_report": true,
+     "fight": 150,
+     "after_fire": 70,
+     "label": "dry_pirates",
+     "choice": {
+      "rifles": "pirates",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     }
+    },
+    {
+     "shots": false,
+     "ammo_report": true,
+     "fight": 25,
+     "after_fire": 3,
+     "label": "low_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "late_shots": [
+      "pub_in",
+      "below",
+      "left",
+      "right",
+      "deck_aft"
+     ]
+    },
+    {
+     "shots": false,
+     "ammo_report": true,
+     "fight": 20,
+     "after_fire": 3,
+     "label": "low_empty",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "late_shots": [
+      "pub_in",
+      "below",
+      "left",
+      "right",
+      "deck_aft"
+     ]
+    },
+    {
+     "shots": [
+      "pub_in",
+      "deck_aft",
+      "back"
+     ],
+     "ammo_report": true,
+     "fight": 5,
+     "after_fire": 1,
+     "label": "pub_stock",
+     "choice": {
+      "rifles": "stock",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     }
+    }
+   ]
+  },
+  "rtx_final": {
+   "save": "tww3_mtb_prog_main.save",
+   "limit": 3300,
+   "high": true,
+   "assume": {
+    "rifles": "thunderers",
+    "cannons": "stock",
+    "cupolas": "empty",
+    "bombs": "stock",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "prog_state": "f_loaded"
+    },
+    {
+     "prog_mount": "on"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_build": "support_radius_1",
+     "dev": 4
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_state": "f_support_1",
+     "expect": [
+      "rifles=torpedoes"
+     ]
+    },
+    {
+     "lua": "local ok=tww3_mtb_crew.set('rifles','irondrakes'); return 'set irondrakes: ' .. tostring(ok)"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "hold": 3000
+    }
+   ],
+   "battles": [
+    {
+     "shots": [
+      "pub_in"
+     ],
+     "ammo_report": true,
+     "fight": 30,
+     "after_fire": 6,
+     "label": "stage_pirates",
+     "choice": {
+      "rifles": "pirates",
+      "cannons": "empty",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_hero"
+    },
+    {
+     "shots": [
+      "pub_in"
+     ],
+     "ammo_report": true,
+     "fight": 30,
+     "after_fire": 6,
+     "label": "stage_first",
+     "choice": {
+      "rifles": "quarrellers",
+      "cannons": "clatter",
+      "cupolas": "empty",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "far_views": "close_hero"
+    },
+    {
+     "shots": [
+      "pub_in"
+     ],
+     "ammo_report": true,
+     "fight": 30,
+     "after_fire": 6,
+     "label": "stage_mid",
+     "choice": {
+      "rifles": "torpedoes",
+      "cannons": "stock",
+      "cupolas": "stock",
+      "bombs": "stock",
+      "deck": "stock"
+     },
+     "far_views": "close_hero"
+    },
+    {
+     "shots": [
+      "pub_in"
+     ],
+     "ammo_report": true,
+     "fight": 30,
+     "after_fire": 6,
+     "label": "stage_flagship",
+     "choice": {
+      "rifles": "torpedoes",
+      "cannons": "organ",
+      "cupolas": "axes",
+      "bombs": "fire",
+      "deck": "stock"
+     },
+     "far_views": "close_hero"
+    },
+    {
+     "shots": [
+      "pub_in"
+     ],
+     "ammo_report": true,
+     "fight": 30,
+     "after_fire": 6,
+     "label": "stage_flame",
+     "choice": {
+      "rifles": "thunderers",
+      "cannons": "flame",
+      "cupolas": "stock",
+      "bombs": "fire",
+      "deck": "stock"
+     },
+     "far_views": "close_guns"
+    }
+   ]
+  },
+  "panel_main": {
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 3400,
+   "wait_end_turn": 200,
+   "steps": [
+    {
+     "prog_state": "pn_start",
+     "expect": [
+      "slots=airship_hull_1,",
+      "rifles=empty",
+      "profile=player",
+      "deck=stock"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_no_barge",
+     "shot_as": "n_map_no_barge",
+     "expect": [
+      "button=inactive",
+      "Барки ещё нет",
+      "panel_open=false",
+      "upkeep=0/"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "return Q.hover_button()",
+     "label": "pn_no_barge_tip",
+     "shot_as": "n_button_no_barge",
+     "expect": [
+      "Прочный корпус"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.unhover_button(); Q.click_button(); return Q.state()",
+     "label": "pn_click_inactive",
+     "expect": [
+      "panel_open=false"
+     ]
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_state": "pn_hull2",
+     "expect": [
+      "unit=mtb_dwf_cha_malakai_thunderbarge",
+      "rifles=pirates",
+      "cannons=empty",
+      "bombs=empty",
+      "cupolas=empty",
+      "deck=stock",
+      "harpoon=empty"
+     ]
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_hull2_button",
+     "shot_as": "n_button_active",
+     "expect": [
+      "button=active",
+      "alert=true",
+      "rifles:empty+pirates,",
+      "upkeep=28/28"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "Q.click_button(); return Q.state()",
+     "label": "pn_open",
+     "shot_as": "n_panel_hull2",
+     "expect": [
+      "panel_open=true",
+      "rifles=Мстители-пираты[selected]",
+      ":pirates[selected]",
+      ":quarrellers[inactive]",
+      ":torpedoes[inactive]",
+      "alert=false"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "return Q.hover_row(\"quarrellers\")",
+     "label": "pn_locked_tip",
+     "shot_as": "n_tip_locked",
+     "expect": [
+      "Откроет постройка",
+      "Перезарядка",
+      "Содержание: 21"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"quarrellers\"); return Q.state()",
+     "label": "pn_click_locked",
+     "expect": [
+      "rifles=pirates",
+      ":quarrellers[inactive]"
+     ]
+    },
+    {
+     "panel": "Q.zone(\"cannons_1\"); return Q.state()",
+     "label": "pn_zone_cannons",
+     "expect": [
+      "selected=cannons",
+      ":clatter[inactive]"
+     ],
+     "absent": [
+      "plates=deck",
+      "deck=Команда"
+     ]
+    },
+    {
+     "panel": "Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_closed",
+     "shot_as": "n_closed",
+     "expect": [
+      "panel_open=false",
+      "panel_exists=false",
+      "button=active"
+     ]
+    },
+    {
+     "label": "pn_pirates",
+     "from_game": true,
+     "fight": 25,
+     "after_fire": 4,
+     "shots": false,
+     "abilities": false
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_build": "crew_weapons_1,engines_1,cargo_hold_1",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_state": "pn_chains",
+     "expect": [
+      "rifles=pirates",
+      "cannons=empty",
+      "bombs=empty",
+      "deck=stock",
+      "crew_weapons_1",
+      "engines_1",
+      "cargo_hold_1"
+     ]
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_chains_button",
+     "shot_as": "n_button_new",
+     "expect": [
+      "alert=true",
+      "rifles:empty+pirates+quarrellers",
+      "cannons:clatter+empty",
+      "bombs:empty+stock",
+      "deck:stock"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); return Q.state()",
+     "label": "pn_open2",
+     "shot_as": "n_panel_unlocked",
+     "expect": [
+      ":quarrellers[active]",
+      ":pirates[selected]"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"quarrellers\"); return Q.state()",
+     "label": "pn_order_rifles",
+     "shot_as": "n_panel_order",
+     "expect": [
+      "rifles=pirates",
+      "orders={rifles=quarrellers}",
+      ":quarrellers[ordered]",
+      ":pirates[selected]",
+      ":empty[inactive]",
+      "rifles=Мстители-пираты → Арбалетчики"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"empty\"); return Q.state()",
+     "label": "pn_order_refused",
+     "expect": [
+      "rifles=pirates",
+      "orders={rifles=quarrellers}",
+      ":empty[inactive]"
+     ]
+    },
+    {
+     "panel": "return Q.hover_row(\"empty\")",
+     "label": "pn_spent_tip",
+     "shot_as": "n_tip_spent",
+     "expect": [
+      "Уже менялся в этот ход"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.plate(\"cannons\"); Q.row(\"clatter\"); return Q.state()",
+     "label": "pn_order_cannons",
+     "expect": [
+      "cannons=empty",
+      "cannons=clatter",
+      ":clatter[ordered]",
+      "upkeep=28/"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "Q.plate(\"bombs\"); Q.row(\"stock\"); return Q.state()",
+     "label": "pn_order_bombs",
+     "expect": [
+      "bombs=stock",
+      ":stock[ordered]"
+     ]
+    },
+    {
+     "panel": "Q.row(\"empty\"); return Q.state()",
+     "label": "pn_order_back",
+     "shot_as": "n_panel_order_back",
+     "expect": [
+      "bombs=empty",
+      ":stock[inactive]",
+      ":empty[selected]"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"stock\"); return Q.state()",
+     "label": "pn_order_back_spent",
+     "expect": [
+      ":stock[inactive]"
+     ],
+     "absent": [
+      "bombs=stock"
+     ]
+    },
+    {
+     "panel": "Q.esc(); return \"esc\"",
+     "wait": 2
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_esc",
+     "expect": [
+      "panel_open=false",
+      "panel_exists=false",
+      "rifles=pirates",
+      "cannons=empty",
+      "status=applied",
+      "deck=stock"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "pn_same_turn",
+     "from_game": true,
+     "fight": 25,
+     "after_fire": 4,
+     "shots": false,
+     "abilities": false
+    },
+    {
+     "prog_state": "pn_after_same_turn",
+     "expect": [
+      "rifles=pirates",
+      "cannons=empty"
+     ]
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_limit_after_battle",
+     "expect": [
+      "orders={cannons=clatter, rifles=quarrellers}"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_order_done",
+     "expect": [
+      "rifles=quarrellers",
+      "cannons=clatter",
+      "orders={}",
+      "upkeep=165/165"
+     ]
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"bombs\"); Q.row(\"stock\"); return Q.state()",
+     "label": "pn_limit_reset",
+     "expect": [
+      "bombs=stock",
+      ":stock[ordered]"
+     ]
+    },
+    {
+     "panel": "Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_order_done2",
+     "expect": [
+      "bombs=stock",
+      "upkeep=275/275"
+     ]
+    },
+    {
+     "label": "pn_chosen",
+     "from_game": true,
+     "fight": 45,
+     "after_fire": 10,
+     "shots": [
+      "left"
+     ],
+     "abilities": false
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_gold_1"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_gold_2"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_gold_3"
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); Q.row(\"pirates\"); Q.close(); return Q.state()",
+     "label": "pn_back_to_pirates",
+     "expect": [
+      "orders={rifles=pirates}"
+     ],
+     "wait": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); Q.row(\"quarrellers\"); Q.close(); return Q.state()",
+     "label": "pn_order_doomed",
+     "expect": [
+      "rifles=pirates",
+      "orders={rifles=quarrellers}"
+     ],
+     "wait": 2
+    },
+    {
+     "prog_dismantle": "crew_weapons_1"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_order_gone",
+     "expect": [
+      "rifles=pirates",
+      "orders={}",
+      "rifles:empty+pirates,"
+     ]
+    },
+    {
+     "prog_dismantle": "cargo_hold_1"
+    },
+    {
+     "prog_state": "pn_demolish_active",
+     "expect": [
+      "bombs=empty",
+      "rifles=pirates",
+      "cannons=clatter"
+     ]
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"bombs\"); return Q.state()",
+     "label": "pn_demolished_panel",
+     "shot_as": "n_panel_demolished",
+     "expect": [
+      ":stock[inactive]",
+      "upkeep=172/172"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"empty\"); Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "panel": "return Q.message()",
+     "shot_as": "n_message",
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_mount": "off"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_on_foot",
+     "expect": [
+      "upkeep=0/"
+     ]
+    },
+    {
+     "prog_mount": "on"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_back_on",
+     "expect": [
+      "upkeep=172/172"
+     ]
+    },
+    {
+     "prog_build": "airship_hull_3",
+     "dev": 4
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_build": "airship_hull_4",
+     "dev": 8
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_build": "support_radius_1",
+     "dev": 4
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_build": "support_radius_2",
+     "dev": 4
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_state": "pn_harpoon_built",
+     "expect": [
+      "harpoon=empty",
+      "support_radius_2"
+     ]
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pn_harpoon_open",
+     "expect": [
+      "alert=true",
+      "harpoon:empty+on"
+     ]
+    },
+    {
+     "label": "pn_harpoon_off",
+     "from_game": true,
+     "fight": 15,
+     "after_fire": 3,
+     "shots": [
+      "nose",
+      "left"
+     ],
+     "late_shots": [
+      "nose"
+     ],
+     "abilities": false
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"harpoon\"); return Q.state()",
+     "label": "pn_harpoon_panel",
+     "shot_as": "n_panel_harpoon",
+     "expect": [
+      ":on[active]",
+      ":empty[selected]"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.row(\"on\"); return Q.state()",
+     "label": "pn_harpoon_order",
+     "shot_as": "n_panel_harpoon_on",
+     "expect": [
+      "orders={harpoon=on}",
+      ":on[ordered]",
+      "harpoon=empty"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "prog_state": "pn_harpoon_on_state",
+     "expect": [
+      "harpoon=on"
+     ]
+    },
+    {
+     "label": "pn_harpoon_on",
+     "from_game": true,
+     "fight": 15,
+     "after_fire": 3,
+     "shots": [
+      "nose",
+      "left"
+     ],
+     "late_shots": [
+      "nose"
+     ],
+     "abilities": true
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); Q.row(\"empty\"); Q.close(); return Q.state()",
+     "label": "pn_before_save",
+     "expect": [
+      "orders={rifles=empty}",
+      "rifles=pirates"
+     ],
+     "wait": 2
+    },
+    {
+     "save": "tww3_mtb_panel.save"
+    }
+   ]
+  },
+  "panel_load": {
+   "save": "tww3_mtb_panel.save",
+   "limit": 1500,
+   "assume": {
+    "rifles": "pirates",
+    "cannons": "clatter",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "stock",
+    "harpoon": "on"
+   },
+   "steps": [
+    {
+     "prog_state": "pl_loaded",
+     "expect": [
+      "rifles=pirates",
+      "cannons=clatter",
+      "bombs=empty",
+      "deck=stock",
+      "harpoon=on",
+      "crew_status=applied"
+     ]
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pl_state",
+     "shot_as": "l_map",
+     "expect": [
+      "button=active",
+      "orders={rifles=empty}",
+      "cannons:clatter+empty",
+      "harpoon:empty+on",
+      "upkeep=200/172"
+     ],
+     "wait": 1
+    },
+    {
+     "panel": "Q.click_button(); Q.plate(\"rifles\"); return Q.state()",
+     "label": "pl_order_kept",
+     "shot_as": "l_panel_order",
+     "expect": [
+      ":empty[ordered]",
+      ":pirates[selected]",
+      ":quarrellers[inactive]"
+     ],
+     "wait": 2
+    },
+    {
+     "panel": "Q.row(\"empty\"); Q.plate(\"harpoon\"); return Q.state()",
+     "label": "pl_panel_harpoon",
+     "shot_as": "l_panel_harpoon",
+     "expect": [
+      ":on[selected]"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.plate(\"cannons\"); return Q.state()",
+     "label": "pl_panel_cannons",
+     "shot_as": "l_panel_cannons",
+     "expect": [
+      ":clatter[selected]",
+      ":organ[inactive]",
+      "plates=bombs=Пусто"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "return Q.hover_row(\"clatter\")",
+     "label": "pl_tip_row",
+     "shot_as": "l_tip_row",
+     "expect": [
+      "Пулемёт",
+      "Содержание: 144"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "tww3_mtb_crew.set(\"rifles\", \"rakers\"); tww3_mtb_crew.set(\"cannons\", \"organ\"); tww3_mtb_crew.set(\"cupolas\", \"stock\"); tww3_mtb_crew.set(\"bombs\", \"stock\"); Q.plate(\"rifles\"); return Q.state()",
+     "label": "pl_full_view",
+     "shot_as": "l_panel_full",
+     "wait": 2
+    },
+    {
+     "panel": "Q.plate(\"cupolas\"); return Q.state()",
+     "shot_as": "l_panel_full_cupolas",
+     "wait": 1.5
+    },
+    {
+     "panel": "tww3_mtb_crew.set(\"rifles\", \"pirates\"); tww3_mtb_crew.set(\"cannons\", \"clatter\"); tww3_mtb_crew.set(\"cupolas\", \"empty\"); tww3_mtb_crew.set(\"bombs\", \"empty\"); Q.close(); return \"closed\"",
+     "wait": 2
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pl_closed",
+     "shot_as": "l_map_after",
+     "expect": [
+      "panel_open=false",
+      "panel_exists=false"
+     ],
+     "wait": 1
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "pl_battle",
+     "from_game": true,
+     "fight": 15,
+     "after_fire": 3,
+     "shots": [
+      "nose",
+      "left"
+     ],
+     "late_shots": [
+      "nose"
+     ],
+     "abilities": true
+    },
+    {
+     "prog_state": "pl_after_battle",
+     "expect": [
+      "rifles=pirates",
+      "cannons=clatter",
+      "harpoon=on"
+     ]
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pl_next_turn",
+     "expect": [
+      "rifles=empty",
+      "orders={}"
+     ]
+    }
+   ]
+  },
+  "panel_no_memreader": {
+   "save": "tww3_mtb_panel.save",
+   "limit": 900,
+   "memreader": false,
+   "steps": [
+    {
+     "prog_state": "pm_state",
+     "expect": [
+      "crew_status=stock:"
+     ]
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pm_panel",
+     "expect": [
+      "button=inactive",
+      "memreader Plus",
+      "panel_open=false"
+     ]
+    },
+    {
+     "panel": "return Q.hover_button()",
+     "label": "pm_tip",
+     "shot_as": "m_button_tip",
+     "expect": [
+      "memreader Plus"
+     ],
+     "wait": 1.5
+    },
+    {
+     "panel": "Q.unhover_button(); Q.click_button(); return Q.state()",
+     "label": "pm_click",
+     "shot_as": "m_after_click",
+     "expect": [
+      "panel_open=false"
+     ],
+     "wait": 1.5
+    },
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "label": "pm_battle",
+     "from_game": true,
+     "fight": 15,
+     "after_fire": 3,
+     "shots": [
+      "nose",
+      "left"
+     ],
+     "abilities": true
+    }
+   ]
+  },
+  "panel_check": {
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 900,
+   "wait_end_turn": 200,
+   "steps": [
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 5
+    },
+    {
+     "lua": "local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick() end; return b and 1 or 0"
+    },
+    {
+     "wait": 4
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pc_no_barge",
+     "expect": [
+      "button=inactive",
+      "Барки ещё нет",
+      "panel_open=false"
+     ],
+     "shot_as": "c_map_no_barge",
+     "wait": 1
+    },
+    {
+     "panel": "return Q.hover_button()",
+     "label": "pc_tip",
+     "shot_as": "c_tip_no_barge",
+     "expect": [
+      "Прочный корпус"
+     ],
+     "wait": 2
+    },
+    {
+     "panel": "Q.unhover_button(); Q.click_button(); return Q.state()",
+     "label": "pc_click",
+     "expect": [
+      "panel_open=false",
+      "button=inactive"
+     ],
+     "wait": 1
+    },
+    {
+     "wait": 3
+    },
+    {
+     "panel": "return Q.state()",
+     "label": "pc_after_click",
+     "expect": [
+      "button=inactive"
+     ]
+    },
+    {
+     "prog_build": "airship_hull_2",
+     "dev": 2
+    },
+    {
+     "prog_turn": 1
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 3
+    },
+    {
+     "panel": "tww3_mtb_crew.set(\"rifles\", \"rakers\"); tww3_mtb_crew.set(\"cannons\", \"organ\"); tww3_mtb_crew.set(\"cupolas\", \"stock\"); tww3_mtb_crew.set(\"bombs\", \"stock\"); tww3_mtb_crew.set(\"deck\", \"stock\"); Q.click_button(); Q.plate(\"cannons\"); return Q.state()",
+     "label": "pc_full_view",
+     "shot_as": "c_panel_full",
+     "wait": 2
+    },
+    {
+     "panel": "Q.close(); return \"closed\"",
+     "wait": 2
+    }
+   ]
   }
+ },
+ "far_views": {
+  "dists": [
+   25,
+   40,
+   60,
+   90,
+   130,
+   200,
+   300
+  ],
+  "burst_n": 10,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "gun",
+    "seat": "ap_cannon_left",
+    "az": -60,
+    "el": 8,
+    "frame": 10
+   },
+   {
+    "name": "wheel",
+    "seat": "ap_captain",
+    "az": -15,
+    "el": 25,
+    "frame": 7
+   },
+   {
+    "name": "open",
+    "seat": "ap_cannon_left",
+    "az": -60,
+    "el": 8,
+    "fov": 40,
+    "dists": [
+     40,
+     60,
+     90,
+     130,
+     200
+    ],
+    "burst": [
+     40,
+     60,
+     90,
+     200
+    ]
+   },
+   {
+    "name": "openw",
+    "seat": "ap_captain",
+    "az": -15,
+    "el": 25,
+    "fov": 40,
+    "dists": [
+     40,
+     90,
+     200
+    ],
+    "burst": [
+     90
+    ]
+   }
+  ]
+ },
+ "close_guns": {
+  "dists": [
+   7
+  ],
+  "burst_n": 10,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "side",
+    "seat": "ap_cannon_left",
+    "az": -100,
+    "el": 6,
+    "fov": 45,
+    "dists": [
+     7
+    ],
+    "burst": [
+     7
+    ]
+   },
+   {
+    "name": "front",
+    "seat": "ap_cannon_left",
+    "az": -15,
+    "el": 4,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "top",
+    "seat": "ap_cannon_left",
+    "az": -70,
+    "el": 55,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "far",
+    "seat": "ap_cannon_left",
+    "az": -75,
+    "el": 6,
+    "fov": 35,
+    "dists": [
+     16
+    ],
+    "burst": [
+     16
+    ]
+   },
+   {
+    "name": "open",
+    "seat": "centre",
+    "az": -60,
+    "el": 8,
+    "fov": 32,
+    "dists": [
+     55
+    ],
+    "burst": [
+     55
+    ]
+   }
+  ]
+ },
+ "close_drakes": {
+  "dists": [
+   60
+  ],
+  "burst_n": 12,
+  "burst_gap": 0.08,
+  "views": [
+   {
+    "name": "open",
+    "seat": "centre",
+    "az": -60,
+    "el": 10,
+    "fov": 50,
+    "dists": [
+     90
+    ],
+    "burst": [
+     90,
+     60
+    ]
+   },
+   {
+    "name": "rail",
+    "seat": "centre",
+    "az": -90,
+    "el": 10,
+    "fov": 40,
+    "dists": [
+     30
+    ],
+    "burst": [
+     30
+    ]
+   }
+  ]
+ },
+ "close_cupolas": {
+  "dists": [
+   8
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "front_side",
+    "seat": "ap_cupola_front",
+    "az": -90,
+    "el": 10,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "front_top",
+    "seat": "ap_cupola_front",
+    "az": -70,
+    "el": 65,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "rear_side",
+    "seat": "ap_cupola_rear",
+    "az": -90,
+    "el": 10,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "rear_top",
+    "seat": "ap_cupola_rear",
+    "az": -110,
+    "el": 65,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   }
+  ]
+ },
+ "close_bow": {
+  "dists": [
+   10,
+   30,
+   60,
+   100,
+   200
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "bow_tele",
+    "seat": "bow",
+    "az": -40,
+    "el": 20,
+    "frame": 9
+   },
+   {
+    "name": "bow_open",
+    "seat": "bow",
+    "az": -40,
+    "el": 20,
+    "fov": 40,
+    "dists": [
+     10,
+     30,
+     60
+    ]
+   }
+  ]
+ },
+ "close_bow2": {
+  "dists": [
+   6,
+   10,
+   15,
+   20,
+   30,
+   40,
+   60,
+   100
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "bow_back",
+    "seat": "bow",
+    "az": -165,
+    "el": 28,
+    "fov": 30
+   },
+   {
+    "name": "bow_top",
+    "seat": "bow",
+    "az": -120,
+    "el": 50,
+    "fov": 30,
+    "dists": [
+     6,
+     15,
+     30,
+     60
+    ]
+   }
+  ]
+ },
+ "close_top": {
+  "dists": [
+   8
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "front_side",
+    "seat": "ap_cupola_front",
+    "az": -90,
+    "el": 10,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "front_top",
+    "seat": "ap_cupola_front",
+    "az": -70,
+    "el": 65,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "rear_side",
+    "seat": "ap_cupola_rear",
+    "az": -90,
+    "el": 10,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "rear_top",
+    "seat": "ap_cupola_rear",
+    "az": -110,
+    "el": 65,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "pub",
+    "seat": "centre",
+    "az": -160,
+    "el": 22,
+    "fov": 40,
+    "dists": [
+     14
+    ]
+   },
+   {
+    "name": "deck",
+    "seat": "ap_captain",
+    "az": -110,
+    "el": 30,
+    "fov": 40,
+    "dists": [
+     10
+    ]
+   }
+  ]
+ },
+ "close_cont": {
+  "dists": [
+   16
+  ],
+  "burst_n": 12,
+  "burst_gap": 0.08,
+  "views": [
+   {
+    "name": "far",
+    "seat": "ap_cannon_left",
+    "az": -75,
+    "el": 6,
+    "fov": 35,
+    "dists": [
+     16
+    ],
+    "burst": [
+     16
+    ]
+   }
+  ]
+ },
+ "close_both": {
+  "dists": [
+   22
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "side",
+    "seat": "cup_mid",
+    "az": -90,
+    "el": 6,
+    "fov": 40,
+    "dists": [
+     22
+    ]
+   },
+   {
+    "name": "top",
+    "seat": "cup_mid",
+    "az": -90,
+    "el": 70,
+    "fov": 40,
+    "dists": [
+     22
+    ]
+   }
+  ]
+ },
+ "close_walk": {
+  "dists": [
+   8
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "rear_top",
+    "seat": "ap_cupola_rear",
+    "az": -110,
+    "el": 60,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "rear_side",
+    "seat": "ap_cupola_rear",
+    "az": -90,
+    "el": 10,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "front_top",
+    "seat": "ap_cupola_front",
+    "az": -70,
+    "el": 60,
+    "fov": 40,
+    "dists": [
+     8
+    ]
+   },
+   {
+    "name": "both",
+    "seat": "cup_mid",
+    "az": -90,
+    "el": 70,
+    "fov": 40,
+    "dists": [
+     22
+    ]
+   },
+   {
+    "name": "rail_left",
+    "seat": "centre",
+    "az": -90,
+    "el": 18,
+    "fov": 40,
+    "dists": [
+     12
+    ]
+   },
+   {
+    "name": "rail_right",
+    "seat": "centre",
+    "az": 90,
+    "el": 18,
+    "fov": 40,
+    "dists": [
+     12
+    ]
+   },
+   {
+    "name": "deck_aft",
+    "seat": "centre",
+    "az": 10,
+    "el": 30,
+    "fov": 45,
+    "dists": [
+     14
+    ]
+   },
+   {
+    "name": "pub",
+    "seat": "ap_captain",
+    "az": -140,
+    "el": 25,
+    "fov": 40,
+    "dists": [
+     9
+    ]
+   },
+   {
+    "name": "bombs",
+    "seat": "centre",
+    "az": -80,
+    "el": -30,
+    "fov": 45,
+    "dists": [
+     12
+    ]
+   },
+   {
+    "name": "wheel",
+    "seat": "ap_captain",
+    "az": -15,
+    "el": 25,
+    "fov": 40,
+    "dists": [
+     7
+    ]
+   }
+  ]
+ },
+ "close_hero": {
+  "dists": [
+   42
+  ],
+  "burst_n": 6,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "hero",
+    "seat": "centre",
+    "az": -60,
+    "el": 12,
+    "fov": 34,
+    "dists": [
+     42
+    ]
+   },
+   {
+    "name": "hero_r",
+    "seat": "centre",
+    "az": 60,
+    "el": 12,
+    "fov": 34,
+    "dists": [
+     42
+    ]
+   },
+   {
+    "name": "near",
+    "seat": "centre",
+    "az": -75,
+    "el": 14,
+    "fov": 38,
+    "dists": [
+     26
+    ]
+   },
+   {
+    "name": "gun",
+    "seat": "ap_cannon_left",
+    "az": -100,
+    "el": 6,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "wheel",
+    "seat": "ap_captain",
+    "az": -15,
+    "el": 25,
+    "fov": 40,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "cupolas",
+    "seat": "cup_mid",
+    "az": -90,
+    "el": 60,
+    "fov": 40,
+    "dists": [
+     22
+    ]
+   },
+   {
+    "name": "pub_view",
+    "seat": "centre",
+    "az": -160,
+    "el": 30,
+    "fov": 45,
+    "dists": [
+     14
+    ]
+   }
+  ]
  }
 }

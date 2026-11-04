@@ -176,7 +176,7 @@ def main(argv=None):
         info.wShowWindow = SW_SHOWMINNOACTIVE if args.minimized else SW_SHOWNOACTIVATE
         process = subprocess.Popen(f'"{rb.GAME / "Warhammer3.exe"}" {start_args}', cwd=rb.GAME, startupinfo=info)
         STATE.write_text(json.dumps({"pid": process.pid, "run": str(run), "started": started,
-                                     "x_res": settings.get("x_res", 2560), "y_res": settings.get("y_res", 1440)}), encoding="utf-8")
+                                     "x_res": int(settings.get("x_res", 2560)), "y_res": int(settings.get("y_res", 1440))}), encoding="utf-8")
         print(f"started PID {process.pid}, run {run}", flush=True)
         status = "timeout"
         behind = rb.capture.KeepBehind(process.pid, run / "window.log")

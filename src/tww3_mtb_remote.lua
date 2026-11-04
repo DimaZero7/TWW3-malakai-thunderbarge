@@ -138,7 +138,14 @@ end
 if mode == 'battle' then
     start(bm.tm)
 elseif mode == 'campaign' then
-    cm:add_first_tick_callback(function() start(cm.tm) end)
+    cm:add_first_tick_callback(function()
+        start(cm.tm)
+        for _, event in ipairs({'MissionSucceeded', 'MissionFailed', 'MissionCancelled'}) do
+            core:add_listener('tww3_mtb_remote_' .. event, event, true, function(context)
+                M.log('mission', event .. ' ' .. context:mission():mission_record_key())
+            end, true)
+        end
+    end)
 else
     core:add_ui_created_callback(function() start(core.tm) end)
 end

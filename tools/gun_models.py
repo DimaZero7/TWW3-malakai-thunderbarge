@@ -82,8 +82,87 @@ def convert_lod(meshes, spec, frames):
     return out
 
 
+def part_copy(mesh, part, place):
+    """One placed copy of a part: the source bones around their own axis, scaled across and along it. Rigid, on the gun's bone."""
+    bones = set(part["bones"])
+    new = rmv2.keep_triangles(mesh, lambda a, b, c: all(dominant_bone(mesh.verts[i]) in bones for i in (a, b, c)))
+    span = part.get("z")        # only this stretch of the source's length
+    if span and part.get("clamp"):     # low LODs have long triangles over the whole barrel: kept, and pressed into the stretch
+        new = rmv2.keep_triangles(new, lambda a, b, c: any(new.verts[i].z >= span[0] for i in (a, b, c)))
+        for v in new.verts:
+            v.z = min(max(v.z, span[0]), span[1])
+    elif span:
+        new = rmv2.keep_triangles(new, lambda a, b, c: all(span[0] <= new.verts[i].z <= span[1] for i in (a, b, c)))
+    return new
+
+
+def part_levels(part, default_bind):
+    """One mesh per level of a part of a gun, placed by its recipe (see assemble). None on a level where the source has nothing."""
+    model = rmv2.load(game_file(part["source"]))
+    bones = set(part["bones"])
+    ref = [v for m in model["lods"][0] for v in m.verts if dominant_bone(v) in bones]
+    span = part.get("z") or (min(v.z for v in ref), max(v.z for v in ref))
+    ref = [v for v in ref if span[0] <= v.z <= span[1]]
+    axis = part.get("axis_z") or span      # the stretch whose middle is the part's axis: a barrel's front, not the lock on top of it
+    around = [v for v in ref if axis[0] <= v.z <= axis[1]] or ref
+    cx = (min(v.x for v in around) + max(v.x for v in around)) / 2
+    cy = (min(v.y for v in around) + max(v.y for v in around)) / 2
+    z0 = min(v.z for v in ref)
+    out = []
+    for source_lod in part["lods"]:
+        merged = None
+        for mesh in model["lods"][source_lod]:
+            for dx, dy in part.get("copies", [[0, 0]]):
+                one = part_copy(mesh, part, None)
+                for v in one.verts:
+                    if not part.get("keep_place"):
+                        v.x = (v.x - cx) * part["across"] + dx
+                        v.y = (v.y - cy) * part["across"] + dy
+                        v.z = (v.z - z0) * part["along"] + part["z_to"]
+                    v.rebind(BONE[part.get("bind", default_bind)])
+                one.attachments = list(ATTACHMENTS)
+                if merged is None:
+                    merged = one
+                else:
+                    rmv2.append(merged, one)
+        out.append(merged if merged is not None and merged.tris else None)
+    return out, model
+
+
+def assemble(name, spec):
+    """A gun built of parts of several models. spec["parts"]: source, material, bones, lods (source LOD per level), across, along (scales), z_to (where
+    the part's rear goes on the barrel's axis), z (the stretch of the source to take), axis_z, copies [[dx, dy], ...]. Each part is one mesh of its own material."""
+    levels = len(STOCK_DISTANCES)
+    result = {"skeleton": SKELETON, "lods": [[] for _ in range(levels)]}
+    materials = {i: [] for i in range(levels)}     # a part with no triangles on a low level is left out of that level
+    for part in spec["parts"]:
+        meshes, model = part_levels(part, spec.get("bind", "cannon_0"))
+        result.setdefault("version", model["version"])
+        for level, mesh in enumerate(meshes):
+            if mesh is not None:
+                result["lods"][level].append(mesh)
+                materials[level].append(part["material"])
+    result["lod_headers"] = [struct.pack("<fI", d, level) + model["lod_headers"][0][8:] for level, d in enumerate(STOCK_DISTANCES)]
+    path = f"{FOLDER}/tww3_mtb_{name}"
+    rm = rmv2.save(result)
+    ws = rmv2.wsmodel(path + ".rigid_model_v2", materials)
+    back = rmv2.load(rm)
+    bones = {dominant_bone(v) for meshes in back["lods"] for m in meshes for v in m.verts}
+    if back["skeleton"] != SKELETON or not bones <= set(BONE.values()):
+        raise SystemExit(f"{name}: read back: skeleton {back['skeleton']}, bones {bones}")
+    target = OUT / Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.with_suffix(".rigid_model_v2").write_bytes(rm)
+    target.with_suffix(".wsmodel").write_bytes(ws)
+    bb = rmv2.bounding_box([v for m in back["lods"][0] for v in m.verts])
+    print(json.dumps({"name": name, "bytes": len(rm), "tris_by_lod": [sum(len(m.tris) for m in meshes) for meshes in back["lods"]], "box": [round(x, 2) for x in bb]}))
+    return target
+
+
 def build(name):
     spec = SPEC[name]
+    if spec.get("parts"):
+        return assemble(name, spec)
     model = rmv2.load(game_file(spec["source"]))
     # The axes come from LOD 0, so that every LOD moves the same way.
     frames = {}
@@ -122,9 +201,19 @@ def build(name):
                 mesh.attachments = [ATTACHMENTS[0]]
                 for v in mesh.verts:
                     v.rebind(0)
+    if spec.get("mount"):       # parts of a real mount around a gun cut from a whole model: the ball in the port, the sleeve
+        by_level = {i: list(materials) for i in range(len(result["lods"]))}
+        for part in spec["mount"]:
+            meshes, _ = part_levels(part, "cannon_0")
+            for level, mesh in enumerate(meshes[:len(result["lods"])]):
+                if mesh is not None:
+                    result["lods"][level].append(mesh)
+                    by_level[level].append(part["material"])
+    else:
+        by_level = {i: materials for i in range(len(keep))}
     path = f"{FOLDER}/tww3_mtb_{name}"
     rm = rmv2.save(result)
-    ws = rmv2.wsmodel(path + ".rigid_model_v2", {i: materials for i in range(len(keep))})
+    ws = rmv2.wsmodel(path + ".rigid_model_v2", by_level)
     # Read back: the file must parse, on our skeleton, with only the bound bone.
     back = rmv2.load(rm)
     bones = {dominant_bone(v) for meshes in back["lods"] for m in meshes for v in m.verts}

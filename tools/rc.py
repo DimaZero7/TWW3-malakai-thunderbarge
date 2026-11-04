@@ -9,6 +9,7 @@
 """
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -33,9 +34,16 @@ def send(code, wait):
     state()
     n = int(COUNTER.read_text()) + 1 if COUNTER.exists() else 1
     COUNTER.write_text(str(n))
-    temp = CMD.with_suffix(".tmp")
+    temp = CMD.with_name(f"{CMD.stem}.{os.getpid()}.tmp")    # a session's own steps may be sending at the same moment
     temp.write_text(f"--id {n}\n{code}\n", encoding="utf-8")
-    temp.replace(CMD)
+    for attempt in range(40):       # the game may have the file open for its poll at this moment
+        try:
+            temp.replace(CMD)
+            break
+        except PermissionError:
+            if attempt == 39:
+                raise
+            time.sleep(0.1)
     end = time.time() + wait
     while time.time() < end:
         if RC.exists():
@@ -67,6 +75,7 @@ def main():
         print(state())
     elif args.shot:
         s = state()
+        capture.unminimize_behind(s["pid"])
         hwnd = capture.find_window(s["pid"])
         if not hwnd:
             raise SystemExit("no window")

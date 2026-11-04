@@ -14,6 +14,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import cannon_meta  # noqa: E402
+import crew_ui  # noqa: E402
 import gamepack  # noqa: E402
 import gun_models  # noqa: E402
 import hull_parts  # noqa: E402
@@ -25,6 +26,7 @@ HULL_TABLE = "zeppelin01_dlc25_thunderbarge_grungni"
 HULL_VARIANT = "wh3_dlc25_dwf_mnt_veh_thunderbarge_grungni"
 HULL_MOUNT = "wh3_dlc25_dwf_mnt_veh_thunderbarge_grungni"
 OWN_HULL = "mtb_mnt_thunderbarge_grungni"
+NO_HARPOON_MOUNT = "mtb_mnt_thunderbarge_no_harpoon"
 TAG = re.compile(rb"([\x04-\x20])\x00([A-Z_]{4,32})")
 
 
@@ -73,6 +75,8 @@ def option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo,
     seat_details = group.get("seat_details", {})
     if opt.get("empty"):
         return {seat: EMPTY_ROW for seat in group["seats"]}, files
+    if opt.get("ability"):      # no seat of its own: src/tww3_mtb_crew.lua turns the ability on and off with an effect bundle
+        return {}, files
     variant = opt.get("variant")
     if opt.get("vmd") or opt.get("variant_file"):
         variant = f"mtb_v_{key}"
@@ -256,16 +260,45 @@ def hull_files():
     return files
 
 
+def hull_without_harpoon(table):
+    """A copy of the hull's animation table with the harpoon out of its metadata. The harpoon is an ANIMATED_PROP of the table's persistent metadata and of
+    some animations, not part of the hull. Same-length new names, as tools/cannon_meta.py: a new table through the .animpack is what the game takes.
+    Returns {pack path: bytes}."""
+    stock = cannon_meta.game_file(cannon_meta.BIN.format(HULL_TABLE))
+    bin_bytes = stock.replace(HULL_TABLE.encode(), table.encode(), 1)
+    paths = sorted({m.decode() for m in re.findall(rb"animations/[A-Za-z0-9_/.\-]+?\.anm\.meta", stock)})
+    files = {}
+    for path in paths:
+        try:
+            meta = cannon_meta.game_file(path)
+        except SystemExit:
+            continue
+        if b"dwf_thunderbarge_harpoon" not in meta:
+            continue
+        version, entries = cannon_meta.split(meta)
+        kept = [e for e in entries if not (cannon_meta.name_of(e) == b"ANIMATED_PROP" and b"dwf_thunderbarge_harpoon" in e)]
+        folder, _, name = path.rpartition("/")
+        if not name.startswith("zeppelin01_"):
+            raise SystemExit(f"cannot rename {path} with its length kept")
+        renamed = folder + "/" + "mtb_zep_nh_" + name.removeprefix("zeppelin01_")
+        bin_bytes = bin_bytes.replace(path.encode(), renamed.encode())
+        files[renamed.replace("/", SEP)] = struct.pack("<II", version, len(kept)) + b"".join(kept)
+    if not files:
+        raise SystemExit("no harpoon found in the hull's metadata: the game changed")
+    files[cannon_meta.BIN.format(table).replace("/", SEP)] = bin_bytes
+    return files
+
+
 def to_lua(v):
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
         return repr(v)
     if isinstance(v, str):
-        return json.dumps(v)
+        return json.dumps(v, ensure_ascii=False)      # Lua has no \\u escapes
     if isinstance(v, list):
         return "{" + ", ".join(to_lua(x) for x in v) + "}"
-    return "{" + ", ".join(f"[{json.dumps(k)}] = {to_lua(x)}" for k, x in sorted(v.items())) + "}"
+    return "{" + ", ".join(f"[{json.dumps(k, ensure_ascii=False)}] = {to_lua(x)}" for k, x in sorted(v.items())) + "}"
 
 
 def weapon_upgrades(t, stock, unit, ammo, own_stats):
@@ -299,6 +332,24 @@ def ammo_module(t, stock, unit, barge, ammo):
     return source.replace(marker, f"local CONFIG = {to_lua(data)}").encode("utf-8")
 
 
+def building_bindings(stock):
+    """data/crew_options.json "buildings" for the Lua module: full key -> group, option. levels: chain and level of every level of the
+    chains in the table, so the module can tell that a bound building counts as standing when a higher level of its chain replaced it."""
+    prefix = CONFIG["buildings_prefix"]
+    rows = {r["level_name"]: r for r in stock["building_levels"]}
+    bindings = {}
+    for short, (group, option) in CONFIG["buildings"].items():
+        key = prefix + short
+        if key not in rows:
+            raise SystemExit(f"crew_options.json: no building {key}")
+        if option not in CONFIG["groups"].get(group, {}).get("options", {}):
+            raise SystemExit(f"crew_options.json: {short}: no option {group} / {option}")
+        bindings[key] = {"group": group, "option": option}
+    chains = {rows[key]["chain"] for key in bindings}
+    levels = {key: {"chain": r["chain"], "level": r["level"]} for key, r in rows.items() if r["chain"] in chains}
+    return bindings, levels
+
+
 def extend(t, stock, unit, barge, table_name_check=True):
     """Adds the rows of all options to the tables t. Returns {pack path: bytes}, with the Lua module."""
     stock_seat = {r["riders_attachment_point"]: r["battle_personality"]
@@ -319,13 +370,28 @@ def extend(t, stock, unit, barge, table_name_check=True):
             if row["key"] == unit:
                 row["mount"] = OWN_HULL
         files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{OWN_HULL}.variantmeshdefinition"] = hull_parts.variant_definition(hull_parts.SPEC["out"] + ".wsmodel")
+        # The same hull without the harpoon on it: src/tww3_mtb_crew.lua points the land unit at this mount while the harpoon is not chosen.
+        table = HULL_TABLE.replace("zeppelin01", "zepnoharp1")
+        files.update(hull_without_harpoon(table))
+        t["battle_animations_table"].append({"key": table, "skeleton": "zeppelin01"})
+        t["mounts"].append(dict(like_mount, key=NO_HARPOON_MOUNT, variant=OWN_HULL, animation=table))
     like_empty = one(stock["battle_personalities"], key=CONFIG["empty_like"])
     t["battle_personalities"].append(dict(like_empty, key=EMPTY_ROW))
     seats = {}
     ammo, own_stats = {}, {}
-    data = {"land_unit": unit, "seat_count": len(stock_seat), "groups": {}, "seats": seats, "fixed": {s: stock_seat[s] for s in fixed}}
+    bindings, levels = building_bindings(stock)
+    prefix = CONFIG["buildings_prefix"]
+    data = {"land_unit": unit, "seat_count": len(stock_seat), "groups": {}, "seats": seats, "fixed": {s: stock_seat[s] for s in fixed},
+            "upkeep": {g: {k: crew_ui.upkeep(o, stock) for k, o in spec["options"].items()} for g, spec in CONFIG["groups"].items()},
+            "buildings": bindings, "levels": levels, "auto_active": {prefix + short: True for short in CONFIG["auto_active"]}, "panel_building": prefix + CONFIG["auto_active"][0]}
     for group_key, group in CONFIG["groups"].items():
-        data["groups"][group_key] = {"start": group["start"], "options": sorted(group["options"]), "seats": group["seats"]}
+        data["groups"][group_key] = {"start": group["start"], "start_ai": group["start_ai"], "options": sorted(group["options"]), "seats": group["seats"]}
+        for field in ("always", "off_bundle"):
+            if group.get(field):
+                data["groups"][group_key][field] = group[field]
+        if group.get("off_bundle"):     # the model goes with the ability
+            data["groups"][group_key]["mount_on"] = OWN_HULL
+            data["groups"][group_key]["mount_off"] = NO_HARPOON_MOUNT
         ammo[group_key] = {}
         for key, opt in group["options"].items():
             rows_of_option, definition_files = option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo, own_stats)
@@ -336,13 +402,13 @@ def extend(t, stock, unit, barge, table_name_check=True):
     weapon_upgrades(t, stock, unit, ammo, own_stats)
     if CONFIG.get("remove_bow_figure"):
         files.update(hull_files())
-    # Every seat starts with its own row of the group's first option, so that without memreader Plus the unit is still right.
+    # The tables hold the stock crew: without memreader Plus, or before the module has written, the unit is the stock barge.
     for row in t["land_units_to_battle_personalities_junctions"]:
         if row["land_unit"] == unit:
             for group in CONFIG["groups"].values():
                 seat = row["riders_attachment_point"]
                 if seat in group["seats"]:
-                    row["battle_personality"] = seats[seat][group["start"]]
+                    row["battle_personality"] = seats[seat][group["start_ai"]]
     files.update(cannon_meta.animpack(files))
     known = {r["key"] for r in stock["battle_personalities"]} | {r["key"] for r in t["battle_personalities"]}
     for seat, options in seats.items():
@@ -354,5 +420,11 @@ def extend(t, stock, unit, barge, table_name_check=True):
     if marker not in source:
         raise SystemExit("config marker not in src/tww3_mtb_crew.lua")
     files[f"script{SEP}campaign{SEP}mod{SEP}tww3_mtb_crew.lua"] = source.replace(marker, f"local CONFIG = {to_lua(data)}").encode("utf-8")
+    panel = (REPO / "src" / "tww3_mtb_crew_ui.lua").read_text(encoding="utf-8")
+    panel_marker = "local DATA = {} --@CONFIG@"
+    if panel_marker not in panel:
+        raise SystemExit("config marker not in src/tww3_mtb_crew_ui.lua")
+    files[f"script{SEP}campaign{SEP}mod{SEP}tww3_mtb_crew_ui.lua"] = panel.replace(panel_marker, f"local DATA = {to_lua(crew_ui.data(CONFIG, t, stock, bindings))}").encode("utf-8")
+    files.update(crew_ui.files())
     files[f"script{SEP}battle{SEP}mod{SEP}tww3_mtb_ammo.lua"] = ammo_module(t, stock, unit, barge, ammo)
     return files

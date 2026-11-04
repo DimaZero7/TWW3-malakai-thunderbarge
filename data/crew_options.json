@@ -1,5 +1,5 @@
 {
- "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what a new campaign begins with. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua).",
+ "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself, so the barge is not useless. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md).",
  "empty_like": "wh3_dlc23_chd_veh_hidden_rider",
  "remove_bow_figure": false,
  "fixed_seats": [
@@ -22,21 +22,44 @@
     "ap_crew_right_upper_0",
     "ap_crew_right_upper_1"
    ],
-   "start": "stock",
+   "start": "empty",
+   "start_ai": "stock",
    "options": {
     "empty": {
-     "empty": true
+     "empty": true,
+     "ui": {
+      "name": "Пусто",
+      "about": "Места у борта свободны."
+     }
     },
     "stock": {
      "stock": true,
-     "ammo": 40
+     "ammo": 1450,
+     "ammo_source": "barge: secondary_ammo 50 x 29, all on the rifle seats",
+     "ui": {
+      "hidden": true
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_veh_thunderbarge",
+      "count": 12
+     }
     },
     "rakers": {
      "variant_file": "dwf_thunderers_grudge_rakers",
      "variant_like": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
      "scale": 1.15,
      "table": "hu3_dlc25_zeppelin01_crew_rifle",
-     "ammo": 40
+     "ammo": 1450,
+     "ammo_source": "barge: secondary_ammo 50 x 29, all on the rifle seats",
+     "ui": {
+      "name": "Злопыхатели",
+      "card": "wh3_dlc25_dwf_inf_thunderers_grudger_raker",
+      "about": "Многоствольные ружья: залп из трёх пуль дважды."
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
+      "count": 12
+     }
     },
     "thunderers": {
      "variant_file": "dwf_thunderers",
@@ -49,7 +72,17 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 40
+     "ammo": 264,
+     "ammo_source": "wh_main_dwf_inf_thunderers_0: 22 x 12 seats",
+     "ui": {
+      "name": "Громобои",
+      "card": "wh_main_dwf_thunderers",
+      "about": "Ружья: пробивают броню."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_inf_thunderers_0",
+      "count": 12
+     }
     },
     "pirates": {
      "variant_file": "dwf_slayer_pirates",
@@ -62,7 +95,17 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 40
+     "ammo": 96,
+     "ammo_source": "wh3_dlc25_dwf_inf_slayer_pirates: 8 x 12",
+     "ui": {
+      "name": "Мстители-пираты",
+      "card": "wh3_dlc25_dwf_inf_slayer_pirates",
+      "about": "Пистоли: быстро, близко, запас мал."
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_inf_slayer_pirates",
+      "count": 12
+     }
     },
     "quarrellers": {
      "variant_file": "dwf_quarrellers",
@@ -75,20 +118,17 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 40
-    },
-    "irondrakes": {
-     "vmd": "irondrake_prop3.vmd",
-     "variant_like": "wh_dwf_irondrakes",
-     "scale": 1.15,
-     "table": "hu3_dlc25_zeppelin01_crew_rifle",
-     "weapon": "wh_main_dwf_drakegun",
-     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_grudge_raker_grungni",
-     "projectile": {},
-     "weapon_fields": {
-      "use_secondary_ammo_pool": true
+     "ammo": 264,
+     "ammo_source": "wh_main_dwf_inf_quarrellers_0: 22 x 12",
+     "ui": {
+      "name": "Арбалетчики",
+      "card": "wh_main_dwf_quarrellers",
+      "about": "Арбалеты: далеко, урон обычный."
      },
-     "ammo": 40
+     "upkeep_from": {
+      "unit": "wh_main_dwf_inf_quarrellers_0",
+      "count": 12
+     }
     },
     "torpedoes": {
      "vmd": "torpedo_prop3.vmd",
@@ -101,8 +141,22 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 40
+     "ammo": 216,
+     "ammo_source": "wh_main_dwf_inf_irondrakes_2: 18 x 12",
+     "ui": {
+      "name": "Ящеры с торпедами",
+      "card": "wh_main_dwf_irondrakes_troll_hammer",
+      "about": "Троллебойные торпеды: редкие тяжёлые выстрелы."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_inf_irondrakes_2",
+      "count": 12
+     }
     }
+   },
+   "ui": {
+    "name": "Стрелки",
+    "about": "12 мест: по бортам вдоль палубы и на носу."
    }
   },
   "cannons": {
@@ -110,41 +164,115 @@
     "ap_cannon_left",
     "ap_cannon_right"
    ],
-   "start": "stock",
+   "start": "empty",
+   "start_ai": "stock",
    "options": {
     "empty": {
-     "cover": "cap"
+     "cover": "cap",
+     "ui": {
+      "name": "Пусто",
+      "about": "Порты закрыты, казённик без ствола."
+     }
     },
     "stock": {
      "stock": true,
-     "ammo": 30
+     "ammo": 290,
+     "ammo_source": "barge: primary_ammo 40 x 29 over 8 firing seats = 145 x 2",
+     "ui": {
+      "name": "Пушка барки",
+      "card": "wh_main_dwf_cannon",
+      "about": "Тяжёлое ядро, бьёт по одной цели."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_art_cannon",
+      "count": 2
+     }
     },
     "flaming": {
      "weapon": "wh3_dlc25_dwf_thunderbarge_cannon_flaming",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 30
+     "ammo": 290,
+     "ammo_source": "barge: as stock",
+     "ui": {
+      "name": "Огненные снаряды",
+      "card": "wh3_dlc25_dwf_art_flame_cannon_grudge_unit",
+      "about": "Пушка барки с разрывными огненными снарядами."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_art_cannon",
+      "count": 2
+     }
     },
     "organ": {
      "gun": "organ",
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_organ_gun",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 30
+     "ammo": 192,
+     "ammo_source": "wh_main_dwf_art_organ_gun: 96 per gun x 2",
+     "ui": {
+      "name": "Органное орудие",
+      "card": "wh_main_dwf_organ_gun",
+      "about": "Четыре ствола подряд, самая большая дальность."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_art_organ_gun",
+      "count": 2
+     }
     },
     "clatter": {
      "gun": "clatter",
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_clatter_gun",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 30
+     "ammo": 480,
+     "ammo_source": "wh_main_dwf_veh_gyrobomber: 240 per craft x 2",
+     "ui": {
+      "name": "Пулемёт",
+      "card": "wh_main_dwf_gyrocopter",
+      "about": "Очередь из восьми пуль с малым взрывом."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_veh_gyrobomber",
+      "count": 2
+     }
     },
     "flame": {
      "gun": "flame",
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_flame_cannon",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 30
+     "ammo": 300,
+     "ammo_source": "wh_main_dwf_art_flame_cannon: 150 per gun x 2",
+     "ui": {
+      "name": "Огненная пушка",
+      "card": "wh_main_dwf_flame_cannon",
+      "about": "Огненные снаряды очередью, большая дальность."
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_art_flame_cannon",
+      "count": 2
+     }
+    },
+    "brimstone": {
+     "gun": "brimstone",
+     "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
+     "weapon": "wh_main_dwf_copter_brimstone_gun",
+     "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
+     "ammo": 120,
+     "ammo_source": "wh_main_dwf_veh_gyrocopter_1: 60 per craft x 2",
+     "ui": {
+      "hidden": true
+     },
+     "upkeep_from": {
+      "unit": "wh_main_dwf_veh_gyrocopter_1",
+      "count": 2
+     }
     }
+   },
+   "ui": {
+    "name": "Пушки",
+    "about": "2 орудия в носу, по одному на борт."
    }
   },
   "cupolas": {
@@ -152,14 +280,29 @@
     "ap_cupola_front",
     "ap_cupola_rear"
    ],
-   "start": "stock",
+   "start": "empty",
+   "start_ai": "stock",
    "options": {
     "empty": {
-     "empty": true
+     "empty": true,
+     "ui": {
+      "name": "Пусто",
+      "about": "В кольцах никого нет."
+     }
     },
     "stock": {
      "stock": true,
-     "ammo": 30
+     "ammo": 290,
+     "ammo_source": "barge: 145 x 2",
+     "ui": {
+      "name": "Гранаты",
+      "card": "wh_main_dwf_miners_blasting_charges",
+      "about": "Гранатомётчики: взрыв с большим радиусом."
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_veh_thunderbarge",
+      "count": 2
+     }
     },
     "axes": {
      "vmd": "cupola_axes.vmd",
@@ -181,11 +324,25 @@
       "spread": 3.0,
       "base_reload_time": 5.0
      },
-     "ammo": 30
+     "ammo": 24,
+     "ammo_source": "wh_dlc06_dwf_inf_rangers_1: 12 x 2",
+     "ui": {
+      "name": "Топоры",
+      "card": "wh_dlc06_dwf_rangers",
+      "about": "Три топора за бросок, запас мал."
+     },
+     "upkeep_from": {
+      "unit": "wh_dlc06_dwf_inf_rangers_1",
+      "count": 2
+     }
     }
    },
    "seat_details": {
     "ap_cupola_front": "rings"
+   },
+   "ui": {
+    "name": "Купола",
+    "about": "2 башенки на шаре: спереди и сзади."
    }
   },
   "bombs": {
@@ -195,23 +352,56 @@
     "ap_bomb_bay_right_front",
     "ap_bomb_bay_right_rear"
    ],
-   "start": "stock",
+   "start": "empty",
+   "start_ai": "stock",
    "options": {
     "empty": {
      "cover_by_side": {
       "left": "door_left",
       "right": "door_right"
+     },
+     "ui": {
+      "name": "Пусто",
+      "about": "Двери закрыты."
      }
     },
     "stock": {
      "stock": true,
-     "ammo": 20
+     "ammo": 580,
+     "ammo_source": "barge: 145 x 4",
+     "ui": {
+      "name": "Бомбы",
+      "card": "wh_main_dwf_gyrobomber",
+      "about": "Тяжёлая бомба с большим радиусом.",
+      "range_text": "под баркой"
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_veh_thunderbarge",
+      "count": 4
+     }
     },
     "fire": {
      "weapon": "wh3_dlc25_dwf_thunderbarge_fire_bomb",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_bomb",
-     "ammo": 20
+     "ammo": 580,
+     "ammo_source": "barge: as stock",
+     "ui": {
+      "name": "Огненные бомбы",
+      "card": "wh3_dlc25_dwf_inf_slayers_grudge_unit",
+      "about": "Делится на 4 горящих осколка.",
+      "range_text": "под баркой",
+      "damage_text": "осколок: взрыв 30+15",
+      "radius": 5
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_veh_thunderbarge",
+      "count": 4
+     }
     }
+   },
+   "ui": {
+    "name": "Люки",
+    "about": "4 люка в днище, по паре спереди и сзади. Бомбы падают прямо под барку."
    }
   },
   "deck": {
@@ -225,18 +415,130 @@
     "ap_pub_right_rear"
    ],
    "start": "stock",
+   "start_ai": "stock",
    "options": {
     "empty": {
-     "empty": true
+     "empty": true,
+     "ui": {
+      "name": "Пусто",
+      "about": "На палубе только Малакай."
+     }
     },
     "stock": {
-     "stock": true
+     "stock": true,
+     "ui": {
+      "name": "Команда",
+      "card": "wh_main_dwf_warriors",
+      "about": "Кочегар, дозорный и завсегдатаи паба."
+     }
     }
    },
    "seat_details": {
     "ap_crew_barrel": "pub"
+   },
+   "ui": {
+    "name": "Палуба",
+    "about": "7 мест: кочегар и дозорный на корме, паб под ними. Стоят всегда, пока есть барка."
+   },
+   "always": "stock"
+  },
+  "harpoon": {
+   "seats": [],
+   "start": "empty",
+   "start_ai": "on",
+   "off_bundle": "mtb_bundle_harpoon_off",
+   "ui": {
+    "name": "Гарпун",
+    "about": "Стрела на носу шара: способность «Копьё Грунгни» в бою."
+   },
+   "options": {
+    "empty": {
+     "empty": true,
+     "ui": {
+      "name": "Пусто",
+      "about": "Стрела снята, способности в бою нет."
+     }
+    },
+    "on": {
+     "ability": "wh3_dlc25_unit_abilities_spear_of_grungni",
+     "ui": {
+      "name": "Гарпун",
+      "own_card": "card_harpoon",
+      "about": "1 выстрел за бой, дальность 300 м, как на стоковой барке."
+     },
+     "upkeep_from": {
+      "unit": "wh3_dlc25_dwf_veh_thunderbarge",
+      "count": 1
+     }
+    }
    }
   }
  },
- "own_hull": true
+ "own_hull": true,
+ "buildings_prefix": "wh3_dlc25_dwarf_spirit_of_grungni_",
+ "buildings": {
+  "airship_hull_2": [
+   "rifles",
+   "pirates"
+  ],
+  "airship_hull_3": [
+   "cannons",
+   "stock"
+  ],
+  "crew_weapons_1": [
+   "rifles",
+   "quarrellers"
+  ],
+  "crew_weapons_2": [
+   "rifles",
+   "thunderers"
+  ],
+  "crew_weapons_3": [
+   "rifles",
+   "rakers"
+  ],
+  "support_radius_1": [
+   "rifles",
+   "torpedoes"
+  ],
+  "engines_1": [
+   "cannons",
+   "clatter"
+  ],
+  "engines_2": [
+   "cannons",
+   "flame"
+  ],
+  "engines_3": [
+   "cannons",
+   "organ"
+  ],
+  "cargo_hold_1": [
+   "bombs",
+   "stock"
+  ],
+  "cargo_hold_2": [
+   "cannons",
+   "flaming"
+  ],
+  "cargo_hold_3": [
+   "bombs",
+   "fire"
+  ],
+  "beer_hall_2": [
+   "cupolas",
+   "stock"
+  ],
+  "beer_hall_3": [
+   "cupolas",
+   "axes"
+  ],
+  "support_radius_2": [
+   "harpoon",
+   "on"
+  ]
+ },
+ "auto_active": [
+  "airship_hull_2"
+ ]
 }

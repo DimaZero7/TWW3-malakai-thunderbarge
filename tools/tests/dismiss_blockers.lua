@@ -7,12 +7,13 @@ if a then
 end
 local d = mtb.find("diplomacy_dropdown", true)
 if d then
-  local b = mtb.find("button_reject", true, d) or mtb.find("button_decline", true, d) or mtb.find("button_accept", true, d)
+  local b = mtb.find("button_reject", true, d) or mtb.find("button_decline", true, d) or mtb.find("button_cancel", true, d) or mtb.find("button_close", true, d) or mtb.find("button_accept", true, d)
   if b then out.diplomacy = b:Id(); b:SimulateLClick() end
 end
 for _ = 1, 6 do
   local events = mtb.find("events", true)
-  local b = events and mtb.find("button_accept", true, events)
+  -- A dilemma stops the turn too: its first choice.
+  local b = events and (mtb.find("choice_button", true, events) or mtb.find("button_accept", true, events))
   if not b then break end
   b:SimulateLClick()
   out.events = (out.events or 0) + 1

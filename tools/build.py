@@ -130,8 +130,7 @@ def derive(g, pattern):
             if row["ability"] not in seen:
                 seen.add(row["ability"])
                 abilities.append(dict(row, land_unit=UNIT))
-    gone = set(json.loads((DATA / "malakai_removed_skills.json").read_text(encoding="utf-8"))["remove_from_unit"])
-    t["land_units_to_unit_abilites_junctions"] = [r for r in abilities if r["ability"] not in gone]
+    t["land_units_to_unit_abilites_junctions"] = abilities
 
     t["unit_attributes_groups"] = [{"group_name": UNIT}]
     attrs = {r["attribute"] for r in g["unit_attributes_to_groups_junctions"] if r["attribute_group"] == BARGE}
@@ -271,39 +270,15 @@ SUBTYPE = "wh3_dlc25_dwf_malakai_makaisson"
 UNIT_SET = "mtb_dwf_malakai_thunderbarge"
 SUMMON_SET = "dwf_spirit_of_grungni_summon"
 SUMMON_EFFECT = "wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1"
+HORDE_BUILDINGS = "wh3_dlc25_dwarf_spirit_of_grungni_"
+HULL_CHAIN = "wh3_dlc25_dwf_spirit_of_grungni_main_chain"
 CAMPAIGN_PACK = "tww3_mtb_campaign.pack"
+HARPOON_ABILITY = "wh3_dlc25_unit_abilities_spear_of_grungni"
+HARPOON_EFFECT = "mtb_effect_harpoon_off"
+HARPOON_BUNDLE = "mtb_bundle_harpoon_off"
 # The rows of the summon's set that are the barge's upgrades, not its timer.
 UPGRADE_ROWS = {"thunderburner_dwf_spirit_of_grungni": "mtb_thunderburner", "thunderburner_upgraded_dwf_spirit_of_grungni": "mtb_thunderburner_upgraded",
                 "awe_inspiring_sight_dwf_spirit_of_grungni": "mtb_awe_inspiring_sight"}
-
-
-def derive_skill_tree(g, t):
-    """Malakai's personal skills out of his tree (data/malakai_removed_skills.json): mod_disabled in his node set, so other
-    sets are untouched; the remaining nodes move up. Refuses a list that would leave a kept skill out of reach."""
-    spec = json.loads((DATA / "malakai_removed_skills.json").read_text(encoding="utf-8"))
-    prefix, tree = spec["node_prefix"], spec["set"]
-    remove = {prefix + n for n in spec["remove"]}
-    move = {prefix + n: {k: v for k, v in change.items() if not k.startswith("_")} for n, change in spec["move"].items()}
-    in_set = {r["item"] for r in g["character_skill_node_set_items"] if r["set"] == tree}
-    if not remove <= in_set or not set(move) <= in_set or remove & set(move):
-        raise SystemExit("data/malakai_removed_skills.json: a node is not in the set, or is both removed and moved")
-    owners = {r["set"] for r in g["character_skill_node_set_items"] if r["item"] in (remove | set(move))}
-    if owners != {tree}:
-        raise SystemExit(f"a node to change is shared with other sets: {sorted(owners - {tree})}")
-    t["character_skill_node_set_items"] = [dict(r, mod_disabled=True) for r in g["character_skill_node_set_items"]
-                                           if r["set"] == tree and r["item"] in remove]
-    nodes = {r["key"]: r for r in g["character_skill_nodes"]}
-    t["character_skill_nodes"] = [dict(nodes[key], **change) for key, change in sorted(move.items())]
-    # Every kept node must be reachable: no required parent gone, enough parents left for its count.
-    final = {key: dict(nodes[key], **move.get(key, {})) for key in in_set - remove}
-    for key, node in final.items():
-        parents = [r for r in g["character_skill_node_links"] if r["child_key"] == key]
-        if any(r["link_type"] == "REQUIRED" and r["parent_key"] in remove for r in parents):
-            raise SystemExit(f"{key}: a required parent is removed")
-        kept = [r for r in parents if r["parent_key"] not in remove]
-        if node["required_num_parents"] > len(kept):
-            raise SystemExit(f"{key}: needs {node['required_num_parents']} parents, {len(kept)} left")
-    return t
 
 
 def derive_campaign(g, t):
@@ -334,7 +309,23 @@ def derive_campaign(g, t):
         dict(r, missile_weapon_junction=new_id[r["missile_weapon_junction"]])
         for r in g["effect_bonus_value_missile_weapon_junctions"] if r["missile_weapon_junction"] in new_id]
 
-    derive_skill_tree(g, t)
+    # The harpoon: an effect that takes the stock ability away. The bundle holding it is applied by src/tww3_mtb_crew.lua while the harpoon group is off.
+    # The way the game's own upgrade switches off the plain Thunderburner: effect, bonus "disable", a row of our unit set. Without the bundle: as stock.
+    t["unit_set_unit_ability_junctions"].append({"key": "mtb_harpoon", "unit_ability": HARPOON_ABILITY, "unit_set": UNIT_SET})
+    t["effects"] = [dict(one(g["effects"], effect="wh3_dlc25_effect_ability_enable_thunderburner_upgraded"), effect=HARPOON_EFFECT)]
+    t["effect_bundles"] = [dict(next(r for r in g["effect_bundles"] if r["bundle_target"] == "force"), key=HARPOON_BUNDLE, localised_title="Гарпун снят",
+                                localised_description="Стрела на носу шара снята: способности в бою нет. Поставить можно в панели экипажа.", ui_icon="general_ability.png")]
+    # The crew's upkeep: its value is set by src/tww3_mtb_crew.lua on a custom bundle with the game's own flat income effect.
+    t["effect_bundles"].append(dict(t["effect_bundles"][0], key="mtb_bundle_crew_upkeep", localised_title="Содержание экипажа барки", localised_description="Золото за ход на экипаж барки. Считается в панели экипажа."))
+    t["effect_bundles_to_effects_junctions"] = [{"effect_bundle_key": HARPOON_BUNDLE, "effect_key": HARPOON_EFFECT, "effect_scope": "force_to_force_own", "value": 1.0, "advancement_stage": "start_turn_completed"}]
+    t["effect_bonus_value_unit_set_unit_ability_junctions"].append({"bonus_value_id": "disable", "effect": HARPOON_EFFECT, "unit_set_ability": "mtb_harpoon"})
+
+    # The empty slipway first: side chains that needed only airship_hull_1 now need airship_hull_2. The field counts hull levels from 0.
+    side = [r for r in g["building_levels"] if r["level_name"].startswith(HORDE_BUILDINGS) and r["chain"] != HULL_CHAIN and r["visible_in_ui"]
+            and r["primary_slot_building_building_level_requirement"] == 0]
+    if sorted(r["level_name"].removeprefix(HORDE_BUILDINGS) for r in side) != ["barracks_1", "beer_hall_1", "crew_weapons_1"]:
+        raise SystemExit(f"side buildings on the first hull level changed: {[r['level_name'] for r in side]}")
+    t["building_levels"] = [dict(r, primary_slot_building_building_level_requirement=1) for r in side]
 
     # No second barge in ordinary battles: the buildings stop enabling the summon. Quest battles enable it by their own bundle.
     t["building_effects_junction"] = [dict(r, value=0.0, value_damaged=0.0, value_ruined=0.0)

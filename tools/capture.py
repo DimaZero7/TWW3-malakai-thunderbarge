@@ -59,6 +59,20 @@ def find_window(pid):
     return best[0]
 
 
+def unminimize_behind(pid):
+    """A minimized window of the process comes back without activation, under the other windows: no focus change."""
+    proto = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+    def visit(hwnd, _):
+        owner = wt.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd) and user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 4)      # SW_SHOWNOACTIVATE; KeepBehind then keeps it at the bottom of the stack
+        return True
+    user32.EnumWindows(proto(visit), 0)
+    time.sleep(0.5)
+
+
 class KeepBehind:
     """Keeps the game's own window under the user's windows; touches no other window and never moves the focus.
 
@@ -156,8 +170,14 @@ def save_shot(hwnd, path, size=None, tries=12):
     (PrintWindow draws that many pixels into a client area that DPI scaling reports larger).
     Returns the frame's share of black pixels; raises OSError when PrintWindow gives nothing."""
     best = None
-    for _ in range(tries):
-        w, h, px = grab(hwnd)
+    for attempt in range(tries):
+        try:
+            w, h, px = grab(hwnd)
+        except OSError:     # PrintWindow fails now and then while the window is being moved in the stack
+            if best is None and attempt == tries - 1:
+                raise
+            time.sleep(0.3)
+            continue
         if size and w >= size[0] and h >= size[1]:
             px, w, h = crop(w, px, size[0], size[1]), size[0], size[1]
         share = black_share(px)

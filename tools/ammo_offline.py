@@ -163,13 +163,17 @@ STOCK = {"rifles": "mtb_w_rifles_stock", "cannons": "mtb_w_cannons_stock", "cupo
 def main():
     source = module_from_pack()
     w = World(source, STOCK)
+    # What the options hold is in the config, the test does not repeat it.
+    options = {g: w.lua.execute(config_of(source).replace("local CONFIG =", "return"))["groups"][g]["options"]["stock"]["ammo"] for g in STOCK}
+    rifles, cannons, cupolas, bombs = (options[g] for g in ("rifles", "cannons", "cupolas", "bombs"))
+    total = rifles + cannons + cupolas + bombs
     w.load()
     check("running", w.get("tww3_mtb_ammo.status") == "running", w.get("tww3_mtb_ammo.status"))
-    check("pool is the sum", w.get("mem.bu[0x3d90]") == 120 and w.get("mem.bu[0x3d98]") == 120, w.get("mem.bu[0x3d90]"))
+    check("pool is the sum", w.get("mem.bu[0x3d90]") == total and w.get("mem.bu[0x3d98]") == total, w.get("mem.bu[0x3d90]"))
     check("second pool empty, finite", w.get("mem.bu[0x3da0]") == 0 and w.get("mem.bu[0x3dac]") == 0)
     check("rifles on the first pool", w.get('mem.mtb_w_rifles_stock[0x30]') is False)
     w.lua.execute('tww3_mtb_ammo.set_ammo("cannons", 2); tww3_mtb_ammo.set_ammo("rifles", 3)')
-    check("pool follows set_ammo", w.get("mem.bu[0x3d90]") == 55, w.get("mem.bu[0x3d90]"))
+    check("pool follows set_ammo", w.get("mem.bu[0x3d90]") == 2 + 3 + cupolas + bombs, w.get("mem.bu[0x3d90]"))
     w.fire("cannons", 0)
     w.tick()
     w.fire("rifles", 0, 3)
@@ -192,7 +196,7 @@ def main():
     w.tick()
     check("no negative count", w.get("tww3_mtb_ammo.read().rifles.ammo") == 0, w.get("tww3_mtb_ammo.report()"))
     check("the overshoot is counted", w.get("tww3_mtb_ammo.read().rifles.shots") == 5)
-    check("pool equals what is left", w.get("mem.bu[0x3d90]") == 50, w.get("mem.bu[0x3d90]"))
+    check("pool equals what is left", w.get("mem.bu[0x3d90]") == cupolas + bombs, w.get("mem.bu[0x3d90]"))
     check("engine count", w.get("tww3_mtb_ammo.engine") == 7, w.get("tww3_mtb_ammo.engine"))
     w.fire("bombs", 0, record="something_else")
     w.tick()
@@ -202,7 +206,9 @@ def main():
     check("new ammunition, fires again", w.get("mem.mtb_w_cannons_stock[0x30]") is False and w.get("tww3_mtb_ammo.read().cannons.dry_at") is None)
     w.lua.execute("mem.bu[0x3d90] = mem.bu[0x3d90] + 30")
     w.tick()
-    check("the game's refill goes to the groups", w.get("mem.bu[0x3d90]") > 53 and w.get("tww3_mtb_ammo.read().bombs.ammo") == 20, w.get("tww3_mtb_ammo.report()"))
+    # A share by size of the group, rounded up, not above the start: the rifles were out, the others full.
+    check("the game's refill goes to the groups", w.get("tww3_mtb_ammo.read().rifles.ammo") == 1 and w.get("tww3_mtb_ammo.read().bombs.ammo") == bombs and w.get("tww3_mtb_ammo.read().cannons.ammo") == 3
+          and w.get("mem.bu[0x3d90]") == 1 + 3 + cupolas + bombs, w.get("tww3_mtb_ammo.report()"))
     for _ in range(5):
         w.lua.execute("broken = true")
         w.tick()
@@ -226,12 +232,12 @@ def main():
     w = World(source, STOCK)
     w.lua.execute("mem.bu[0x3d90] = 2320; mem.bu[0x3d94] = 2320; mem.bu[0x3d98] = 2320")
     w.load()
-    check("an effect doubling the pool doubles the groups", w.get("tww3_mtb_ammo.read().rifles.start") == 80 and w.get("mem.bu[0x3d90]") == 240, w.get("mem.bu[0x3d90]"))
+    check("an effect doubling the pool doubles the groups", w.get("tww3_mtb_ammo.read().rifles.start") == rifles * 2 and w.get("mem.bu[0x3d90]") == total * 2, w.get("mem.bu[0x3d90]"))
 
     w = World(source, dict(STOCK, cannons="mtb_w_cannons_stock", bombs=None))
     w.lua.execute('for i = 0, 3 do mem["st_bombs" .. i][0x20] = "null" end')
     w.load()
-    check("an empty group has no count", w.get("tww3_mtb_ammo.read().bombs") is None and w.get("mem.bu[0x3d90]") == 100, w.get("mem.bu[0x3d90]"))
+    check("an empty group has no count", w.get("tww3_mtb_ammo.read().bombs") is None and w.get("mem.bu[0x3d90]") == total - bombs, w.get("mem.bu[0x3d90]"))
 
     print("failed:", check.failed)
     return 1 if check.failed else 0

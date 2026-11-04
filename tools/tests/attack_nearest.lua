@@ -11,7 +11,7 @@ local best, best_d
 local fl = cm:model():world():faction_list()
 for i = 0, fl:num_items()-1 do
   local f = fl:item_at(i)
-  if f:name() ~= "wh3_dlc25_dwf_malakai" then
+  if f:name() ~= "wh3_dlc25_dwf_malakai" and f:at_war_with(cm:get_faction("wh3_dlc25_dwf_malakai")) then
     local mfl = f:military_force_list()
     for j = 0, mfl:num_items()-1 do
       local mf = mfl:item_at(j)

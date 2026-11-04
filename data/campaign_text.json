@@ -6,5 +6,15 @@
  "effects_description_wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1": "Способность армии: «Дух Грунгни» (только в легендарных битвах)",
  "ui_text_replacements_localised_text_mtb_crew_failed_title": "Экипаж барки не настроен",
  "ui_text_replacements_localised_text_mtb_crew_failed_primary": "Барка осталась со стоковым экипажем",
- "ui_text_replacements_localised_text_mtb_crew_failed_secondary": "Модульному экипажу нужен мод memreader Plus. Он не подключён или не подошёл к этой версии игры. Кампании это не мешает: выбранные варианты вернутся, когда это будет исправлено."
+ "ui_text_replacements_localised_text_mtb_crew_failed_secondary": "Модульному экипажу нужен мод memreader Plus. Он не подключён или не подошёл к этой версии игры. Панель экипажа недоступна. Кампании это не мешает: выбранные варианты вернутся, когда это будет исправлено.",
+ "building_short_description_texts_short_description_wh3_dlc25_dwarf_spirit_of_grungni_airship_hull_1": "Пустой стапель: барки ещё нет, Малакай ходит пешком. Постройте «Прочный корпус», чтобы собрать барку и открыть остальные постройки.\n\nAn empty slipway: there is no barge yet and Malakai fights on foot. Build the Hardened Hull to assemble the barge and open the other buildings.",
+ "building_short_description_texts_short_description_wh3_dlc25_dwarf_spirit_of_grungni_airship_hull_2": "Собирает барку: Малакай встаёт за штурвал, на местах стрелков Мстители-пираты с пистолями, на палубе команда, остальные отсеки пусты. Открывает панель экипажа: кнопка внизу справа, рядом с концом хода. Другие постройки открывают варианты экипажа, ставит их игрок. Сойти и вернуться можно в блоке «Транспорт» на панели персонажа.\n\nAssembles the barge: Malakai takes the wheel, Slayer Pirates with pistols man the shooter seats, the deck crew is aboard, the other bays stay empty. Opens the crew panel: the button at the bottom right, by the end turn button. Other buildings unlock crew options, the player places them. He can step off and back in the Mount block of the character panel.",
+ "ui_text_replacements_localised_text_mtb_crew_lost_title": "Экипаж барки изменился",
+ "ui_text_replacements_localised_text_mtb_crew_lost_primary": "Снесена постройка, вариант экипажа закрыт",
+ "ui_text_replacements_localised_text_mtb_crew_lost_secondary": "Снесённая постройка открывала вариант, который стоял на барке. Его группа перешла на другой открытый вариант или осталась пустой. Выбрать заново можно в панели экипажа: кнопка внизу справа, рядом с концом хода.",
+ "effect_bundles_localised_title_mtb_bundle_harpoon_off": "Гарпун снят",
+ "effect_bundles_localised_description_mtb_bundle_harpoon_off": "Стрела на носу шара снята: способности в бою нет. Открывает её постройка «Радиус поддержки» второго уровня, поставить можно в панели экипажа.",
+ "effects_description_mtb_effect_harpoon_off": "Способность «Копьё Грунгни» недоступна",
+ "effect_bundles_localised_title_mtb_bundle_crew_upkeep": "Содержание экипажа барки",
+ "effect_bundles_localised_description_mtb_bundle_crew_upkeep": "Золото за ход на экипаж барки. Считается в панели экипажа. Пока Малакай пеший, содержания нет."
 }

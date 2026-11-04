@@ -2,7 +2,7 @@
  "organ": {
   "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
   "material": "warmachines/materials/dwf_organ_gun_01_weighted2_alpha_off.xml.material",
-  "bind": "cannon_0",
+  "bind": "cannon_1",
   "scale": 1.2,
   "muzzle_z": 2.75,
   "groups": [
@@ -86,68 +86,205 @@
    2,
    3,
    4
+  ],
+  "mount": [
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     1
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "keep_place": true,
+    "bind": "root"
+   },
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     2
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "across": 1.45,
+    "along": 0.5,
+    "z_to": 0.32,
+    "bind": "cannon_0"
+   }
   ]
  },
  "clatter": {
-  "source": "warmachines/aircraft/dwf_gyrobomber/dwf_gyrobomber_01.rigid_model_v2",
-  "material": "warmachines/materials/dwf_gyrobomber_01_weighted2_alpha_off.xml.material",
-  "bind": "cannon_0",
-  "scale": 2.2,
+  "bind": "cannon_1",
   "muzzle_z": 2.75,
-  "groups": [
+  "_about": "Six thin barrels: the organ gun's barrel without its breech, made thin; the stock gun's tube as a housing around their rear; the organ gun's bands as clamps; the stock gun's rear in the port.",
+  "parts": [
    {
-    "name": "gun",
+    "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_organ_gun_01_weighted2_alpha_off.xml.material",
     "bones": [
-     6
+     10
     ],
-    "to": [
-     0,
-     0
+    "z": [
+     -0.25,
+     0.94
+    ],
+    "lods": [
+     1,
+     2,
+     3,
+     4
+    ],
+    "across": 0.42,
+    "along": 1.82,
+    "z_to": 0.6,
+    "copies": [
+     [
+      0.165,
+      0.095
+     ],
+     [
+      0.0,
+      0.19
+     ],
+     [
+      -0.165,
+      0.095
+     ],
+     [
+      -0.165,
+      -0.095
+     ],
+     [
+      -0.0,
+      -0.19
+     ],
+     [
+      0.165,
+      -0.095
+     ]
+    ],
+    "clamp": true,
+    "axis_z": [
+     0.5,
+     0.94
     ]
+   },
+   {
+    "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_organ_gun_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     10
+    ],
+    "z": [
+     -0.21,
+     -0.11
+    ],
+    "lods": [
+     1,
+     2,
+     3,
+     3
+    ],
+    "across": 1.8,
+    "along": 1.2,
+    "z_to": 1.62
+   },
+   {
+    "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_organ_gun_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     10
+    ],
+    "z": [
+     -0.21,
+     -0.11
+    ],
+    "lods": [
+     1,
+     2,
+     3,
+     3
+    ],
+    "across": 1.8,
+    "along": 0.9,
+    "z_to": 2.3
+   },
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     2
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "across": 0.92,
+    "along": 1.05,
+    "z_to": 0.32,
+    "bind": "cannon_0"
+   },
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     1
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "keep_place": true,
+    "bind": "root"
    }
   ],
-  "base": {
-   "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
-   "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
-   "bones": [
-    1,
-    2
-   ]
-  },
   "volley": {
    "tag": "clatt",
    "shots": [
     [
-     0,
-     0
+     0.165,
+     0.095
     ],
     [
-     0,
-     0
+     0.0,
+     0.19
     ],
     [
-     0,
-     0
+     -0.165,
+     0.095
     ],
     [
-     0,
-     0
+     -0.165,
+     -0.095
     ],
     [
-     0,
-     0
+     -0.0,
+     -0.19
     ],
     [
-     0,
-     0
+     0.165,
+     -0.095
     ],
     [
-     0,
-     0
+     0.165,
+     0.095
     ],
     [
-     0,
-     0
+     0.0,
+     0.19
     ]
    ],
    "spacing": 0.12
@@ -156,7 +293,7 @@
  "flame": {
   "source": "warmachines/engines/dwf_flame_cannon/dwf_flame_cannon.rigid_model_v2",
   "material": "warmachines/materials/dwf_flame_cannon_weighted_01_weighted2_alpha_off.xml.material",
-  "bind": "cannon_0",
+  "bind": "cannon_1",
   "scale": 0.85,
   "muzzle_z": 2.75,
   "groups": [
@@ -211,6 +348,40 @@
    2,
    4,
    5
+  ],
+  "mount": [
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     1
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "keep_place": true,
+    "bind": "root"
+   },
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     2
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "across": 1.05,
+    "along": 0.5,
+    "z_to": 0.32,
+    "bind": "cannon_0"
+   }
   ]
  },
  "cap": {
@@ -255,5 +426,69 @@
     4
    ]
   }
+ },
+ "brimstone": {
+  "bind": "cannon_1",
+  "muzzle_z": 2.75,
+  "_about": "The gyrocopter's brimstone gun, drawn out along its axis, on the stock gun's rear.",
+  "parts": [
+   {
+    "source": "warmachines/aircraft/dwf_gyrocopter/dwf_gyrocopter_brimstone_gun_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_gyrocopter_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     1,
+     5,
+     6,
+     7,
+     8
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "across": 0.85,
+    "along": 2.45,
+    "z_to": 0.62,
+    "z": [
+     0.98,
+     1.84
+    ],
+    "clamp": true
+   },
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     2
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "across": 0.62,
+    "along": 0.55,
+    "z_to": 0.32,
+    "bind": "cannon_0"
+   },
+   {
+    "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
+    "material": "warmachines/materials/dwf_thunderbarge_01_weighted2_alpha_off.xml.material",
+    "bones": [
+     1
+    ],
+    "lods": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "keep_place": true,
+    "bind": "root"
+   }
+  ]
  }
 }

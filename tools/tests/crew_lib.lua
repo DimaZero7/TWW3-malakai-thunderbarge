@@ -200,6 +200,24 @@ function C.camera(f, r, up, tf, tr, tu, fov)
   return bm:get_current_phase_name()
 end
 
+-- Seats' places relative to the unit (forward, right, up), read from men_*.txt of a battle with the barge still.
+local SEAT_AT = {ap_captain = {-4.5, 0, 4.4}, ap_cannon_left = {6.9, -1.8, 1.4}, ap_cannon_right = {6.9, 1.8, 1.4}, ap_cupola_front = {4.2, 0, 24.9}, ap_cupola_rear = {-6.2, 0, 24.7}, bow = {8, 0, 4}, cup_mid = {-1, 0, 24.9}, centre = {0, 0, 4}}
+
+-- Camera at dist metres from a seat. az: degrees from the barge's bow, negative = its left side; el: degrees above the seat.
+function C.camera_seat(name, dist, az, el, fov)
+  local s = SEAT_AT[name] or error("no seat " .. name)
+  local u = C.lord_unit()
+  local p = u:position()
+  local bearing = u:bearing() * 3.14159265 / 180
+  local x = p:get_x() + math.sin(bearing) * s[1] + math.cos(bearing) * s[2]
+  local y = p:get_y() + s[3]
+  local z = p:get_z() + math.cos(bearing) * s[1] - math.sin(bearing) * s[2]
+  local b, e = bearing + az * 3.14159265 / 180, el * 3.14159265 / 180
+  local cx, cy, cz = x + math.sin(b) * math.cos(e) * dist, y + math.sin(e) * dist, z + math.cos(b) * math.cos(e) * dist
+  bm:camera():move_to(vec(cx, cy, cz), vec(x, y, z), 0, false, fov)
+  return string.format("seat %.1f %.1f %.1f camera %.1f %.1f %.1f", x, y, z, cx, cy, cz)
+end
+
 -- The nearest living enemy unit. A far target ignores attack_unit (the stock AI does not answer either), so: move there, then attack.
 function C.order()
   local uc, enemy_alliance = _G.mtb_crew_uc, _G.mtb_crew_enemy
