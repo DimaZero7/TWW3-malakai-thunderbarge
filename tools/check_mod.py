@@ -253,6 +253,34 @@ def main():
     for name in set(re.findall(r"ui/tww3_mtb/(card_frame_\w+)\.png", panel)):
         if f"ui{SEP}tww3_mtb{SEP}{name}.png" not in files:
             fail(f"{name}: not in the pack")
+    # in the game a chest is a building's price, upkeep is coins
+    if "'upkeep_icon', 'ui/skins/default/icon_income.png'" not in panel or "'hire_icon', 'ui/skins/default/icon_treasury.png'" not in panel:
+        fail("the panel's icons: upkeep is coins, hire is the chest")
+    # the hire: the sum, an empty option free
+    import crew_ui
+    for group, spec in CONFIG["groups"].items():
+        for key, opt in spec["options"].items():
+            if opt.get("disabled"):
+                continue
+            cost = crew_ui.hire(opt, stock)
+            source = opt.get("upkeep_from")
+            if opt.get("empty") or not source:
+                if cost != 0:
+                    fail(f"{group}/{key}: hire {cost} of a free option")
+            elif cost <= 0 and "hire" not in opt:
+                fail(f"{group}/{key}: no price")
+    # the frame's colour comes from the crew group, nowhere else
+    for group, spec in CONFIG["groups"].items():
+        for key, opt in spec["options"].items():
+            if "card_frame" in opt:
+                fail(f"{group}/{key}: a frame of its own: the colour belongs to the group")
+    for short, pairs in CONFIG["buildings"].items():
+        for group, option in pairs:
+            spec = CONFIG["groups"][group]
+            if spec.get("no_panel") or spec.get("mount") == option or short in CONFIG.get("no_card", []):
+                continue
+            if f"card_frame_{spec['card_frame']}.png" not in panel:
+                fail(f"{short}: no frame {spec['card_frame']} of group {group}")
     # 7. Lua
     count = lua_syntax(files)
     print(f"{len(side)} building levels in {len(by_chain)} chains, {sum(1 for p in pers if p.startswith('mtb_bp_'))} seat rows, {count} scripts, {len(loc)} texts, {len(errors)} failures")

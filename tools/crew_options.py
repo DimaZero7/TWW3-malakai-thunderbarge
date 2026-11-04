@@ -446,6 +446,7 @@ def extend(t, stock, unit, barge, table_name_check=True):
     prefix = CONFIG["buildings_prefix"]
     data = {"land_unit": unit, "seat_count": len(stock_seat), "groups": {}, "seats": seats, "fixed": {s: stock_seat[s] for s in fixed},
             "hull_mounts": hull_mounts, "upkeep": {g: {k: crew_ui.upkeep(o, stock) for k, o in spec["options"].items()} for g, spec in CONFIG["groups"].items()},
+            "hire": {g: {k: crew_ui.hire(o, stock) for k, o in spec["options"].items()} for g, spec in CONFIG["groups"].items()},
             "buildings": bindings, "levels": levels, "followed": {key: True for key in followed}, "ammo_mod": {prefix + s: v for s, v in CONFIG["ammo_mod"].items()}, "auto_active": {prefix + short: True for short in CONFIG["auto_active"]}, "panel_building": prefix + CONFIG["auto_active"][0]}
     for group_key, group in CONFIG["groups"].items():
         data["groups"][group_key] = {"start": group["start"], "start_ai": group["start_ai"], "options": sorted(group["options"]), "seats": group["seats"]}

@@ -11,6 +11,7 @@
 --   tww3_mtb_crew.choose('rifles', 'quarr')  the panel's way: an order for the next turn, of an unlocked option, one per group per turn
 --   tww3_mtb_crew.orders()                 {group = option ordered for the next turn}
 --   tww3_mtb_crew.upkeep()                 gold per turn now, gold per turn with the orders
+--   tww3_mtb_crew.hire_of(group, option)   gold to hire it, taken when it is ordered
 --   tww3_mtb_crew.get()                    {group = option}
 --   tww3_mtb_crew.unlocked()               {group = {option = true}}
 --   tww3_mtb_crew.status                   'applied', 'not applied', 'stock: <reason>'
@@ -29,6 +30,10 @@
 -- one set of seat rows per level, so nothing else of the unit is touched: the seats point at option@level. Requires: a group's weapons may need another building too (the guns: signals).
 -- Ammunition: the level of the cargo chain goes to the battle through the game's scripted value registry, read by src/tww3_mtb_ammo.lua.
 --
+-- Hire: an option costs gold once, taken at once when it is ordered, with what is taken kept in the save beside the order. Taking the order back returns all of it, so does a building that
+-- takes the order with it. What stands now is not paid back when it is replaced, and going back to an option taken off is paid again. An empty option is free. The treasury and the saved values
+-- go into the same save, so a load neither takes nor returns anything by itself. Buildings placing an option by themselves (CONFIG.auto_active) are free.
+--
 -- Upkeep: paid from the treasury at the faction's turn start for what stands, only while he is on the barge and the crew can be written.
 --
 -- Two kinds of group are not seats to choose. always: the group holds that option whatever is saved (the deck crew). off_bundle: no seats, an ability the unit
@@ -43,6 +48,7 @@ local PROFILE = SAVE_PREFIX .. 'profile'    -- saved: 'player' or 'ai', decided 
 local BUILT = SAVE_PREFIX .. 'built'        -- saved: 'key@turn,key@turn', oldest first
 local ORDER, CHANGED = SAVE_PREFIX .. 'order_', SAVE_PREFIX .. 'changed_'    -- saved per group: the option ordered; the turn of its last change
 local PAID = SAVE_PREFIX .. 'paid'          -- saved: the turn the upkeep was last paid on
+local ORDER_PAID = SAVE_PREFIX .. 'order_paid_'    -- saved per group: the gold taken for the order that waits
 local ANCILLARY = 'mtb_anc_mount_dwf_malakai_thunderbarge'
 local DB_ROOT = '48 8B 0D ?? ?? ?? ?? 4C 8B C0 48 8B 91 ?? ?? ?? ?? 48 8B CB E8 ?? ?? ?? ?? 48 85 C0 74 ?? 48 8B 0D ?? ?? ?? ?? 48 89 81'
 local TABLE_MARK = '48 8D 41 28 48 89 02 48 8B 41 58 49 89 00 C3'
@@ -262,6 +268,31 @@ function M.upkeep()
     return now, sum_upkeep(choice)
 end
 
+-- What the option costs to hire. Without memreader Plus there is no choice, and the AI does not pay.
+function M.hire_of(group, option)
+    if profile() ~= 'player' or string.sub(tostring(M.status), 1, 5) == 'stock' then return 0 end
+    return (CONFIG.hire[group] or {})[option] or 0
+end
+
+function M.gold()
+    return cm:get_faction(HOME_FACTION):treasury()
+end
+
+function M.can_pay(group, option)
+    return M.gold() >= M.hire_of(group, option)
+end
+
+-- An order goes away: the gold taken for it comes back, unless it went in.
+local function drop_order(group, give_back)
+    local paid = cm:get_saved_value(ORDER_PAID .. group) or 0
+    cm:set_saved_value(ORDER .. group, false)
+    cm:set_saved_value(ORDER_PAID .. group, false)
+    if give_back and paid > 0 then
+        cm:treasury_mod(HOME_FACTION, paid)
+        log('hire given back ' .. group .. ' ' .. paid)
+    end
+end
+
 function M.upkeep_of(group, option)
     return (CONFIG.upkeep[group] or {})[option] or 0
 end
@@ -391,7 +422,7 @@ function M.choose(group, option)
     local current, order = M.get()[group], cm:get_saved_value(ORDER .. group)
     if M.changed(group) then
         if order and option == current then
-            cm:set_saved_value(ORDER .. group, false)
+            drop_order(group, true)
             log('order taken back ' .. group)
             if M.on_changed then pcall(M.on_changed) end
             return true
@@ -399,9 +430,15 @@ function M.choose(group, option)
         return false, 'changed this turn'
     end
     if option == current then return true end
+    local cost = M.hire_of(group, option)
+    if M.gold() < cost then return false, 'no gold ' .. cost end
+    if cost > 0 then
+        cm:treasury_mod(HOME_FACTION, -cost)
+        cm:set_saved_value(ORDER_PAID .. group, cost)
+    end
     cm:set_saved_value(ORDER .. group, option)
     cm:set_saved_value(CHANGED .. group, cm:turn_number())
-    log('order ' .. group .. '=' .. option)
+    log('order ' .. group .. '=' .. option .. ' hire ' .. cost)
     if M.on_changed then pcall(M.on_changed) end
     return true
 end
@@ -410,7 +447,7 @@ end
 function M.carry_out()
     if profile() ~= 'player' then return end
     for group, option in pairs(M.orders()) do
-        cm:set_saved_value(ORDER .. group, false)
+        drop_order(group, false)
         log('order done ' .. group .. '=' .. option)
         M.set(group, option)
     end
@@ -485,7 +522,7 @@ function M.reconcile()
     local open, active, lost = M.unlocked(), M.get(), false
     for group, option in pairs(M.orders()) do
         if not open[group][option] or not M.mount_ready(group) or (option ~= CONFIG.groups[group].mount and not M.requires_ok(group)) then
-            cm:set_saved_value(ORDER .. group, false)
+            drop_order(group, true)
             log('order gone with its building ' .. group .. '=' .. option)
         end
     end

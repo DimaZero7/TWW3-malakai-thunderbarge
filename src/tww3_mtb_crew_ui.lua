@@ -127,7 +127,7 @@ local function ammo_now(row)
     return math.floor((row.numbers or {}).ammo * crew().ammo_mod() + 0.5)
 end
 
-local function tooltip(row, locked_by, spent, need_text)
+local function tooltip(row, locked_by, spent, need_text, hire, poor)
     local lines = {'[[col:yellow]]' .. row.name .. '[[/col]]'}
     if row.about then lines[#lines + 1] = row.about end
     local n = row.numbers or {}
@@ -139,7 +139,9 @@ local function tooltip(row, locked_by, spent, need_text)
         lines[#lines + 1] = 'Дальность: ' .. (row.range_text or (range_now(M.selected, row) .. ' м'))
         lines[#lines + 1] = 'Запас группы на бой: ' .. tostring(ammo_now(row))
     end
+    if (hire or 0) > 0 then lines[#lines + 1] = 'Найм: ' .. hire .. ' золота, списывается сразу при выборе. Отмена заказа до конца хода вернёт всё' end
     if (row.upkeep or 0) > 0 then lines[#lines + 1] = 'Содержание: ' .. row.upkeep .. ' золота за ход' end
+    if poor then lines[#lines + 1] = 'Не хватает золота: найм стоит ' .. hire end
     if locked_by then lines[#lines + 1] = 'Откроет постройка: ' .. locked_by end
     if need_text then lines[#lines + 1] = need_text end
     if spent then lines[#lines + 1] = 'Уже менялся в этот ход: следующий заказ в новом ходу' end
@@ -160,7 +162,9 @@ local function fill_row(view, row, active, open, order, changed, needs)
     local spent = changed and not active and not ordered and not closed
     -- needs: the variant is open but its group has no bay yet
     local no_mount = needs ~= nil and not closed
-    local locked = closed or spent or no_mount
+    local hire = crew().hire_of(M.selected, row.key)
+    local poor = not closed and not spent and not no_mount and not active and not ordered and not crew().can_pay(M.selected, row.key)
+    local locked = closed or spent or no_mount or poor
     local state = 'active'
     if locked then state = 'inactive' elseif active then state = 'selected' elseif ordered then state = 'invalid' end
     view.button:SetState(state)
@@ -190,16 +194,22 @@ local function fill_row(view, row, active, open, order, changed, needs)
     view.upkeep.value_grey:SetVisible(upkeep > 0 and locked)
     view.upkeep.value:SetStateText(tostring(upkeep))
     view.upkeep.value_grey:SetStateText(tostring(upkeep))
+    view.hire.icon:SetVisible(hire > 0)
+    grey(view.hire.icon, locked)
+    view.hire.value:SetVisible(hire > 0 and not locked)
+    view.hire.value_grey:SetVisible(hire > 0 and locked)
+    view.hire.value:SetStateText(tostring(hire))
+    view.hire.value_grey:SetStateText(tostring(hire))
     local locked_by = closed and building_name(row.building) or nil
     local note = row.about or ''
     if ordered then note = 'Заказан: встанет со следующего хода' end
-    if active and order then note = 'Стоит сейчас. Щелчок отменит заказ' end
+    if active and order then note = 'Стоит сейчас. Щелчок отменит заказ' .. (crew().hire_of(M.selected, order) > 0 and ' и вернёт золото' or '') end
     view.note:SetVisible(not locked)
     view.note_grey:SetVisible(locked)
     view.note:SetStateText(note)
     local need_text = no_mount and ('Нужны: ' .. needs) or nil
-    view.note_grey:SetStateText(locked_by and ('Откроет: ' .. locked_by) or need_text or (spent and 'Уже менялся в этот ход' or ''))
-    view.button:SetTooltipText(tooltip(row, locked_by, spent, need_text), true)
+    view.note_grey:SetStateText(locked_by and ('Откроет: ' .. locked_by) or need_text or (spent and 'Уже менялся в этот ход') or (poor and ('Не хватает золота: найм стоит ' .. hire)) or '')
+    view.button:SetTooltipText(tooltip(row, locked_by, spent, need_text, hire, poor), true)
     view.row = row
     view.locked = locked
 end
@@ -273,8 +283,9 @@ local function make_row(parent, i, x, y, w, h)
     view.stats = {}
     local stat_y = 30
     -- the damage takes what is left after the other three, which have short values
-    local short = math.floor(tw * 0.165)
-    local widths = {tw - short * 4, short, short, short}
+    -- five columns of numbers and the sixth in what was the fifth's place: upkeep with coins, hire with the chest, as the game's own icons mean
+    local short = math.floor(tw * 0.16)
+    local widths = {math.floor(tw * 0.375), short, short, short}
     local icons = {'icon_stat_ranged_damage.png', 'icon_stat_reload_time.png', 'icon_stat_range.png', 'icon_stat_ammo.png'}
     local sx = tx
     for s = 1, 4 do
@@ -285,9 +296,14 @@ local function make_row(parent, i, x, y, w, h)
         view.stats[s] = stat
         sx = sx + widths[s]
     end
-    view.upkeep = {icon = image(b, 'upkeep_icon', 'ui/skins/default/icon_treasury.png', sx, stat_y, 18, 18),
-                   value = text(b, 'upkeep', 'text_line', sx + 20, stat_y - 1, short - 22, 20, ''),
-                   value_grey = text(b, 'upkeep_grey', 'text_line_grey', sx + 20, stat_y - 1, short - 22, 20, '')}
+    view.upkeep = {icon = image(b, 'upkeep_icon', 'ui/skins/default/icon_income.png', sx, stat_y, 18, 18),
+                   value = text(b, 'upkeep', 'text_line', sx + 20, stat_y - 1, math.floor(tw * 0.14) - 22, 20, ''),
+                   value_grey = text(b, 'upkeep_grey', 'text_line_grey', sx + 20, stat_y - 1, math.floor(tw * 0.14) - 22, 20, '')}
+    local upkeep_w = math.floor(tw * 0.14)
+    local hx = sx + upkeep_w
+    view.hire = {icon = image(b, 'hire_icon', 'ui/skins/default/icon_treasury.png', hx, stat_y, 18, 18),
+                 value = text(b, 'hire', 'text_line', hx + 20, stat_y - 1, math.floor(tw * 0.17) - 22, 20, ''),
+                 value_grey = text(b, 'hire_grey', 'text_line_grey', hx + 20, stat_y - 1, math.floor(tw * 0.17) - 22, 20, '')}
     view.note = text(b, 'note', 'text_line', tx, h - 28, tw - 12, 22, '')
     view.note_grey = text(b, 'note_grey', 'text_copper', tx, h - 28, tw - 12, 22, '')
     return view

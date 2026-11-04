@@ -208,6 +208,19 @@ def upkeep(opt, stock):
     return round(unit["upkeep_cost"] * source["count"] / size)
 
 
+def hire(opt, stock):
+    """Gold to hire an option: recruitment_cost of the same source unit as the upkeep x count / its guns or men, or the number by hand. An empty option is free."""
+    if "hire" in opt:
+        return opt["hire"]
+    source = opt.get("upkeep_from")
+    if not source:
+        return 0
+    unit = next(r for r in stock["main_units"] if r["unit"] == source["unit"])
+    land = next(r for r in stock["land_units"] if r["key"] == unit["land_unit"])
+    size = land["num_engines"] or unit["num_men"]
+    return round(unit["recruitment_cost"] * source["count"] / size)
+
+
 def game_text(prefix):
     """{key: text} of the game's Russian texts whose keys start with prefix. A .loc: FF FE 'LOC' 00, i32, u32 count, then key, text as u16 length + UTF-16, a bool."""
     out = {}
@@ -322,7 +335,7 @@ def data(config, t, stock, bindings):
             drawn = own_card_name(config, group_key, key)
             if drawn:
                 ui = dict(ui, own_card="crew_cards/" + (drawn if (CARDS / f"{drawn}.png").exists() else drawn + "_small"))
-            rows.append(dict(ui, key=key, numbers=group_numbers(t, group_key, key, opt, group), building=unlocked_by.get((group_key, key), ""), upkeep=upkeep(opt, stock)))
+            rows.append(dict(ui, key=key, numbers=group_numbers(t, group_key, key, opt, group), building=unlocked_by.get((group_key, key), ""), upkeep=upkeep(opt, stock), hire=hire(opt, stock)))
         # empty first, then in the order of the buildings table
         order = list(bindings)
         rows.sort(key=lambda r: -1 if r["key"] == "empty" else order.index(r["building"]) if r["building"] in order else 99)
@@ -351,6 +364,6 @@ def data(config, t, stock, bindings):
             drawn = own_card_name(config, b["group"], b["option"])
             path = drawn_path(drawn, small=True) if drawn else card_path(option.get("ui") or {})
             if path:
-                frame = option.get("card_frame") or group.get("card_frame") or "gold"
+                frame = group["card_frame"]
                 cards.setdefault(key, []).append({"card": path, "frame": f"{UI_DIR}card_frame_{frame}.png"})
     return {"groups": groups, "art": art, "order": order, "drawn": ["cupolas", "harpoon", "cannons", "rifles", "bombs", "deck", "pub"], "building_cards": cards}
