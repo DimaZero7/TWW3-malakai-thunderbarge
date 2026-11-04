@@ -276,16 +276,16 @@ local function make_row(parent, i, x, y, w, h)
     view.card = image(b, 'card', LAYOUTS .. 'card_empty.png', 9, 8, card_w, card_h)
     local tx = 9 + card_w + 10
     local tw = w - tx - 12
-    view.name = text(b, 'name', 'text_name', tx, 7, tw - 44, 22, '')
-    view.name_grey = text(b, 'name_grey', 'text_name_grey', tx, 7, tw - 44, 22, '')
+    local hx_name = w - 50 - 70 - tx - 4      -- the name stops before the hire
+    view.name = text(b, 'name', 'text_name', tx, 7, hx_name, 22, '')
+    view.name_grey = text(b, 'name_grey', 'text_name_grey', tx, 7, hx_name, 22, '')
     view.check = image(b, 'check', 'ui/skins/default/icon_check.png', w - 50, 5, 30, 30)
     view.padlock = image(b, 'padlock', 'ui/skins/default/icon_padlock.png', w - 50, 5, 30, 30)
     view.stats = {}
     local stat_y = 30
     -- the damage takes what is left after the other three, which have short values
-    -- five columns of numbers and the sixth in what was the fifth's place: upkeep with coins, hire with the chest, as the game's own icons mean
-    local short = math.floor(tw * 0.16)
-    local widths = {math.floor(tw * 0.375), short, short, short}
+    local short = math.floor(tw * 0.165)
+    local widths = {tw - short * 4, short, short, short}
     local icons = {'icon_stat_ranged_damage.png', 'icon_stat_reload_time.png', 'icon_stat_range.png', 'icon_stat_ammo.png'}
     local sx = tx
     for s = 1, 4 do
@@ -297,13 +297,13 @@ local function make_row(parent, i, x, y, w, h)
         sx = sx + widths[s]
     end
     view.upkeep = {icon = image(b, 'upkeep_icon', 'ui/skins/default/icon_income.png', sx, stat_y, 18, 18),
-                   value = text(b, 'upkeep', 'text_line', sx + 20, stat_y - 1, math.floor(tw * 0.14) - 22, 20, ''),
-                   value_grey = text(b, 'upkeep_grey', 'text_line_grey', sx + 20, stat_y - 1, math.floor(tw * 0.14) - 22, 20, '')}
-    local upkeep_w = math.floor(tw * 0.14)
-    local hx = sx + upkeep_w
-    view.hire = {icon = image(b, 'hire_icon', 'ui/skins/default/icon_treasury.png', hx, stat_y, 18, 18),
-                 value = text(b, 'hire', 'text_line', hx + 20, stat_y - 1, math.floor(tw * 0.17) - 22, 20, ''),
-                 value_grey = text(b, 'hire_grey', 'text_line_grey', hx + 20, stat_y - 1, math.floor(tw * 0.17) - 22, 20, '')}
+                   value = text(b, 'upkeep', 'text_line', sx + 20, stat_y - 1, short - 22, 20, ''),
+                   value_grey = text(b, 'upkeep_grey', 'text_line_grey', sx + 20, stat_y - 1, short - 22, 20, '')}
+    -- The hire on the name's line, before the padlock: the line of numbers has no room for a sixth column (run 20261104-183616, it stood out of the row). Coins are upkeep, the chest a price, as in the game.
+    local hx = w - 50 - 70
+    view.hire = {icon = image(b, 'hire_icon', 'ui/skins/default/icon_treasury.png', hx, 9, 18, 18),
+                 value = text(b, 'hire', 'text_line', hx + 20, 8, 48, 20, ''),
+                 value_grey = text(b, 'hire_grey', 'text_line_grey', hx + 20, 8, 48, 20, '')}
     view.note = text(b, 'note', 'text_line', tx, h - 28, tw - 12, 22, '')
     view.note_grey = text(b, 'note_grey', 'text_copper', tx, h - 28, tw - 12, 22, '')
     return view

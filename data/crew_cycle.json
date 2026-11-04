@@ -3986,6 +3986,30 @@
      "hold": 450
     }
    ]
+  },
+  "fb_hire": {
+   "_about": "The hire in the game: tools/fb_check.py hire_tree hire.",
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 1900,
+   "wait_end_turn": 200,
+   "steps": [
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "hold": 1800
+    }
+   ],
+   "high": true
   }
  },
  "far_views": {

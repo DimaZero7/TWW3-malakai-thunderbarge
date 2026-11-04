@@ -181,6 +181,179 @@ class Run(cc.Session):
         self.shot(label)
 
 
+def hire_stage(s):
+    """The hire of docs/design/barge-loadout.md in the game: gold is read after every step, clicks are the panel's own."""
+    Q = (TESTS / "crew_panel.lua").read_text(encoding="utf-8") + "\nlocal Q = _G.mtb_panel\n"
+
+    def gold():
+        return float(s.plain("return cm:get_faction('wh3_dlc25_dwf_malakai'):treasury()", 8)["result"])
+
+    def q(code):
+        return str(s.plain(Q + code, 15)["result"])
+
+    def lua(code):
+        return str(s.plain(code, 10)["result"])
+
+    def crew():
+        return lua("return tww3_mtb_crew.get().rifles .. ' order=' .. tostring(tww3_mtb_crew.orders().rifles) .. ' paid=' .. tostring(cm:get_saved_value('mtb_crew_order_paid_rifles')) .. ' changed=' .. tostring(tww3_mtb_crew.changed('rifles'))")
+
+    def log_lines(pattern):
+        path = cc.rg.rb.GAME / "tww3_mtb_log.txt"
+        text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        return [x for x in text.splitlines() if re.search(pattern, x)][-4:]
+
+    # 1. an order through a click on the panel's row
+    s.build("airship_hull_2", "mtb_nest_1", "mtb_hatches_1")
+    s.build("crew_weapons_1", "mtb_guns_1", "beer_hall_1")
+    s.build("airship_hull_3")
+    s.build("crew_weapons_2", "support_radius_1", "mtb_nest_2", "mtb_hatches_2")
+    s.build("mtb_guns_2", turns=2)
+    s.prog("return P.peace()")
+    s.plain('tww3_mtb_crew.set("cannons", "stock"); return 1', 8)
+    hire_a, hire_b = 82, 105
+    g0 = gold()
+    q("Q.click_button(); return 1")
+    time.sleep(1.5)
+    q("Q.plate('rifles'); return 1")
+    time.sleep(0.8)
+    s.shot("h_panel_before")
+    q("Q.row('quarrellers'); return 1")
+    time.sleep(1)
+    g1 = gold()
+    state = crew()
+    s.shot("h_panel_ordered")
+    s.ok("h1_order_pays", g0 - g1 == hire_a and state.startswith("pirates order=quarrellers") and f"paid={hire_a}" in state, f"{g0} -> {g1}: {state}")
+    # 2. taking it back
+    q("Q.row('pirates'); return 1")
+    time.sleep(1)
+    g2 = gold()
+    state = crew()
+    s.ok("h2_back_returns", g2 == g0 and "order=false" in state or "order=nil" in state and g2 == g0, f"{g2}: {state}")
+    answer = lua("return tostring(select(2, tww3_mtb_crew.choose('rifles', 'quarrellers')))")
+    s.ok("h2_second_order_refused", "changed" in answer and gold() == g0, answer)
+    # the panel's other groups, for the pictures
+    q("Q.plate('cannons'); return 1")
+    time.sleep(0.8)
+    s.shot("h_panel_cannons")
+    q("Q.plate('bombs'); return 1")
+    time.sleep(0.8)
+    s.shot("h_panel_bombs")
+    q("Q.plate('cupolas'); return 1")
+    time.sleep(0.8)
+    s.shot("h_panel_cupolas")
+    q("Q.close(); return 1")
+    s.prog("return P.peace()")
+    s.safe_end_turn()
+    s.prog("return P.peace()")
+    # 7. too little gold
+    have = gold()
+    lua(f"cm:treasury_mod('wh3_dlc25_dwf_malakai', {-(have - 10):.0f}); return 1")
+    time.sleep(0.5)
+    q("Q.click_button(); return 1")
+    time.sleep(1.5)
+    q("Q.plate('rifles'); return 1")
+    time.sleep(0.8)
+    s.shot("h_panel_poor")
+    tip = q("return Q.hover_row('quarrellers')")
+    time.sleep(1)
+    s.shot("h_panel_poor_tip")
+    desc = lua("return mtb.dump(tww3_mtb_crew_ui.describe())")
+    q("Q.row('quarrellers'); return 1")
+    time.sleep(0.8)
+    state = crew()
+    s.ok("h7_no_gold", "order=false" in state or "order=nil" in state, f"gold {gold()} {state} | {desc[:300]} | tip {tip[:200]}")
+    s.ok("h7_no_change_used", "changed=false" in state and gold() == 10, state)
+    q("Q.close(); return 1")
+    lua(f"cm:treasury_mod('wh3_dlc25_dwf_malakai', {have - 10:.0f}); return 1")
+    # 3, 4. a save with the order waiting, a real load through the game's menu; a battle reloads the campaign too
+    g3 = gold()
+    s.ok("h3_choose", lua("return tostring(tww3_mtb_crew.choose('rifles', 'quarrellers'))") == "true", crew())
+    g4 = gold()
+    s.ok("h3_paid", g3 - g4 == hire_a, f"{g3} -> {g4}")
+    s.save_game("tww3_mtb_hire_load.save")
+    time.sleep(2)
+    lua("_G.mtb_before_load = true; return 1")
+    loaded = False
+    for step in ("button_menu", "button_load"):
+        s.log("menu", s.click(step))
+        time.sleep(2)
+    s.shot("h_load_panel")
+    pick = lua("""local list = mtb.find('savegames', true); if not list then return 'no list' end
+local box = find_uicomponent(list, 'list_box') or list; local n = box:ChildCount(); if n == 0 then return 'empty' end
+local first = UIComponent(box:Find(0)); first:SimulateLClick(); return first:Id() .. ' of ' .. n""")
+    s.log("load pick", pick)
+    time.sleep(1.5)
+    s.log("confirm", s.click("button_confirm_load"))
+    time.sleep(3)
+    for name in ("button_tick",):
+        if s.visible(name) != "-":
+            s.log(s.click(name))
+    end_time = time.time() + 200
+    while time.time() < end_time:
+        time.sleep(4)
+        row = rc.send("return mtb and mtb.mode .. ' ' .. tostring(_G.mtb_before_load) .. ' ' .. tostring(tww3_mtb_crew and tww3_mtb_crew.status)", 5)
+        text = str(row.get("result"))
+        s.log("loading", text[:100])
+        if row.get("ok") and "campaign nil" in text and "applied" in text:
+            loaded = True
+            break
+    s.log("really loaded", loaded)
+    s.shot("h_after_load")
+    if loaded:
+        time.sleep(6)
+        s.script("dismiss_blockers.lua")
+        g5 = gold()
+        state = crew()
+        s.ok("h3_load_same", g5 == g4 and "order=quarrellers" in state and f"paid={hire_a}" in state, f"{g4} -> {g5}: {state}")
+        # 4. taken back after the load, once
+        lua("tww3_mtb_crew.choose('rifles', 'pirates'); tww3_mtb_crew.choose('rifles', 'pirates'); return 1")
+        s.ok("h4_back_once_after_load", gold() == g4 + hire_a, f"{gold()} from {g4}: {crew()}")
+        s.prog("return P.peace()")
+        s.safe_end_turn()
+        lua("return tostring(tww3_mtb_crew.choose('rifles', 'quarrellers'))")
+    else:
+        s.log("no load: the battle's reload instead")
+        s.back_on_map(5)
+    state = crew()
+    g6 = gold()
+    s.fight("h_reload", ("left",))
+    after = crew()
+    s.ok("h3_battle_reload", after == state and gold() >= g6, f"{state} {g6} -> {after} {gold()}: gold may only rise by the battle's loot")
+    # the turn carries the order out, without a second charge; 9. upkeep as ever
+    upkeep = lua("return tostring(tww3_mtb_crew.upkeep())")
+    g7 = gold()
+    s.prog("return P.peace()")
+    s.safe_end_turn()
+    s.prog("return P.peace()")
+    g8 = gold()
+    state = crew()
+    s.ok("h3_turn_carries_out", state.startswith("quarrellers") and ("paid=false" in state or "paid=nil" in state), f"{g7} -> {g8}: {state}; upkeep {upkeep}; {log_lines('upkeep paid|order done')}")
+    # 5. replacing: nothing back; going back: paid again
+    g = gold()
+    lua("tww3_mtb_crew.choose('rifles', 'thunderers'); return 1")
+    s.ok("h5_replace_no_refund", g - gold() == hire_b, f"{g} -> {gold()}")
+    s.safe_end_turn()
+    s.prog("return P.peace()")
+    g = gold()
+    lua("tww3_mtb_crew.choose('rifles', 'quarrellers'); return 1")
+    s.ok("h5_back_paid_again", g - gold() == hire_a, f"{g} -> {gold()}; {crew()}")
+    s.safe_end_turn()
+    s.prog("return P.peace()")
+    # 6. a building goes with an order waiting: the gold comes back
+    lua("return 1")
+    before = gold()
+    order = lua("return tostring(tww3_mtb_crew.choose('rifles', 'thunderers'))")
+    s.log("order for the demolish", order, crew())
+    paid_now = before - gold()
+    s.log("dismantle", s.prog_file("prog_build.lua", mtb_dismantle="crew_weapons_2")["result"])
+    s.prog("return P.peace()")
+    s.safe_end_turn()
+    s.prog("return P.peace()")
+    lines = log_lines("hire given back|gone|order gone|locked|upkeep paid")
+    state = crew()
+    s.ok("h6_demolish_gives_back", any("hire given back rifles" in x for x in lines) and "order=false" in state or "order=nil" in state, f"paid {paid_now}; {state}; {lines}")
+
+
 def stages(s):
     yield "tree", lambda: s.tree("f_tree_start")
     yield "start", lambda: (
@@ -260,6 +433,7 @@ def stages(s):
         s.plain('tww3_mtb_crew.set("bombs", "none"); return 1', 8)
         s.fight("f6_no_hatches", ("below",))
     yield "hatches", hatches
+    yield "hire", lambda: hire_stage(s)
 
 
 class _Panel:
@@ -286,7 +460,7 @@ def main():
     s.current = {g: v["start"] for g, v in cc.OPTIONS["groups"].items()}
     s.fails, s.results = [], {}
     for name, step in stages(s):
-        if (args.only and name not in args.only) or (not args.only and name == "hatches"):
+        if (args.only and name not in args.only) or (not args.only and name in ("hatches", "hire")):
             continue
         s.log("=== stage", name)
         try:
