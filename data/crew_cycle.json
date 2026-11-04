@@ -3810,6 +3810,120 @@
      "shot": "o_turn3"
     }
    ]
+  },
+  "rtx_fit": {
+   "save": "tww3_mtb_crew_d.save",
+   "limit": 1800,
+   "high": true,
+   "assume": {
+    "rifles": "empty",
+    "cannons": "flame",
+    "cupolas": "empty",
+    "bombs": "empty",
+    "deck": "empty"
+   },
+   "steps": [
+    {
+     "shots": [
+      "left",
+      "front",
+      "below"
+     ],
+     "ammo_report": true,
+     "fight": 70,
+     "after_fire": 6,
+     "stop_near": 25,
+     "label": "fit_clatter",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "clatter",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_fit"
+    },
+    {
+     "shots": [
+      "left",
+      "front",
+      "below"
+     ],
+     "ammo_report": true,
+     "fight": 70,
+     "after_fire": 6,
+     "stop_near": 25,
+     "label": "fit_organ",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "organ",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_fit"
+    },
+    {
+     "shots": [
+      "left",
+      "front",
+      "below"
+     ],
+     "ammo_report": true,
+     "fight": 70,
+     "after_fire": 6,
+     "stop_near": 25,
+     "label": "fit_flame",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "flame",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_fit"
+    },
+    {
+     "shots": [
+      "left",
+      "front",
+      "below"
+     ],
+     "ammo_report": true,
+     "fight": 70,
+     "after_fire": 6,
+     "stop_near": 25,
+     "label": "fit_brimstone",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "brimstone",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_fit"
+    },
+    {
+     "shots": [
+      "left",
+      "front",
+      "below"
+     ],
+     "ammo_report": true,
+     "fight": 70,
+     "after_fire": 6,
+     "stop_near": 25,
+     "label": "fit_stock",
+     "choice": {
+      "rifles": "empty",
+      "cannons": "stock",
+      "cupolas": "empty",
+      "bombs": "empty",
+      "deck": "empty"
+     },
+     "far_views": "close_fit"
+    }
+   ]
   }
  },
  "far_views": {
@@ -4401,6 +4515,65 @@
     "fov": 45,
     "dists": [
      14
+    ]
+   }
+  ]
+ },
+ "close_fit": {
+  "dists": [
+   7
+  ],
+  "burst_n": 8,
+  "burst_gap": 0.1,
+  "views": [
+   {
+    "name": "side",
+    "seat": "ap_cannon_left",
+    "az": -100,
+    "el": 6,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "front",
+    "seat": "ap_cannon_left",
+    "az": -15,
+    "el": 4,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "below",
+    "seat": "ap_cannon_left",
+    "az": -60,
+    "el": -40,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "top",
+    "seat": "ap_cannon_left",
+    "az": -70,
+    "el": 55,
+    "fov": 45,
+    "dists": [
+     7
+    ]
+   },
+   {
+    "name": "open",
+    "seat": "centre",
+    "az": -65,
+    "el": 6,
+    "fov": 32,
+    "dists": [
+     40
     ]
    }
   ]

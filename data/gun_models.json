@@ -2,7 +2,7 @@
  "organ": {
   "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
   "material": "warmachines/materials/dwf_organ_gun_01_weighted2_alpha_off.xml.material",
-  "bind": "cannon_1",
+  "bind": "root",
   "scale": 1.2,
   "muzzle_z": 2.75,
   "groups": [
@@ -118,12 +118,12 @@
     "across": 1.45,
     "along": 0.5,
     "z_to": 0.32,
-    "bind": "cannon_0"
+    "bind": "root"
    }
   ]
  },
  "clatter": {
-  "bind": "cannon_1",
+  "bind": "root",
   "muzzle_z": 2.75,
   "_about": "Six thin barrels: the organ gun's barrel without its breech, made thin; the stock gun's tube as a housing around their rear; the organ gun's bands as clamps; the stock gun's rear in the port.",
   "parts": [
@@ -176,7 +176,8 @@
     "axis_z": [
      0.5,
      0.94
-    ]
+    ],
+    "bind": "root"
    },
    {
     "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
@@ -196,7 +197,8 @@
     ],
     "across": 1.8,
     "along": 1.2,
-    "z_to": 1.62
+    "z_to": 1.62,
+    "bind": "root"
    },
    {
     "source": "warmachines/engines/dwf_organ_gun/dwf_organ_gun_01.rigid_model_v2",
@@ -216,7 +218,8 @@
     ],
     "across": 1.8,
     "along": 0.9,
-    "z_to": 2.3
+    "z_to": 2.3,
+    "bind": "root"
    },
    {
     "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
@@ -233,7 +236,7 @@
     "across": 0.92,
     "along": 1.05,
     "z_to": 0.32,
-    "bind": "cannon_0"
+    "bind": "root"
    },
    {
     "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
@@ -293,7 +296,7 @@
  "flame": {
   "source": "warmachines/engines/dwf_flame_cannon/dwf_flame_cannon.rigid_model_v2",
   "material": "warmachines/materials/dwf_flame_cannon_weighted_01_weighted2_alpha_off.xml.material",
-  "bind": "cannon_1",
+  "bind": "root",
   "scale": 0.85,
   "muzzle_z": 2.75,
   "groups": [
@@ -380,7 +383,7 @@
     "across": 1.05,
     "along": 0.5,
     "z_to": 0.32,
-    "bind": "cannon_0"
+    "bind": "root"
    }
   ]
  },
@@ -428,7 +431,7 @@
   }
  },
  "brimstone": {
-  "bind": "cannon_1",
+  "bind": "root",
   "muzzle_z": 2.75,
   "_about": "The gyrocopter's brimstone gun, drawn out along its axis, on the stock gun's rear.",
   "parts": [
@@ -455,7 +458,8 @@
      0.98,
      1.84
     ],
-    "clamp": true
+    "clamp": true,
+    "bind": "root"
    },
    {
     "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
@@ -472,7 +476,7 @@
     "across": 0.62,
     "along": 0.55,
     "z_to": 0.32,
-    "bind": "cannon_0"
+    "bind": "root"
    },
    {
     "source": "warmachines/aircraft/dwf_thunderbarge/cannon/dwf_thundercannon_01.rigid_model_v2",
