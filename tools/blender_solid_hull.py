@@ -860,4 +860,5 @@ def main():
     (OUT / "solid_hull.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
 
 
-main()
+if __name__ == "__main__":
+    main()
