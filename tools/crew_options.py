@@ -390,6 +390,15 @@ def extend(t, stock, unit, barge, table_name_check=True):
         files.update(hull_without_harpoon(table))
         t["battle_animations_table"].append({"key": table, "skeleton": "zeppelin01"})
         t["mounts"].append(dict(like_mount, key=NO_HARPOON_MOUNT, variant=OWN_HULL, animation=table))
+        # The hull's look is one mount row per combination: harpoon or not, patch over the ports, patch over the bomb niches. See write_mounts of src/tww3_mtb_crew.lua.
+        hull_mounts = {"h": OWN_HULL, "n": NO_HARPOON_MOUNT}
+        for code, models in (("c", ["patch_port"]), ("b", ["patch_bombs"]), ("cb", ["patch_port", "patch_bombs"])):
+            name = f"{OWN_HULL}_{code}"
+            t["variants"].append(dict(like_variant, variant_name=name, variant_filename=name))
+            files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{name}.variantmeshdefinition"] = hull_parts.variant_definition(hull_parts.SPEC["out"] + ".wsmodel", [details[m] for m in models])
+            t["mounts"].append(dict(like_mount, key=name, variant=name))
+            t["mounts"].append(dict(like_mount, key=f"{NO_HARPOON_MOUNT}_{code}", variant=name, animation=table))
+            hull_mounts["h" + code], hull_mounts["n" + code] = name, f"{NO_HARPOON_MOUNT}_{code}"
     like_empty = one(stock["battle_personalities"], key=CONFIG["empty_like"])
     t["battle_personalities"].append(dict(like_empty, key=EMPTY_ROW))
     seats = {}
@@ -397,16 +406,13 @@ def extend(t, stock, unit, barge, table_name_check=True):
     bindings, levels = building_bindings(stock)
     prefix = CONFIG["buildings_prefix"]
     data = {"land_unit": unit, "seat_count": len(stock_seat), "groups": {}, "seats": seats, "fixed": {s: stock_seat[s] for s in fixed},
-            "upkeep": {g: {k: crew_ui.upkeep(o, stock) for k, o in spec["options"].items()} for g, spec in CONFIG["groups"].items()},
+            "hull_mounts": hull_mounts, "upkeep": {g: {k: crew_ui.upkeep(o, stock) for k, o in spec["options"].items()} for g, spec in CONFIG["groups"].items()},
             "buildings": bindings, "levels": levels, "auto_active": {prefix + short: True for short in CONFIG["auto_active"]}, "panel_building": prefix + CONFIG["auto_active"][0]}
     for group_key, group in CONFIG["groups"].items():
         data["groups"][group_key] = {"start": group["start"], "start_ai": group["start_ai"], "options": sorted(group["options"]), "seats": group["seats"]}
         for field in ("always", "off_bundle", "mount"):
             if group.get(field):
                 data["groups"][group_key][field] = group[field]
-        if group.get("off_bundle"):     # the model goes with the ability
-            data["groups"][group_key]["mount_on"] = OWN_HULL
-            data["groups"][group_key]["mount_off"] = NO_HARPOON_MOUNT
         ammo[group_key] = {}
         for key, opt in group["options"].items():
             rows_of_option, definition_files = option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo, own_stats)
@@ -414,23 +420,6 @@ def extend(t, stock, unit, barge, table_name_check=True):
                 seats.setdefault(seat, {})[key] = personality
             files.update(definition_files)
             files.update(option_files(group_key, key, opt))
-    # The plain ship: the seat at the unit's origin carries the patches of the groups that have no bay.
-    data["patch_seat"] = hull_parts.SPEC["patches"]["seat"]
-    data["patch_rows"] = {}
-    base_row = one(stock["battle_personalities"], key=stock_seat[data["patch_seat"]])
-    base_variant = one(stock["variants"], variant_name=base_row["variant"])
-    for cannons in (True, False):
-        for bombs in (True, False):
-            code = ("c" if cannons else "") + ("b" if bombs else "")
-            if not code:
-                data["patch_rows"]["none"] = base_row["key"]
-                continue
-            name = f"mtb_v_patch_{code}"
-            t["variants"].append(dict(base_variant, variant_name=name, variant_filename=name, scale=f32(1.0)))
-            slots = "".join(f'<SLOT name="{k}"><VARIANT_MESH model="{details[k]}" /></SLOT>' for k, on in (("patch_port", cannons), ("patch_bombs", bombs)) if on)
-            files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{name}.variantmeshdefinition"] = f"<VARIANT_MESH>{slots}</VARIANT_MESH>".encode("utf-8")
-            t["battle_personalities"].append(dict(base_row, key=f"mtb_bp_patch_{code}", variant=name, autonomous_rider_hero=False, man_animations_table=one(stock["battle_personalities"], key=CONFIG["empty_like"])["man_animations_table"]))
-            data["patch_rows"][code] = f"mtb_bp_patch_{code}"
     weapon_upgrades(t, stock, unit, ammo, own_stats)
     if CONFIG.get("remove_bow_figure"):
         files.update(hull_files())

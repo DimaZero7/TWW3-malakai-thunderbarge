@@ -30,7 +30,7 @@
 -- Two kinds of group are not seats to choose. always: the group holds that option whatever is saved (the deck crew). off_bundle: no seats, an ability the unit
 -- has by its tables; an effect bundle on Malakai's force takes it away while the group is on its start (the harpoon). Without memreader Plus and under the AI
 -- there is no bundle: the unit has the ability, as stock. The harpoon's model comes from the hull's animation table, so the land unit's pointer to its mount row is
--- written with the seats: one mount has the table with the harpoon, the other a copy without it. The game reads it when it creates the unit.
+-- written with the seats: a row per look of the hull (harpoon or not, patches over the port and the bomb niches). The game reads it when it creates the unit.
 local CONFIG = {} --@CONFIG@
 
 local SAVE_PREFIX = 'mtb_crew_'
@@ -133,26 +133,22 @@ end
 local mount_offset = nil
 
 local function write_mounts(mr, found, land_unit, choice)
-    for group, spec in pairs(CONFIG.groups) do
-        if spec.mount_on then
-            local on, off = row(mr, found.mounts, spec.mount_on), row(mr, found.mounts, spec.mount_off)
-            if not mount_offset then
-                for o = 0, 0x400, 8 do
-                    local v = mr.read_pointer(land_unit, o)
-                    if v == on or v == off then
-                        mount_offset = o
-                        break
-                    end
-                end
-                log('mount at ' .. tostring(mount_offset))
+    local known = {}
+    for _, key in pairs(CONFIG.hull_mounts) do known[tostring(row(mr, found.mounts, key))] = true end
+    if not mount_offset then
+        for o = 0, 0x400, 8 do
+            if known[tostring(mr.read_pointer(land_unit, o))] then
+                mount_offset = o
+                break
             end
-            if not mount_offset then error('the mount of the land unit is not found') end
-            local wanted = choice[group] == spec.start and off or on
-            local current = mr.read_pointer(land_unit, mount_offset)
-            if current ~= on and current ~= off then error('the land unit has another mount') end
-            if current ~= wanted then mr.write(land_unit, mount_offset, wanted) end
         end
+        log('mount at ' .. tostring(mount_offset))
     end
+    if not mount_offset then error('the mount of the land unit is not found') end
+    if not known[tostring(mr.read_pointer(land_unit, mount_offset))] then error('the land unit has another mount') end
+    -- the hull as it looks now: harpoon or not, patches over the holes of the bays that are not there
+    local code = (choice.harpoon == CONFIG.groups.harpoon.start and 'n' or 'h') .. (choice.cannons == 'none' and 'c' or '') .. (choice.bombs == 'none' and 'b' or '')
+    mr.write(land_unit, mount_offset, row(mr, found.mounts, CONFIG.hull_mounts[code]))
 end
 
 local function write_seats()
@@ -170,9 +166,6 @@ local function write_seats()
     for group, spec in pairs(CONFIG.groups) do
         for _, seat in ipairs(spec.seats) do wanted[seat] = CONFIG.seats[seat][choice[group]] end
     end
-    -- The plain ship: the holes of the bays that are not there.
-    local patch_code = (choice.cannons == 'none' and 'c' or '') .. (choice.bombs == 'none' and 'b' or '')
-    wanted[CONFIG.patch_seat] = CONFIG.patch_rows[patch_code == '' and 'none' or patch_code]
     local plan, seen = {}, 0
     for i = 0, size - 1 do
         local name = mr.read_string(mr.read_pointer(data, i * SEAT_STRIDE + SEAT_NAME), 0)

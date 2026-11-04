@@ -226,8 +226,10 @@ def building_lines(config, t, stock, bindings):
     """One green line per building of the table, in its list of effects: what it gives the barge. Written from data/crew_options.json, so the table changes in one place.
     A row of effects with no bonus: only its text does anything. Adds to the tables t, returns {loc key: text}."""
     names = game_text("building_culture_variants_name_")
+    renamed = {config["buildings_prefix"] + short: name for short, name in config.get("building_names", {}).items()}
+
     def name_of(key):
-        return names.get(f"building_culture_variants_name_{key}", key)
+        return renamed.get(key) or names.get(f"building_culture_variants_name_{key}", key)
     groups = config["groups"]
     mount_building = {g: k for k, b in bindings.items() for g in groups if groups[g].get("mount") == b["option"] and b["group"] == g}
     like = next(r for r in stock["effects"] if r["effect"] == "wh3_dlc25_effect_ability_enable_thunderburner_upgraded")
@@ -253,6 +255,8 @@ def building_lines(config, t, stock, bindings):
         t["effects"].append(dict(like, effect=effect, is_positive_value_good=True))
         t["building_effects_junction"].append({"building": key, "effect": effect, "effect_scope": BUILDING_LINE_SCOPE, "value": 1.0, "value_damaged": 1.0, "value_ruined": 0.0, "context_requirement": ""})
         loc[f"effects_description_{effect}"] = text
+    for key, name in renamed.items():
+        loc[f"building_culture_variants_name_{key}"] = name
     return loc
 
 

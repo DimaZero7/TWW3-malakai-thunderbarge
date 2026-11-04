@@ -146,67 +146,82 @@ def _both_sides(mesh):
 
 
 def _patch_model(source, mesh, material, out, name, models):
-    origin = SPEC["patches"]["seat_origin"]
-    scale = SPEC["patches"]["scale"]
-    for v in mesh.verts:
-        v.x, v.y, v.z = (v.x - origin[0]) * scale, (v.y - origin[1]) * scale, (v.z - origin[2]) * scale
-        v.rebind(0)
-    mesh.attachments = list(RIDER_ATTACHMENTS)
-    model = {"version": source["version"], "skeleton": RIDER_SKELETON, "lods": [[mesh]], "lod_headers": [source["lod_headers"][0]]}
+    """A model on the hull's own skeleton, in the hull's frame: it is another slot of the hull's definition."""
+    model = {"version": source["version"], "skeleton": source["skeleton"], "lods": [[mesh]], "lod_headers": [source["lod_headers"][0]]}
     models[name] = out + ".wsmodel"
     return {(out + ".rigid_model_v2").replace("/", SEP): rmv2.save(model),
             (out + ".wsmodel").replace("/", SEP): rmv2.wsmodel(out + ".rigid_model_v2", {0: [material]})}
 
 
 def patches(source, stock_materials, models):
-    """The plain ship of a barge without its bays: pieces over the holes of the hull, on the seat that stands at the unit's origin (data/hull_parts.json, patches).
-    Over the bomb niches a plate with the colour of the steel around them; over the port planks copied from just behind it, bent to the bow's narrowing."""
+    """The plain ship of a barge without its bays: pieces over the port and the bomb niches (data/hull_parts.json, patches). A variant of the mount has them as a slot."""
     spec = SPEC["patches"]
     hull = source["lods"][0][0]
     material = stock_materials[(0, 0)]
     files = {}
-    # plates
-    want = spec["bombs"]["template"]
+
     def centre(t):
         return tuple(sum(getattr(hull.verts[i], axis) for i in t) / 3 for axis in "xyz")
+    # plates: a triangle of the steel around the niches gives the look, the height comes from the rim
+    want = spec["bombs"]["template"]
     template = next(t for t in hull.tris if want["x"][0] <= centre(t)[0] <= want["x"][1] and want["z"][0] <= centre(t)[2] <= want["z"][1] and centre(t)[1] < want["y_below"])
     corners = [hull.verts[i] for i in template]
     mesh = hull.copy()
     mesh.verts, mesh.tris = [], []
     x0, x1 = spec["bombs"]["x"]
-    for side in (1, -1):
+    for sign in (1, -1):
         for z0, z1 in spec["bombs"]["z"]:
             base = len(mesh.verts)
             for n, (x, z) in enumerate(((x0, z0), (x1, z0), (x1, z1), (x0, z1))):
                 v = corners[min(n, 2)].copy()
-                v.x, v.y, v.z = x * side, spec["bombs"]["y"], z
+                v.x, v.y, v.z = x * sign, spec["bombs"]["y"], z
                 mesh.verts.append(v)
             mesh.tris += [(base, base + 1, base + 2), (base, base + 2, base + 3)]
     _both_sides(mesh)
     files.update(_patch_model(source, mesh, material, spec["bombs"]["out"], "patch_bombs", models))
-    # a round plug in the colour of the planks, on the slanted side of the bow
-    want = spec["port"]["template"]
-    template = next(t for t in hull.tris if want["x"][0] <= centre(t)[0] <= want["x"][1] and want["z"][0] <= centre(t)[2] <= want["z"][1] and want["y"][0] <= centre(t)[1] <= want["y"][1])
-    corners = [hull.verts[i] for i in template]
+    # over the port: a round lid in the colour of the planks, in the plane of the port's outer ring. Each side has its own template, for the normals.
+    port = spec["port"]
+    box = port["ring_box"]
+    rim = [v for v in hull.verts if v.x > 1.3 and box[0] <= v.z <= box[1] and box[2] <= v.y <= box[3]]
+    # the plane of the port's outermost vertices, a little beyond the farthest of them: x = a + b z + c y
+    points = [(v.z, v.y, v.x) for v in rim]
+    n_ = len(points)
+    zm, ym, xm = (sum(p_[i] for p_ in points) / n_ for i in range(3))
+    szz = sum((p_[0] - zm) ** 2 for p_ in points)
+    syy = sum((p_[1] - ym) ** 2 for p_ in points)
+    szy = sum((p_[0] - zm) * (p_[1] - ym) for p_ in points)
+    szx = sum((p_[0] - zm) * (p_[2] - xm) for p_ in points)
+    syx = sum((p_[1] - ym) * (p_[2] - xm) for p_ in points)
+    det = szz * syy - szy * szy
+    slope_z, slope_y = (szx * syy - syx * szy) / det, (syx * szz - szx * szy) / det
+    lift = max(x - (xm + slope_z * (z - zm) + slope_y * (y - ym)) for z, y, x in points)
+
+    def plank(sign):
+        def area(t):
+            a_, b_, c_ = (hull.verts[i] for i in t)
+            return abs((b_.y - a_.y) * (c_.z - a_.z) - (b_.z - a_.z) * (c_.y - a_.y))
+        want_ = port["template"]
+        found = [t for t in hull.tris if want_["z"][0] <= centre(t)[2] <= want_["z"][1] and want_["y"][0] <= centre(t)[1] <= want_["y"][1] and centre(t)[0] * sign > want_["x_above"]]
+        return [hull.verts[i] for i in max(found, key=area)]
     mesh = hull.copy()
     mesh.verts, mesh.tris = [], []
-    cy, cz, radius, n_sides = spec["port"]["centre_y"], spec["port"]["centre_z"], spec["port"]["radius"], 28
-    z_a, x_a, z_b, x_b = spec["port"]["x_at"]
-    for side in (1, -1):
+    sides = 32
+    for sign in (1, -1):
+        corners_ = plank(sign)
         base = len(mesh.verts)
-        for n in range(n_sides + 1):
-            v = corners[n % 3].copy()
-            if n == n_sides:
-                y, z = cy, cz
+        for n in range(sides + 1):
+            v = corners_[n % 3].copy()
+            if n == sides:
+                y, z = port["y"], port["z"]
             else:
-                angle = 2 * math.pi * n / n_sides
-                y, z = cy + radius * math.sin(angle), cz + radius * math.cos(angle)
-            v.x, v.y, v.z = (x_a + (x_b - x_a) * (z - z_a) / (z_b - z_a)) * side, y, z
+                angle = 2 * math.pi * n / sides
+                y, z = port["y"] + port["radius"] * math.sin(angle), port["z"] + port["radius"] * math.cos(angle)
+            v.x, v.y, v.z = (xm + slope_z * (z - zm) + slope_y * (y - ym) + lift + port["proud"]) * sign, y, z
             mesh.verts.append(v)
-        for n in range(n_sides):
-            mesh.tris.append((base + n_sides, base + n, base + (n + 1) % n_sides))
+        for n in range(sides):
+            mesh.tris.append((base + sides, base + n, base + (n + 1) % sides))
     _both_sides(mesh)
-    files.update(_patch_model(source, mesh, material, spec["port"]["out"], "patch_port", models))
+    files.update(_patch_model(source, mesh, material, port["out"], "patch_port", models))
     return files
 
 
@@ -225,13 +240,15 @@ def _select(mesh, indexes):
     return out
 
 
-def variant_definition(hull_wsmodel):
-    """The hull's stock .variantmeshdefinition with our model in it."""
+def variant_definition(hull_wsmodel, extra=()):
+    """The hull's stock .variantmeshdefinition with our model in it, and models more as slots of their own."""
     stock = game_file(SPEC["definition"]).decode("utf-8")
     new = stock.replace(SPEC["wsmodel"], hull_wsmodel)
     if new == stock:
         raise SystemExit("the hull's definition does not name its model as expected")
-    return new.encode("utf-8")
+    end = new.rindex("</VARIANT_MESH>")
+    slots = "".join(f'\t<SLOT name="patch{i}" >\n\t\t<VARIANT_MESH model="{model}" />\n\t</SLOT>\n' for i, model in enumerate(extra))
+    return (new[:end] + slots + new[end:]).encode("utf-8")
 
 
 if __name__ == "__main__":

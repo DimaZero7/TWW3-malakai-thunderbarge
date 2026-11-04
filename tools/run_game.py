@@ -122,9 +122,13 @@ def main(argv=None):
         raise SystemExit(f"our earlier files changed, not touching them: {kept}")
     names = [manifest["packs"][p] for p in args.packs]
     modlist = rb.GAME / rb.MODLIST_NAME
+    # The mod the user plays lies in data/: the same file stays and is not ours to remove, another one stops the run.
+    kept_in_place = []
     for name in names:
         if (rb.GAME / "data" / name).exists():
-            raise SystemExit(f"{name} is already in data/")
+            if rb.sha(rb.GAME / "data" / name) != rb.sha(PACK_DIR / name):
+                raise SystemExit(f"another {name} is already in data/")
+            kept_in_place.append(name)
     if modlist.exists():
         raise SystemExit("an earlier mod list remains")
     for name in SESSION_FILES:
@@ -145,7 +149,7 @@ def main(argv=None):
             raise SystemExit(f"{wanted}: not found in the user's working directories")
         mod_text += found[0] + "\n" + f'mod "{wanted}";\n'
     mod_text += "".join(f'mod "{n}";\n' for n in names)
-    entries = [{"path": str(rb.GAME / "data" / n), "sha256": rb.sha(PACK_DIR / n)} for n in names]
+    entries = [{"path": str(rb.GAME / "data" / n), "sha256": rb.sha(PACK_DIR / n)} for n in names if n not in kept_in_place]
     entries.append({"path": str(modlist), "sha256": hashlib.sha256(mod_text.encode()).hexdigest()})
     rb.MARKER.parent.mkdir(exist_ok=True)
     rb.MARKER.write_text(json.dumps(entries), encoding="utf-8")
@@ -160,7 +164,8 @@ def main(argv=None):
     try:
         backup_user()
         for name in names:
-            shutil.copy(PACK_DIR / name, rb.GAME / "data" / name)
+            if name not in kept_in_place:
+                shutil.copy(PACK_DIR / name, rb.GAME / "data" / name)
         modlist.write_bytes(mod_text.encode())
         if args.save:
             placed_save = USER / "save_games" / args.save
