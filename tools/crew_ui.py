@@ -5,10 +5,16 @@ The game finds them by path: CreateComponent(id, "ui/tww3_mtb/image"). All text 
 The numbers (damage, reload, range) are read from the rows the build makes, so a change of data/crew_options.json shows up in the panel without any other edit.
 """
 import json
+import struct
+import sys
 import uuid
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "tools"))
+import gamepack  # noqa: E402
+
+BUILDING_LINE_SCOPE = "force_to_force_own"
 SEP = chr(92)
 ART = REPO / "data" / "ui"
 UI_DIR = "ui/tww3_mtb/"
@@ -197,6 +203,57 @@ def upkeep(opt, stock):
     land = next(r for r in stock["land_units"] if r["key"] == unit["land_unit"])
     size = land["num_engines"] or unit["num_men"]
     return round(unit["upkeep_cost"] * source["count"] / size)
+
+
+def game_text(prefix):
+    """{key: text} of the game's Russian texts whose keys start with prefix. A .loc: FF FE 'LOC' 00, i32, u32 count, then key, text as u16 length + UTF-16, a bool."""
+    out = {}
+    for _, blob in gamepack.entries(gamepack.DATA / "local_ru.pack", lambda n: n.endswith(".loc")):
+        count = struct.unpack_from("<I", blob, 10)[0]
+        pos = 14
+        for _ in range(count):
+            n = struct.unpack_from("<H", blob, pos)[0]
+            key = blob[pos + 2:pos + 2 + n * 2].decode("utf-16-le", "replace")
+            pos += 2 + n * 2
+            n = struct.unpack_from("<H", blob, pos)[0]
+            if key.startswith(prefix):
+                out[key] = blob[pos + 2:pos + 2 + n * 2].decode("utf-16-le", "replace")
+            pos += 2 + n * 2 + 1
+    return out
+
+
+def building_lines(config, t, stock, bindings):
+    """One green line per building of the table, in its list of effects: what it gives the barge. Written from data/crew_options.json, so the table changes in one place.
+    A row of effects with no bonus: only its text does anything. Adds to the tables t, returns {loc key: text}."""
+    names = game_text("building_culture_variants_name_")
+    def name_of(key):
+        return names.get(f"building_culture_variants_name_{key}", key)
+    groups = config["groups"]
+    mount_building = {g: k for k, b in bindings.items() for g in groups if groups[g].get("mount") == b["option"] and b["group"] == g}
+    like = next(r for r in stock["effects"] if r["effect"] == "wh3_dlc25_effect_ability_enable_thunderburner_upgraded")
+    t.setdefault("effects", [])
+    t.setdefault("building_effects_junction", [])
+    loc = {}
+    for key, binding in bindings.items():
+        group, option = groups[binding["group"]], binding["option"]
+        opt = group["options"][option]
+        label = group["ui"]["name"].lower()
+        name = opt["ui"]["name"]
+        if group.get("mount") == option:
+            text = f"Крепление: {group['mount_name']}, {len(group["seats"])} места, пока без оружия. Оружие открывают другие постройки, ставится в панели экипажа"
+        elif group.get("mount"):
+            text = f"Оружие: {name} ({label}). Нужны {group['mount_name']} (постройка «{name_of(mount_building[binding['group']])}»). Ставится в панели экипажа"
+        elif opt.get("ability"):
+            text = f"{name}: стрела на носу шара и способность в бою. Ставится в панели экипажа"
+        elif key.removeprefix(config["buildings_prefix"]) in config["auto_active"]:
+            text = f"Экипаж: {name} ({label}) встают сразу"
+        else:
+            text = f"Экипаж: открывает «{name}» ({label}). Ставится в панели экипажа"
+        effect = "mtb_effect_crew_" + key.removeprefix(config["buildings_prefix"])
+        t["effects"].append(dict(like, effect=effect, is_positive_value_good=True))
+        t["building_effects_junction"].append({"building": key, "effect": effect, "effect_scope": BUILDING_LINE_SCOPE, "value": 1.0, "value_damaged": 1.0, "value_ruined": 0.0, "context_requirement": ""})
+        loc[f"effects_description_{effect}"] = text
+    return loc
 
 
 def data(config, t, stock, bindings):

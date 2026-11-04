@@ -458,5 +458,6 @@ def extend(t, stock, unit, barge, table_name_check=True):
         raise SystemExit("config marker not in src/tww3_mtb_crew_ui.lua")
     files[f"script{SEP}campaign{SEP}mod{SEP}tww3_mtb_crew_ui.lua"] = panel.replace(panel_marker, f"local DATA = {to_lua(crew_ui.data(CONFIG, t, stock, bindings))}").encode("utf-8")
     files.update(crew_ui.files())
+    files["__building_text__"] = json.dumps(crew_ui.building_lines(CONFIG, t, stock, bindings), ensure_ascii=False).encode("utf-8")
     files[f"script{SEP}battle{SEP}mod{SEP}tww3_mtb_ammo.lua"] = ammo_module(t, stock, unit, barge, ammo)
     return files

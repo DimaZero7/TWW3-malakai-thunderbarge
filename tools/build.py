@@ -339,10 +339,11 @@ def build_campaign(blob_files, tables, stock):
     tables = derive_campaign(stock, {k: [dict(r) for r in v] for k, v in tables.items()})
     files = {k: v for k, v in blob_files.items() if not k.startswith(f"script{sep}battle") and not k.startswith(f"db{sep}")}
     files.update(crew_options.extend(tables, stock, UNIT, BARGE))
+    building_text = json.loads(files.pop("__building_text__"))
     for table, rows in tables.items():
         layout = LAYOUTS[table]
         files[f"db{sep}{table}_tables{sep}{TABLE_NAME}"] = dbtable.encode(rows, [tuple(f) for f in layout["fields"]], layout["version"], table)
-    files[f"text{sep}db{sep}tww3_mtb.loc"] = loc_bytes(json.loads((DATA / "campaign_text.json").read_text(encoding="utf-8")) | {
+    files[f"text{sep}db{sep}tww3_mtb.loc"] = loc_bytes(json.loads((DATA / "campaign_text.json").read_text(encoding="utf-8")) | building_text | {
         f"land_units_onscreen_name_{UNIT}": "Malakai Makaisson, Spirit of Grungni"})
     files[f"script{sep}campaign{sep}mod{sep}tww3_mtb_campaign.lua"] = (REPO / "src" / "tww3_mtb_campaign.lua").read_bytes()
     blob = pfh5.pack_files(files)
@@ -355,7 +356,7 @@ def build_campaign(blob_files, tables, stock):
             raise SystemExit(f"{table}: read back differs")
     if any(r["unit_set"] == SUMMON_SET for r in tables["unit_set_to_unit_junctions"]):
         raise SystemExit("the unit is in the summon's set: the timer would come back")
-    if len(tables["building_effects_junction"]) != 6:
+    if sum(r["effect"] == SUMMON_EFFECT for r in tables["building_effects_junction"]) != 6:
         raise SystemExit("expected 6 building rows of the summon")
     if any("unbinding" in r["unit_ability"] for r in tables["unit_set_unit_ability_junctions"]):
         raise SystemExit("a timer ability in our unit set")
