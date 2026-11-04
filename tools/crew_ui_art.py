@@ -537,10 +537,16 @@ def occ_cupolas():
 
 
 def occ_deck():
-    """The fireman and the lookout on the stern deck, the pub under it: the hull's side cut away, a table, benches, barrels, four men."""
+    """The fireman and the lookout on the stern deck: aboard whenever there is a barge."""
     out = []
     out += dwarf(716, 396, 0.85, -1, False, "#5b5247", "#7f4a26")
     out += dwarf(742, 396, 0.85, 1, False, "#4c3b28", "#b98a42")
+    return out
+
+
+def occ_pub():
+    """The pub under the stern deck, with the beer chain: the hull's side cut away, a table, benches, barrels, four men."""
+    out = []
     x0, y0, x1, y1 = PUB
     out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0}" fill="#d9a76a" stroke="{INK}" stroke-width="1.9"/>')
     out.append(f'<rect x="{x0 + 1}" y="{y0 + 1}" width="{x1 - x0 - 2}" height="10" fill="#7a5128" opacity="0.65"/>')
@@ -575,7 +581,7 @@ def sel_shapes(group):
     return [(744, 480, 76, 38), (728, 378, 28, 26)]
 
 
-OCC = {"rifles": occ_rifles, "cannons": occ_cannons, "bombs": occ_bombs, "cupolas": occ_cupolas, "deck": occ_deck, "harpoon": occ_harpoon}
+OCC = {"rifles": occ_rifles, "cannons": occ_cannons, "bombs": occ_bombs, "cupolas": occ_cupolas, "deck": occ_deck, "pub": occ_pub, "harpoon": occ_harpoon}
 
 
 def sketches():
@@ -831,6 +837,27 @@ def card_empty():
     return out, w, h
 
 
+def card_frame():
+    """The frames around a crew card on the game's tree of buildings, one per colour of data/crew_options.json, card_frames: bright, unlike the blue of a recruit card's thin line."""
+    import json
+    from PIL import Image, ImageDraw
+    colours = json.loads((OUT.parent / "crew_options.json").read_text(encoding="utf-8"))["card_frames"]
+    for name, pair in colours.items():
+        if name.startswith("_"):
+            continue
+        light, dark = tuple(pair[0]) + (255,), tuple(pair[1]) + (255,)
+        corner = tuple(min(255, v + 60) for v in pair[0]) + (255,)
+        w, h = 72, 120
+        im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, w - 1, h - 1), outline=(30, 14, 0, 255), width=2)
+        d.rectangle((2, 2, w - 3, h - 3), outline=light, width=4)
+        d.rectangle((6, 6, w - 7, h - 7), outline=dark, width=1)
+        for x, y in ((0, 0), (w - 14, 0), (0, h - 14), (w - 14, h - 14)):
+            d.rectangle((x, y, x + 13, y + 13), fill=corner, outline=(30, 14, 0, 255))
+        im.save(OUT / f"card_frame_{name}.png", optimize=True)
+
+
 def frames():
     for kind in ("normal", "hover", "selected", "locked"):
         for name, w, h in (("plate", 214, 70), ("row", 400, 86)):
@@ -855,6 +882,7 @@ def main():
         layers[f"occ_{group}"] = layer(f"occ_{group}", fn(), places)
         layers[f"sel_{group}"] = layer(f"sel_{group}", chalk(group), places)
     frames()
+    card_frame()
     parts, w, h = card_harpoon()
     paint("card_harpoon", svg_page(parts, w=w, h=h, scale=2, filtered=False), w * 2, h * 2).save(OUT / "card_harpoon.png", optimize=True)
     Image.new("RGB", (8, 8), (0, 0, 0)).save(OUT / "backdrop.png")

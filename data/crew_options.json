@@ -1,5 +1,5 @@
 {
- "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself, so the barge is not useless. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md). mount: the option of a group that is its bare mount (port, doors, rings): the building of that option makes the bay exist; until then the group stands on start (none: a plain ship) and its weapons, unlocked or not, cannot be placed. mount_name: how the panel calls it. rings_only: the seat's hull detail with nobody in it. auto_active: also the mount buildings, the bare mount appears at once. The holes of a group on none are covered by patches on the seat ap_thunderburner (tools/hull_parts.py, patches). building_names: what the bound buildings are called in the game, so the name says what they give.",
+ "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself, so the barge is not useless. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md). mount: the option of a group that is its bare mount (port, doors, rings): the building of that option makes the bay exist; until then the group stands on start (none: a plain ship) and its weapons, unlocked or not, cannot be placed. mount_name: how the panel calls it. rings_only: the seat's hull detail with nobody in it. auto_active: also the mount buildings, the bare mount appears at once. The holes of a group on none are covered by patches on the seat ap_thunderburner (tools/hull_parts.py, patches). building_names: what the bound buildings are called in the game, so the name says what they give. buildings: building level -> list of [group, option]: one building may open several. new_chains: chains and levels this mod adds (tiers, prices, texts; tools/build.py). building_edits: tier, cost, time of stock levels. building_lines: green lines of a building. boost: rows per level of chain for one group (accuracy, range). ammo_mod: ammunition of every crew by cargo level. abilities: new abilities enabled by buildings. no_panel: a group only buildings set, the panel does not list it. requires: a building without which the group holds no weapon (the bare mount stays). disabled: an option with its data kept, in no table of the game. Own drawn cards: data/ui/crew_cards/<option>.png and <option>_small.png, or <group>_<option> when several groups have that option; the build takes them when they are there, the stock unit card otherwise.",
  "empty_like": "wh3_dlc23_chd_veh_hidden_rider",
  "remove_bow_figure": false,
  "fixed_seats": [
@@ -151,13 +151,34 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_inf_irondrakes_2",
       "count": 12
-     }
+     },
+     "card_frame": "violet"
     }
    },
    "ui": {
     "name": "Стрелки",
     "about": "12 мест: по бортам вдоль палубы и на носу."
-   }
+   },
+   "boost": {
+    "buildings": [
+     "crew_weapons_1",
+     "crew_weapons_2",
+     "crew_weapons_3"
+    ],
+    "steps": [
+     {
+      "calibration_area": 0.95
+     },
+     {
+      "calibration_area": 0.9
+     },
+     {
+      "calibration_area": 0.85
+     }
+    ],
+    "_note": "Accuracy of this group only: own projectile rows per level, seat rows point at them. A smaller calibration area is a tighter spread."
+   },
+   "card_frame": "gold"
   },
   "cannons": {
    "seats": [
@@ -171,7 +192,7 @@
      "cover": "cap",
      "ui": {
       "name": "Пусто",
-      "about": "Порты открыты, ствола нет."
+      "about": "Порт открыт, ствола нет."
      }
     },
     "stock": {
@@ -267,7 +288,9 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_veh_gyrocopter_1",
       "count": 2
-     }
+     },
+     "disabled": true,
+     "_note": "Removed from the variants by the user 04.11.2026; the data stays for later."
     },
     "none": {
      "empty": true,
@@ -279,10 +302,32 @@
    },
    "ui": {
     "name": "Пушки",
-    "about": "2 орудия в носу, по одному на борт."
+    "about": "2 орудия в носу, по одному на борт. Нужны орудийные порты и сигнальная система."
    },
    "mount": "empty",
-   "mount_name": "порты пушек"
+   "mount_name": "орудийные порты",
+   "requires": {
+    "building": "support_radius_1",
+    "name": "сигнальная система"
+   },
+   "boost": {
+    "buildings": [
+     "support_radius_1",
+     "support_radius_2"
+    ],
+    "steps": [
+     {
+      "effective_range": 1.1,
+      "calibration_area": 0.9
+     },
+     {
+      "effective_range": 1.2,
+      "calibration_area": 0.8
+     }
+    ],
+    "_note": "Range and accuracy of the guns only, of each weapon stock numbers: 100 -> 110 -> 120."
+   },
+   "card_frame": "blue"
   },
   "cupolas": {
    "seats": [
@@ -361,7 +406,8 @@
     "about": "2 башенки на шаре: спереди и сзади."
    },
    "mount": "empty",
-   "mount_name": "вороньи гнёзда"
+   "mount_name": "заготовка под гнёзда",
+   "card_frame": "green"
   },
   "bombs": {
    "seats": [
@@ -429,17 +475,13 @@
     "about": "4 люка в днище, по паре спереди и сзади. Бомбы падают прямо под барку."
    },
    "mount": "empty",
-   "mount_name": "бомбовые отсеки"
+   "mount_name": "заготовка под люки",
+   "card_frame": "red"
   },
   "deck": {
    "seats": [
     "ap_fireman",
-    "ap_lookout",
-    "ap_crew_barrel",
-    "ap_pub_left_front",
-    "ap_pub_left_rear",
-    "ap_pub_right_front",
-    "ap_pub_right_rear"
+    "ap_lookout"
    ],
    "start": "stock",
    "start_ai": "stock",
@@ -448,7 +490,7 @@
      "empty": true,
      "ui": {
       "name": "Пусто",
-      "about": "На палубе только Малакай."
+      "about": "Только для проверок."
      }
     },
     "stock": {
@@ -456,16 +498,13 @@
      "ui": {
       "name": "Команда",
       "card": "wh_main_dwf_warriors",
-      "about": "Кочегар, дозорный и завсегдатаи паба."
+      "about": "Кочегар и дозорный у печки: на борту всегда."
      }
     }
    },
-   "seat_details": {
-    "ap_crew_barrel": "pub"
-   },
    "ui": {
     "name": "Палуба",
-    "about": "7 мест: кочегар и дозорный на корме, паб под ними. Стоят всегда, пока есть барка."
+    "about": "Кочегар и дозорный: на борту всегда, пока есть барка. Без постройки и без содержания."
    },
    "always": "stock"
   },
@@ -498,6 +537,42 @@
       "count": 1
      }
     }
+   },
+   "card_frame": "blue"
+  },
+  "pub": {
+   "seats": [
+    "ap_crew_barrel",
+    "ap_pub_left_front",
+    "ap_pub_left_rear",
+    "ap_pub_right_front",
+    "ap_pub_right_rear"
+   ],
+   "start": "empty",
+   "start_ai": "stock",
+   "no_panel": true,
+   "options": {
+    "empty": {
+     "empty": true,
+     "ui": {
+      "name": "Пусто",
+      "about": "Паб пуст."
+     }
+    },
+    "stock": {
+     "stock": true,
+     "ui": {
+      "name": "Завсегдатаи паба",
+      "about": "Гномы с кружками в каюте."
+     }
+    }
+   },
+   "seat_details": {
+    "ap_crew_barrel": "pub"
+   },
+   "ui": {
+    "name": "Паб",
+    "about": "Гномы в пабе: появляются с постройкой пивной цепочки."
    }
   }
  },
@@ -505,101 +580,515 @@
  "buildings_prefix": "wh3_dlc25_dwarf_spirit_of_grungni_",
  "buildings": {
   "airship_hull_2": [
-   "rifles",
-   "pirates"
-  ],
-  "airship_hull_3": [
-   "cannons",
-   "empty"
-  ],
-  "airship_hull_4": [
-   "cannons",
-   "stock"
-  ],
-  "airship_hull_5": [
-   "cannons",
-   "flaming"
+   [
+    "rifles",
+    "pirates"
+   ]
   ],
   "crew_weapons_1": [
-   "rifles",
-   "quarrellers"
+   [
+    "rifles",
+    "quarrellers"
+   ]
   ],
   "crew_weapons_2": [
-   "rifles",
-   "thunderers"
+   [
+    "rifles",
+    "thunderers"
+   ]
   ],
   "crew_weapons_3": [
-   "rifles",
-   "rakers"
-  ],
-  "support_radius_1": [
-   "rifles",
-   "torpedoes"
-  ],
-  "support_radius_2": [
-   "harpoon",
-   "on"
-  ],
-  "engines_1": [
-   "cannons",
-   "clatter"
-  ],
-  "engines_2": [
-   "cannons",
-   "flame"
-  ],
-  "engines_3": [
-   "cannons",
-   "organ"
-  ],
-  "cargo_hold_1": [
-   "bombs",
-   "empty"
-  ],
-  "cargo_hold_2": [
-   "bombs",
-   "stock"
-  ],
-  "cargo_hold_3": [
-   "bombs",
-   "fire"
+   [
+    "rifles",
+    "rakers"
+   ]
   ],
   "beer_hall_1": [
-   "cupolas",
-   "empty"
+   [
+    "pub",
+    "stock"
+   ]
   ],
-  "beer_hall_2": [
-   "cupolas",
-   "stock"
+  "mtb_guns_1": [
+   [
+    "cannons",
+    "empty"
+   ]
   ],
-  "beer_hall_3": [
-   "cupolas",
-   "axes"
+  "mtb_guns_2": [
+   [
+    "cannons",
+    "clatter"
+   ],
+   [
+    "cannons",
+    "stock"
+   ]
+  ],
+  "mtb_guns_3": [
+   [
+    "cannons",
+    "flaming"
+   ],
+   [
+    "cannons",
+    "flame"
+   ]
+  ],
+  "mtb_guns_4": [
+   [
+    "cannons",
+    "organ"
+   ]
+  ],
+  "mtb_nest_1": [
+   [
+    "cupolas",
+    "empty"
+   ]
+  ],
+  "mtb_nest_2": [
+   [
+    "cupolas",
+    "axes"
+   ]
+  ],
+  "mtb_nest_3": [
+   [
+    "cupolas",
+    "stock"
+   ]
+  ],
+  "mtb_hatches_1": [
+   [
+    "bombs",
+    "empty"
+   ]
+  ],
+  "mtb_hatches_2": [
+   [
+    "bombs",
+    "stock"
+   ]
+  ],
+  "mtb_hatches_3": [
+   [
+    "bombs",
+    "fire"
+   ]
+  ],
+  "mtb_harpoon_1": [
+   [
+    "harpoon",
+    "on"
+   ]
+  ],
+  "mtb_torpedoes_1": [
+   [
+    "rifles",
+    "torpedoes"
+   ]
   ]
  },
  "auto_active": [
   "airship_hull_2",
-  "airship_hull_3",
   "beer_hall_1",
-  "cargo_hold_1"
+  "mtb_guns_1",
+  "mtb_nest_1",
+  "mtb_hatches_1"
  ],
  "building_names": {
-  "airship_hull_3": "Орудийные порты",
-  "airship_hull_4": "Пушка барки",
-  "airship_hull_5": "Огненные снаряды",
-  "crew_weapons_1": "Казарма арбалетчиков",
-  "crew_weapons_2": "Казарма громобоев",
-  "crew_weapons_3": "Казарма злопыхателей",
-  "support_radius_1": "Ящеры с торпедами",
-  "support_radius_2": "Гарпун",
-  "engines_1": "Пулемёт",
-  "engines_2": "Огненная пушка",
-  "engines_3": "Органное орудие",
-  "cargo_hold_1": "Бомбовые отсеки",
-  "cargo_hold_2": "Бомбы",
-  "cargo_hold_3": "Огненные бомбы",
-  "beer_hall_1": "Воронье гнездо",
-  "beer_hall_2": "Гранатомётчики",
-  "beer_hall_3": "Метатели топоров"
- }
+  "airship_hull_1": "Заготовка под корабль"
+ },
+ "ammo_mod": {
+  "cargo_hold_1": 1.15,
+  "cargo_hold_2": 1.4,
+  "cargo_hold_3": 1.6
+ },
+ "building_edits": {
+  "_about": "Rows of stock buildings changed: tier (1 is the hull row I; requirement field = tier - 1), cost, time.",
+  "crew_weapons_1": {
+   "tier": 2,
+   "cost": 1500
+  },
+  "crew_weapons_2": {
+   "tier": 3,
+   "cost": 3000
+  },
+  "crew_weapons_3": {
+   "tier": 4,
+   "cost": 4500
+  },
+  "beer_hall_1": {
+   "tier": 2
+  },
+  "beer_hall_2": {
+   "tier": 3
+  },
+  "beer_hall_3": {
+   "tier": 4
+  },
+  "support_radius_1": {
+   "tier": 3,
+   "cost": 3000
+  },
+  "support_radius_2": {
+   "tier": 4
+  },
+  "barracks_1": {
+   "tier": 2
+  },
+  "barracks_2": {
+   "tier": 3
+  },
+  "barracks_3": {
+   "tier": 4
+  }
+ },
+ "building_set": {
+  "key": "wh3_dlc25_set_dwarf_spirit_of_grungni_compartments"
+ },
+ "slot_cap": 15,
+ "new_chains": [
+  {
+   "key": "mtb_guns",
+   "levels": [
+    {
+     "key": "mtb_guns_1",
+     "tier": 2,
+     "name": "Орудийные порты",
+     "cost": 2000,
+     "time": 1,
+     "dev": 2,
+     "text": "В бортах прорезают порты: без них ни одно орудие не встанет.",
+     "icon": "dwarf_spirit_of_grungni_gunsights"
+    },
+    {
+     "key": "mtb_guns_2",
+     "tier": 3,
+     "name": "Орудийная палуба",
+     "cost": 4000,
+     "time": 2,
+     "dev": 0,
+     "text": "Настил и станки под орудия: пулемёт и пушка барки.",
+     "icon": "dwarf_spirit_of_grungni_gunsights"
+    },
+    {
+     "key": "mtb_guns_3",
+     "tier": 4,
+     "name": "Огненный арсенал",
+     "cost": 6000,
+     "time": 2,
+     "dev": 0,
+     "text": "Запасы зажигательной смеси: огненные снаряды и огненная пушка.",
+     "icon": "dwarf_spirit_of_grungni_gunsights"
+    },
+    {
+     "key": "mtb_guns_4",
+     "tier": 5,
+     "name": "Палата органных орудий",
+     "cost": 9000,
+     "time": 3,
+     "dev": 0,
+     "text": "Самая тяжёлая работа на судне: батарея из четырёх стволов.",
+     "icon": "dwarf_spirit_of_grungni_gunsights"
+    }
+   ]
+  },
+  {
+   "key": "mtb_nest",
+   "levels": [
+    {
+     "key": "mtb_nest_1",
+     "tier": 1,
+     "name": "Заготовка под воронье гнездо",
+     "cost": 500,
+     "time": 1,
+     "dev": 1,
+     "text": "Кольца под гнёзда на шаре. Ставится ещё на стапеле, появится вместе с баркой.",
+     "icon": "dwarf_spirit_of_grungni_support_radius"
+    },
+    {
+     "key": "mtb_nest_2",
+     "tier": 2,
+     "name": "Вороньи гнёзда",
+     "cost": 1500,
+     "time": 1,
+     "dev": 0,
+     "text": "В гнёзда садятся метатели топоров.",
+     "icon": "dwarf_spirit_of_grungni_support_radius"
+    },
+    {
+     "key": "mtb_nest_3",
+     "tier": 3,
+     "name": "Гнёзда с боеукладкой",
+     "cost": 3000,
+     "time": 1,
+     "dev": 0,
+     "text": "Укладка под гранаты в самих гнёздах.",
+     "icon": "dwarf_spirit_of_grungni_support_radius"
+    }
+   ]
+  },
+  {
+   "key": "mtb_hatches",
+   "levels": [
+    {
+     "key": "mtb_hatches_1",
+     "tier": 1,
+     "name": "Заготовка под бомбовые люки",
+     "cost": 750,
+     "time": 1,
+     "dev": 1,
+     "text": "Люки в днище, пока закрытые. Ставится ещё на стапеле, появится вместе с баркой.",
+     "icon": "dwarf_spirit_of_grungni_cargo_hold"
+    },
+    {
+     "key": "mtb_hatches_2",
+     "tier": 2,
+     "name": "Бомбовые стеллажи",
+     "cost": 2000,
+     "time": 1,
+     "dev": 0,
+     "text": "Стеллажи над люками: тяжёлые бомбы.",
+     "icon": "dwarf_spirit_of_grungni_cargo_hold"
+    },
+    {
+     "key": "mtb_hatches_3",
+     "tier": 4,
+     "name": "Зажигательная укладка",
+     "cost": 5000,
+     "time": 2,
+     "dev": 0,
+     "text": "Делящиеся огненные бомбы.",
+     "icon": "dwarf_spirit_of_grungni_cargo_hold"
+    }
+   ]
+  },
+  {
+   "key": "mtb_harpoon",
+   "levels": [
+    {
+     "key": "mtb_harpoon_1",
+     "tier": 3,
+     "name": "Гарпунная лебёдка",
+     "cost": 3500,
+     "time": 2,
+     "dev": 2,
+     "text": "Лебёдка и стрела на носу шара.",
+     "icon": "dwarf_spirit_of_grungni_spirit_summon_upgrades"
+    }
+   ]
+  },
+  {
+   "key": "mtb_torpedoes",
+   "levels": [
+    {
+     "key": "mtb_torpedoes_1",
+     "tier": 4,
+     "name": "Торпедная галерея",
+     "cost": 6000,
+     "time": 2,
+     "dev": 3,
+     "text": "Галерея для ящеров с троллебойными торпедами.",
+     "icon": "dwarf_spirit_of_grungni_spirit_summon_upgrades"
+    }
+   ]
+  }
+ ],
+ "building_requires": {
+  "mtb_guns_2": "support_radius_1"
+ },
+ "building_lines": {
+  "airship_hull_2": [
+   "Открывает доступ к кораблю и экипажу"
+  ],
+  "crew_weapons_1": [
+   "Меткость стрелков: +5 %"
+  ],
+  "crew_weapons_2": [
+   "Меткость стрелков: +10 %"
+  ],
+  "crew_weapons_3": [
+   "Меткость стрелков: +15 %"
+  ],
+  "beer_hall_1": [
+   "Гномы в пабе появляются на модели и на схеме"
+  ],
+  "support_radius_1": [
+   "Обязательна для всех орудий",
+   "Дальность и меткость орудий: +10 %"
+  ],
+  "support_radius_2": [
+   "Обязательна для всех орудий",
+   "Дальность и меткость орудий: +20 %"
+  ],
+  "cargo_hold_1": [
+   "Боезапас каждой команды: +15 %"
+  ],
+  "cargo_hold_2": [
+   "Боезапас каждой команды: +40 %"
+  ],
+  "cargo_hold_3": [
+   "Боезапас каждой команды: +60 %"
+  ],
+  "engines_1": [
+   "Скорость барки на поле боя: +5 %"
+  ],
+  "engines_2": [
+   "Скорость барки на поле боя: +10 %",
+   "Способность «Форсаж»"
+  ],
+  "engines_3": [
+   "Скорость барки на поле боя: +15 %",
+   "Способность «Форсаж»"
+  ]
+ },
+ "no_auto_line": [
+  "airship_hull_2",
+  "beer_hall_1"
+ ],
+ "building_effects": {
+  "mtb_nest_1": [
+   {
+    "effect": "wh_main_effect_agent_field_line_of_sight_mod",
+    "scope": "force_to_general_own",
+    "value": 5
+   }
+  ],
+  "mtb_nest_2": [
+   {
+    "effect": "wh_main_effect_agent_field_line_of_sight_mod",
+    "scope": "force_to_general_own",
+    "value": 10
+   }
+  ],
+  "mtb_nest_3": [
+   {
+    "effect": "wh_main_effect_agent_field_line_of_sight_mod",
+    "scope": "force_to_general_own",
+    "value": 15
+   }
+  ]
+ },
+ "abilities": {
+  "_about": "New abilities: rows copied from a model, numbers here. enabled_by: the building levels that give it, through an effect on our unit set.",
+  "mtb_engine_speed_1": {
+   "model": "wh2_dlc10_item_passive_ironbeards_bracers",
+   "speed": 1.05,
+   "enabled_by": [
+    "engines_1"
+   ],
+   "name": "Двигатели барки",
+   "about": "Скорость на поле боя +5 %.",
+   "icon": "wh_magic_item_passive_enchanted"
+  },
+  "mtb_engine_speed_2": {
+   "model": "wh2_dlc10_item_passive_ironbeards_bracers",
+   "speed": 1.1,
+   "enabled_by": [
+    "engines_2"
+   ],
+   "name": "Двигатели барки",
+   "about": "Скорость на поле боя +10 %.",
+   "icon": "wh_magic_item_passive_enchanted"
+  },
+  "mtb_engine_speed_3": {
+   "model": "wh2_dlc10_item_passive_ironbeards_bracers",
+   "speed": 1.15,
+   "enabled_by": [
+    "engines_3"
+   ],
+   "name": "Двигатели барки",
+   "about": "Скорость на поле боя +15 %.",
+   "icon": "wh_magic_item_passive_enchanted"
+  },
+  "mtb_forsage": {
+   "model": "wh3_dlc25_unit_abilities_thunderburner_upgraded",
+   "speed": 1.5,
+   "active_time": 15,
+   "recharge": 60,
+   "enabled_by": [
+    "engines_2",
+    "engines_3"
+   ],
+   "name": "Форсаж",
+   "about": "Котлы на пределе: барка ненадолго летит в полтора раза быстрее.",
+   "icon": "wh3_dlc25_unit_abilities_thunderburner",
+   "_values": "Vanilla speed abilities: Swiftness of Itzl x1.25 32 s / 90 s, Tempest Swiftwing x1.25 26 s / 44 s, Thunderburner x2.5-3 until stopped / 30 s. Forsage: stronger and shorter than the first two, far under the Thunderburner."
+  }
+ },
+ "icon_names": {
+  "mtb_guns": "guns",
+  "mtb_nest": "crows_nest",
+  "mtb_hatches": "bomb_bay",
+  "mtb_harpoon": "harpoon_winch",
+  "mtb_torpedoes": "torpedo_gallery"
+ },
+ "card_frames": {
+  "_about": "Colours of the frame of a crew card on the tree of buildings: light, dark as RGB. A group has card_frame, an option may have its own. tools/crew_ui_art.py draws data/ui/card_frame_<name>.png.",
+  "gold": [
+   [
+    255,
+    176,
+    32
+   ],
+   [
+    120,
+    60,
+    0
+   ]
+  ],
+  "blue": [
+   [
+    70,
+    150,
+    255
+   ],
+   [
+    16,
+    50,
+    120
+   ]
+  ],
+  "green": [
+   [
+    100,
+    210,
+    90
+   ],
+   [
+    24,
+    84,
+    30
+   ]
+  ],
+  "red": [
+   [
+    235,
+    70,
+    50
+   ],
+   [
+    110,
+    20,
+    12
+   ]
+  ],
+  "violet": [
+   [
+    185,
+    110,
+    255
+   ],
+   [
+    66,
+    30,
+    120
+   ]
+  ]
+ },
+ "no_card": [
+  "airship_hull_2"
+ ]
 }

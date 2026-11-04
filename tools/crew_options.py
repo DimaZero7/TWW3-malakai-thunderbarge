@@ -21,6 +21,8 @@ import hull_parts  # noqa: E402
 
 SEP = chr(92)
 CONFIG = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))
+for _group in CONFIG["groups"].values():    # disabled: the data stays in the file, the game gets nothing of it
+    _group["options"] = {k: o for k, o in _group["options"].items() if not o.get("disabled")}
 EMPTY_ROW = "mtb_bp_empty"
 HULL_TABLE = "zeppelin01_dlc25_thunderbarge_grungni"
 HULL_VARIANT = "wh3_dlc25_dwf_mnt_veh_thunderbarge_grungni"
@@ -67,6 +69,29 @@ def ammo_entry(opt, group_key, key, rows):
     if not opt.get("ammo"):
         raise SystemExit(f"{group_key} / {key}: a weapon without ammo in data/crew_options.json")
     return {"ammo": opt["ammo"], "rows": rows}
+
+
+def boost_rows(group_key, key, opt, group, t, weapon_row, projectile, seat_rows, ammo):
+    """The same option at each level of its group's boost (data/crew_options.json, boost): the numbers live in the projectile, so a bonus touches this group only.
+    Rows: projectile, weapon, stats, one seat row each. Returns {seat: {level: personality}}."""
+    out = {}
+    if not group.get("boost") or (opt.get("ui") or {}).get("hidden"):
+        return out
+    for level, step in enumerate(group["boost"]["steps"], 1):
+        numbers = {k: (round(projectile[k] * v) if isinstance(projectile[k], int) else f32(projectile[k] * v)) for k, v in step.items()}
+        new_projectile = dict(projectile, key=f"mtb_p_{key}_b{level}", **numbers)
+        t["projectiles"].append(new_projectile)
+        new_weapon = dict(weapon_row, key=f"mtb_w_{key}_b{level}", default_projectile=new_projectile["key"])
+        t["missile_weapons"].append(new_weapon)
+        ammo[group_key][key]["rows"].append(ammo_row(new_weapon, new_projectile))
+        stats = f"mtb_s_{key}_b{level}"
+        like_stats = next(r for r in t["battle_entity_stats"] if r["primary_missile_weapon"] == weapon_row["key"])
+        t["battle_entity_stats"].append(dict(like_stats, key=stats, primary_missile_weapon=new_weapon["key"]))
+        for seat, row in seat_rows.items():
+            name = f"{row['key']}_b{level}"
+            t["battle_personalities"].append(dict(row, key=name, battle_entity_stats=stats))
+            out.setdefault(seat, {})[level] = name
+    return out
 
 
 def option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo, own_stats):
@@ -123,6 +148,7 @@ def option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo,
         return out, files
     weapon = opt.get("weapon")
     stats = opt.get("stats")
+    weapon_row = base_projectile = None
     # Every group's weapon is a row of our own, also for the stock crew: src/tww3_mtb_ammo.lua changes one byte of the row during a battle.
     if weapon:
         base_weapon = one(stock["missile_weapons"], key=weapon)
@@ -158,6 +184,7 @@ def option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo,
                 own_stats[armed[0]] = (group_key, key, stats)
     volley = gun_models.SPEC[opt["gun"]].get("volley") if opt.get("gun") else None
     out = {}
+    seat_rows = {}
     for seat in group["seats"]:
         base = one(stock["battle_personalities"], key=stock_seat[seat])
         personality = f"mtb_bp_{key}_{seat.removeprefix('ap_')}"
@@ -187,6 +214,11 @@ def option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo,
             row["variant"] = detail_variant
         t["battle_personalities"].append(row)
         out[seat] = personality
+        seat_rows[seat] = row
+    if weapon_row is not None:
+        for seat, levels in boost_rows(group_key, key, opt, group, t, weapon_row, base_projectile, seat_rows, ammo).items():
+            for level, name in levels.items():
+                out[f"{seat}@{level}"] = name
     if volley and not any(r["key"] == cannon_meta.table_name(volley["tag"], "left") for r in t.setdefault("battle_animations_table", [])):
         t["battle_animations_table"] += cannon_meta.rows(volley)
     return out, files
@@ -336,7 +368,7 @@ def weapon_upgrades(t, stock, unit, ammo, own_stats):
 def ammo_module(t, stock, unit, barge, ammo):
     """The battle module with its data."""
     land_unit = one(stock["land_units"], key=barge)
-    data = {"land_unit": unit, "seat_count": 29, "primary_base": land_unit["primary_ammo"] * 29,
+    data = {"land_unit": unit, "seat_count": 29, "primary_base": land_unit["primary_ammo"] * 29, "ammo_mod_key": "mtb_crew_ammo_mod",
             "checks": [["wh3_dlc25_dwf_thunderbarge_grudge_raker_grungni", True], ["wh3_dlc25_dwf_thunderbarge_cannon", False]],
             "seat_group": {seat: key for key, group in CONFIG["groups"].items() for seat in group["seats"] if ammo[key]},
             "groups": {key: {"options": options} for key, options in ammo.items() if options}}
@@ -347,22 +379,28 @@ def ammo_module(t, stock, unit, barge, ammo):
     return source.replace(marker, f"local CONFIG = {to_lua(data)}").encode("utf-8")
 
 
-def building_bindings(stock):
-    """data/crew_options.json "buildings" for the Lua module: full key -> group, option. levels: chain and level of every level of the
-    chains in the table, so the module can tell that a bound building counts as standing when a higher level of its chain replaced it."""
+def building_bindings(t, stock):
+    """data/crew_options.json "buildings" for the Lua module: full key -> [{group, option}]. A building may open several options. levels: chain and level of every level of the
+    chains that the module follows, so it can tell that a bound building counts as standing when a higher level of its chain replaced it."""
     prefix = CONFIG["buildings_prefix"]
-    rows = {r["level_name"]: r for r in stock["building_levels"]}
+    rows = {r["level_name"]: r for r in stock["building_levels"]} | {r["level_name"]: r for r in t["building_levels"]}
     bindings = {}
-    for short, (group, option) in CONFIG["buildings"].items():
+    for short, pairs in CONFIG["buildings"].items():
         key = prefix + short
         if key not in rows:
             raise SystemExit(f"crew_options.json: no building {key}")
-        if option not in CONFIG["groups"].get(group, {}).get("options", {}):
-            raise SystemExit(f"crew_options.json: {short}: no option {group} / {option}")
-        bindings[key] = {"group": group, "option": option}
-    chains = {rows[key]["chain"] for key in bindings}
-    levels = {key: {"chain": r["chain"], "level": r["level"]} for key, r in rows.items() if r["chain"] in chains}
-    return bindings, levels
+        for group, option in pairs:
+            if option not in CONFIG["groups"].get(group, {}).get("options", {}):
+                raise SystemExit(f"crew_options.json: {short}: no option {group} / {option}")
+        bindings[key] = [{"group": group, "option": option} for group, option in pairs]
+    followed = set(bindings) | {prefix + s for s in CONFIG["ammo_mod"]}
+    for group in CONFIG["groups"].values():
+        followed |= {prefix + s for s in group.get("boost", {}).get("buildings", [])}
+        if group.get("requires"):
+            followed.add(prefix + group["requires"]["building"])
+    chains = {rows[key]["chain"] for key in followed}
+    levels = {key: {"chain": r["chain"], "level": r["level"]} for key, r in rows.items() if r["chain"] in chains and r["visible_in_ui"]}
+    return bindings, levels, sorted(followed)
 
 
 def extend(t, stock, unit, barge, table_name_check=True):
@@ -384,7 +422,7 @@ def extend(t, stock, unit, barge, table_name_check=True):
         for row in t["land_units"]:
             if row["key"] == unit:
                 row["mount"] = OWN_HULL
-        files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{OWN_HULL}.variantmeshdefinition"] = hull_parts.variant_definition(hull_parts.SPEC["out"] + ".wsmodel")
+        files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{OWN_HULL}.variantmeshdefinition"] = hull_parts.variant_definition(hull_parts.SPEC["out"] + ".wsmodel", [details["port"]])
         # The same hull without the harpoon on it: src/tww3_mtb_crew.lua points the land unit at this mount while the harpoon is not chosen.
         table = HULL_TABLE.replace("zeppelin01", "zepnoharp1")
         files.update(hull_without_harpoon(table))
@@ -392,7 +430,8 @@ def extend(t, stock, unit, barge, table_name_check=True):
         t["mounts"].append(dict(like_mount, key=NO_HARPOON_MOUNT, variant=OWN_HULL, animation=table))
         # The hull's look is one mount row per combination: harpoon or not, patch over the ports, patch over the bomb niches. See write_mounts of src/tww3_mtb_crew.lua.
         hull_mounts = {"h": OWN_HULL, "n": NO_HARPOON_MOUNT}
-        for code, models in (("c", ["patch_port"]), ("b", ["patch_bombs"]), ("cb", ["patch_port", "patch_bombs"])):
+        # The port is cut out of the hull: a hull with guns has it as a slot, without them a plug fills the hole.
+        for code, models in (("c", ["patch_port"]), ("b", ["port", "patch_bombs"]), ("cb", ["patch_port", "patch_bombs"])):
             name = f"{OWN_HULL}_{code}"
             t["variants"].append(dict(like_variant, variant_name=name, variant_filename=name))
             files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{name}.variantmeshdefinition"] = hull_parts.variant_definition(hull_parts.SPEC["out"] + ".wsmodel", [details[m] for m in models])
@@ -403,21 +442,26 @@ def extend(t, stock, unit, barge, table_name_check=True):
     t["battle_personalities"].append(dict(like_empty, key=EMPTY_ROW))
     seats = {}
     ammo, own_stats = {}, {}
-    bindings, levels = building_bindings(stock)
+    bindings, levels, followed = building_bindings(t, stock)
     prefix = CONFIG["buildings_prefix"]
     data = {"land_unit": unit, "seat_count": len(stock_seat), "groups": {}, "seats": seats, "fixed": {s: stock_seat[s] for s in fixed},
             "hull_mounts": hull_mounts, "upkeep": {g: {k: crew_ui.upkeep(o, stock) for k, o in spec["options"].items()} for g, spec in CONFIG["groups"].items()},
-            "buildings": bindings, "levels": levels, "auto_active": {prefix + short: True for short in CONFIG["auto_active"]}, "panel_building": prefix + CONFIG["auto_active"][0]}
+            "buildings": bindings, "levels": levels, "followed": {key: True for key in followed}, "ammo_mod": {prefix + s: v for s, v in CONFIG["ammo_mod"].items()}, "auto_active": {prefix + short: True for short in CONFIG["auto_active"]}, "panel_building": prefix + CONFIG["auto_active"][0]}
     for group_key, group in CONFIG["groups"].items():
         data["groups"][group_key] = {"start": group["start"], "start_ai": group["start_ai"], "options": sorted(group["options"]), "seats": group["seats"]}
-        for field in ("always", "off_bundle", "mount"):
+        for field in ("always", "off_bundle", "mount", "no_panel"):
             if group.get(field):
                 data["groups"][group_key][field] = group[field]
+        if group.get("boost"):
+            data["groups"][group_key]["boost"] = [prefix + s for s in group["boost"]["buildings"]]
+        if group.get("requires"):
+            data["groups"][group_key]["requires"] = prefix + group["requires"]["building"]
         ammo[group_key] = {}
         for key, opt in group["options"].items():
             rows_of_option, definition_files = option_rows(group_key, key, opt, group, stock, t, stock_seat, details, ammo, own_stats)
             for seat, personality in rows_of_option.items():
-                seats.setdefault(seat, {})[key] = personality
+                seat, _, level = seat.partition("@")
+                seats.setdefault(seat, {})[f"{key}@{level}" if level else key] = personality
             files.update(definition_files)
             files.update(option_files(group_key, key, opt))
     weapon_upgrades(t, stock, unit, ammo, own_stats)

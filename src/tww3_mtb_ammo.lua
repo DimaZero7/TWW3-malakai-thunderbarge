@@ -178,6 +178,11 @@ local function attach(unit)
     -- The seats tell the groups, the weapon of each man the option. Weapon effects scale the start values as they scale the stock pool.
     local scale = primary[1] / CONFIG.primary_base
     if scale < 0.1 or scale > 10 then error('primary pool ' .. tostring(primary[1]) .. ' for a base of ' .. CONFIG.primary_base) end
+    -- The cargo chain of the campaign: its level comes through the game's registry (src/tww3_mtb_crew.lua). Nothing there: as it is.
+    local ok_mod, saved_mod = pcall(function() return tonumber(core:svr_load_string(CONFIG.ammo_mod_key)) end)
+    local cargo = ok_mod and saved_mod or 1
+    if cargo < 1 or cargo > 3 then cargo = 1 end
+    M.cargo = cargo
     local data = mr.read_pointer(bu, UNIT_RIDERS + 8)
     local found_groups, found_men, found_records = {}, {}, {}
     for i = 0, size - 1 do
@@ -195,7 +200,7 @@ local function attach(unit)
             local group = found_groups[known.group]
             if group and group.option ~= known.option then error('two options in ' .. known.group) end
             if not group then
-                local ammo = math.max(1, math.floor(known.spec.ammo * scale + 0.5))
+                local ammo = math.max(1, math.floor(known.spec.ammo * scale * cargo + 0.5))
                 group = {option = known.option, ammo = ammo, start = ammo, shots = 0, rows = {}, after_dry = 0}
                 for _, row_spec in ipairs(known.spec.rows) do
                     local pointer = weapon_row(tables.missile_weapons, row_spec.key)
@@ -218,7 +223,7 @@ local function attach(unit)
     local parts = {}
     for key, group in pairs(groups) do parts[#parts + 1] = key .. '=' .. group.option .. ':' .. group.ammo end
     table.sort(parts)
-    log('running, ' .. table.concat(parts, ' ') .. ' scale ' .. string.format('%.2f', scale))
+    log('running, ' .. table.concat(parts, ' ') .. ' scale ' .. string.format('%.2f', scale) .. ' cargo ' .. string.format('%.2f', cargo))
 end
 
 -- Back to what the tables say, when something fails during a battle.

@@ -15,6 +15,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
+import crew_buildings  # noqa: E402
 import crew_options  # noqa: E402
 import dbtable  # noqa: E402
 import gamepack  # noqa: E402
@@ -318,16 +319,12 @@ def derive_campaign(g, t):
     t["effect_bundles_to_effects_junctions"] = [{"effect_bundle_key": HARPOON_BUNDLE, "effect_key": HARPOON_EFFECT, "effect_scope": "force_to_force_own", "value": 1.0, "advancement_stage": "start_turn_completed"}]
     t["effect_bonus_value_unit_set_unit_ability_junctions"].append({"bonus_value_id": "disable", "effect": HARPOON_EFFECT, "unit_set_ability": "mtb_harpoon"})
 
-    # The empty slipway first: side chains that needed only airship_hull_1 now need airship_hull_2. The field counts hull levels from 0.
-    side = [r for r in g["building_levels"] if r["level_name"].startswith(HORDE_BUILDINGS) and r["chain"] != HULL_CHAIN and r["visible_in_ui"]
-            and r["primary_slot_building_building_level_requirement"] == 0]
-    if sorted(r["level_name"].removeprefix(HORDE_BUILDINGS) for r in side) != ["barracks_1", "beer_hall_1", "crew_weapons_1"]:
-        raise SystemExit(f"side buildings on the first hull level changed: {[r['level_name'] for r in side]}")
-    t["building_levels"] = [dict(r, primary_slot_building_building_level_requirement=1) for r in side]
-
+    # Tiers: the side buildings stand from airship_hull_2 on, each level on its own row of the tree, plus the new chains: tools/crew_buildings.py.
+    t["building_levels"] = []
     # No second barge in ordinary battles: the buildings stop enabling the summon. Quest battles enable it by their own bundle.
     t["building_effects_junction"] = [dict(r, value=0.0, value_damaged=0.0, value_ruined=0.0)
                                       for r in g["building_effects_junction"] if r["effect"] == SUMMON_EFFECT]
+    t["__building_loc__"], t["__building_files__"] = crew_buildings.add_rows(t, g)
     return t
 
 
@@ -337,9 +334,11 @@ def build_campaign(blob_files, tables, stock):
     out = REPO / "build" / "campaign" / "pack"
     out.mkdir(parents=True, exist_ok=True)
     tables = derive_campaign(stock, {k: [dict(r) for r in v] for k, v in tables.items()})
+    building_loc, building_files = tables.pop("__building_loc__"), tables.pop("__building_files__")
     files = {k: v for k, v in blob_files.items() if not k.startswith(f"script{sep}battle") and not k.startswith(f"db{sep}")}
     files.update(crew_options.extend(tables, stock, UNIT, BARGE))
-    building_text = json.loads(files.pop("__building_text__"))
+    building_text = json.loads(files.pop("__building_text__")) | building_loc
+    files.update(building_files)
     for table, rows in tables.items():
         layout = LAYOUTS[table]
         files[f"db{sep}{table}_tables{sep}{TABLE_NAME}"] = dbtable.encode(rows, [tuple(f) for f in layout["fields"]], layout["version"], table)

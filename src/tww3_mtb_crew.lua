@@ -25,6 +25,10 @@
 -- One order per group per turn, kept in the save; picking what stands now takes the order back, which uses that turn's change. A demolished building acts at
 -- once and takes back an order for what it unlocked, and does not count as the group's change. The first barge's pirates (CONFIG.auto_active) stand at once.
 --
+-- Boost: some buildings make a group better without changing its option (accuracy of the shooters, range and accuracy of the guns). The numbers live in rows of that group's own weapons,
+-- one set of seat rows per level, so nothing else of the unit is touched: the seats point at option@level. Requires: a group's weapons may need another building too (the guns: signals).
+-- Ammunition: the level of the cargo chain goes to the battle through the game's scripted value registry, read by src/tww3_mtb_ammo.lua.
+--
 -- Upkeep: paid from the treasury at the faction's turn start for what stands, only while he is on the barge and the crew can be written.
 --
 -- Two kinds of group are not seats to choose. always: the group holds that option whatever is saved (the deck crew). off_bundle: no seats, an ability the unit
@@ -147,7 +151,7 @@ local function write_mounts(mr, found, land_unit, choice)
     if not mount_offset then error('the mount of the land unit is not found') end
     if not known[tostring(mr.read_pointer(land_unit, mount_offset))] then error('the land unit has another mount') end
     -- the hull as it looks now: harpoon or not, patches over the holes of the bays that are not there
-    local code = (choice.harpoon == CONFIG.groups.harpoon.start and 'n' or 'h') .. (choice.cannons == 'none' and 'c' or '') .. (choice.bombs == 'none' and 'b' or '')
+    local code = (choice.harpoon == CONFIG.groups.harpoon.start and 'n' or 'h') .. (choice.cannons == 'none' and 'c' or '') .. ((choice.bombs == 'none' or choice.bombs == 'empty') and 'b' or '')
     mr.write(land_unit, mount_offset, row(mr, found.mounts, CONFIG.hull_mounts[code]))
 end
 
@@ -164,7 +168,10 @@ local function write_seats()
     local choice = M.get()
     local wanted = {}
     for group, spec in pairs(CONFIG.groups) do
-        for _, seat in ipairs(spec.seats) do wanted[seat] = CONFIG.seats[seat][choice[group]] end
+        local level = M.boost_level(group)
+        for _, seat in ipairs(spec.seats) do
+            wanted[seat] = (level > 0 and CONFIG.seats[seat][choice[group] .. '@' .. level]) or CONFIG.seats[seat][choice[group]]
+        end
     end
     local plan, seen = {}, 0
     for i = 0, size - 1 do
@@ -190,7 +197,13 @@ local function write_seats()
     return seen
 end
 
+-- What the battle reads: the ammunition of every crew, by the cargo chain. Written with the seats.
+local function save_ammo_mod()
+    core:svr_save_string('mtb_crew_ammo_mod', tostring(profile() == 'player' and M.ammo_mod() or 1))
+end
+
 function M.apply()
+    pcall(save_ammo_mod)
     local ok, result = pcall(write_seats)
     if ok then
         M.status = 'applied'
@@ -299,10 +312,43 @@ function M.unlocked()
     local out = {}
     for group, spec in pairs(CONFIG.groups) do out[group] = {[spec.start] = true} end
     for _, item in ipairs(read_built()) do
-        local binding = CONFIG.buildings[item.key]
-        if binding then out[binding.group][binding.option] = true end
+        for _, binding in ipairs(CONFIG.buildings[item.key] or {}) do out[binding.group][binding.option] = true end
     end
     return out
+end
+
+local function is_built(key)
+    for _, item in ipairs(read_built()) do
+        if item.key == key then return true end
+    end
+    return false
+end
+
+-- How many buildings of the group's boost stand: the row level of its seats. The AI and a stock crew have none.
+function M.boost_level(group)
+    local list = CONFIG.groups[group].boost
+    if not list or profile() ~= 'player' then return 0 end
+    local level = 0
+    for i, key in ipairs(list) do
+        if is_built(key) then level = i end
+    end
+    return level
+end
+
+-- The ammunition of every crew with the cargo chain.
+function M.ammo_mod()
+    local mod = 1
+    for _, item in ipairs(read_built()) do
+        local m = CONFIG.ammo_mod[item.key]
+        if m and m > mod then mod = m end
+    end
+    return mod
+end
+
+-- The other building the group's weapons need, besides the bay.
+function M.requires_ok(group)
+    local key = CONFIG.groups[group].requires
+    return not key or is_built(key)
 end
 
 -- Has the group its bay? The building of its mount option makes it. A group without a mount always has.
@@ -341,6 +387,7 @@ function M.choose(group, option)
     if not open[option] then return false, 'locked ' .. tostring(option) end
     if not M.mount_ready(group) then return false, 'no mount ' .. group end
     if option == CONFIG.groups[group].start and CONFIG.groups[group].mount then return false, 'not a choice ' .. option end
+    if option ~= CONFIG.groups[group].mount and not M.requires_ok(group) then return false, 'needs another building ' .. group end
     local current, order = M.get()[group], cm:get_saved_value(ORDER .. group)
     if M.changed(group) then
         if order and option == current then
@@ -369,20 +416,27 @@ function M.carry_out()
     end
 end
 
--- A building of the table is complete: its option is unlocked. It becomes active only for the buildings of CONFIG.auto_active.
+-- A building of the table is complete: its options are unlocked. One becomes active only for the buildings of CONFIG.auto_active. A building of a boost or of the cargo chain acts at once.
 function M.on_built(key)
-    local binding = CONFIG.buildings[key]
-    if not binding or profile() ~= 'player' then return false end
+    if not CONFIG.followed[key] or profile() ~= 'player' then return false end
     local list = {}
     for _, item in ipairs(read_built()) do
         if item.key ~= key then list[#list + 1] = item end
     end
     list[#list + 1] = {key = key, turn = cm:turn_number()}
     write_built(list)
-    log('built ' .. key .. ': unlocked ' .. binding.group .. '=' .. binding.option)
-    if M.on_unlocked then pcall(M.on_unlocked, binding.group, binding.option) end
-    -- The first pirates, and a bare mount: it appears at once, in a group that had nothing.
-    if CONFIG.auto_active[key] and M.get()[binding.group] == CONFIG.groups[binding.group].start then return M.set(binding.group, binding.option) end
+    local bindings = CONFIG.buildings[key] or {}
+    local set_any = false
+    for _, binding in ipairs(bindings) do
+        log('built ' .. key .. ': unlocked ' .. binding.group .. '=' .. binding.option)
+        if M.on_unlocked and not CONFIG.groups[binding.group].no_panel then pcall(M.on_unlocked, binding.group, binding.option) end
+        -- The first pirates, and a bare mount: it appears at once, in a group that had nothing.
+        if CONFIG.auto_active[key] and M.get()[binding.group] == CONFIG.groups[binding.group].start then
+            M.set(binding.group, binding.option)
+            set_any = true
+        end
+    end
+    if not set_any then M.apply() end
     if M.on_changed then pcall(M.on_changed) end
     return true
 end
@@ -430,18 +484,20 @@ function M.reconcile()
     write_built(kept)
     local open, active, lost = M.unlocked(), M.get(), false
     for group, option in pairs(M.orders()) do
-        if not open[group][option] or not M.mount_ready(group) then
+        if not open[group][option] or not M.mount_ready(group) or (option ~= CONFIG.groups[group].mount and not M.requires_ok(group)) then
             cm:set_saved_value(ORDER .. group, false)
             log('order gone with its building ' .. group .. '=' .. option)
         end
     end
     for group, spec in pairs(CONFIG.groups) do
-        if not open[group][active[group]] or (active[group] ~= spec.start and not M.mount_ready(group)) then
+        local needs_more = active[group] ~= spec.start and active[group] ~= spec.mount and not M.requires_ok(group)
+        if not open[group][active[group]] or (active[group] ~= spec.start and not M.mount_ready(group)) or needs_more then
             local option = spec.start
             if M.mount_ready(group) then
                 for _, item in ipairs(kept) do
-                    local binding = CONFIG.buildings[item.key]
-                    if binding and binding.group == group then option = binding.option end
+                    for _, binding in ipairs(CONFIG.buildings[item.key] or {}) do
+                        if binding.group == group and (binding.option == spec.mount or M.requires_ok(group)) then option = binding.option end
+                    end
                 end
             end
             log('locked ' .. group .. '=' .. active[group] .. ', now ' .. option)
@@ -456,6 +512,7 @@ function M.reconcile()
                 'ui_text_replacements_localised_text_mtb_crew_lost_secondary', true, 1701)
         end)
     end
+    M.apply()       -- a boost or the ammunition may have gone with the building
     if M.on_changed then pcall(M.on_changed) end
     return true
 end
@@ -490,7 +547,7 @@ _G.tww3_mtb_campaign.when_ready(function()
     -- the new campaign's first tick converts his force: looked at again when that is over
     core:get_tm():real_callback(guarded(M.sync_abilities), 1500, 'mtb_crew_sync_abilities')
     core:add_listener('tww3_mtb_crew_built', 'MilitaryForceBuildingCompleteEvent',
-        function(context) return CONFIG.buildings[context:building()] ~= nil end,
+        function(context) return CONFIG.followed[context:building()] ~= nil end,
         guarded(function(context) M.on_built(context:building()) end), true)
     core:add_listener('tww3_mtb_crew_turn', 'FactionTurnStart',
         function(context) return context:faction():name() == HOME_FACTION end,

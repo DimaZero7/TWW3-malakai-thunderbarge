@@ -115,6 +115,18 @@ local function damage_text(row)
     return table.concat(parts, ', ')
 end
 
+-- The numbers as they are now: the guns' range with the signal chain, every crew's ammunition with the cargo chain.
+local function range_now(group, row)
+    local c, n = crew(), row.numbers or {}
+    local steps = DATA.groups[group].range_steps
+    local level = steps and c.boost_level(group) or 0
+    return math.floor((n.range or 0) * (steps and steps[level] or 1) + 0.5)
+end
+
+local function ammo_now(row)
+    return math.floor((row.numbers or {}).ammo * crew().ammo_mod() + 0.5)
+end
+
 local function tooltip(row, locked_by, spent, need_text)
     local lines = {'[[col:yellow]]' .. row.name .. '[[/col]]'}
     if row.about then lines[#lines + 1] = row.about end
@@ -124,8 +136,8 @@ local function tooltip(row, locked_by, spent, need_text)
         if row.radius or n.radius then lines[#lines + 1] = 'Радиус взрыва: ' .. number_text(row.radius or n.radius) .. ' м' end
         if n.shots > 1 or n.volley > 1 then lines[#lines + 1] = 'Снарядов за выстрел: ' .. n.shots .. ', выстрелов за залп: ' .. n.volley end
         lines[#lines + 1] = 'Перезарядка: ' .. number_text(n.reload) .. ' с'
-        lines[#lines + 1] = 'Дальность: ' .. (row.range_text or (n.range .. ' м'))
-        lines[#lines + 1] = 'Запас группы на бой: ' .. tostring(n.ammo)
+        lines[#lines + 1] = 'Дальность: ' .. (row.range_text or (range_now(M.selected, row) .. ' м'))
+        lines[#lines + 1] = 'Запас группы на бой: ' .. tostring(ammo_now(row))
     end
     if (row.upkeep or 0) > 0 then lines[#lines + 1] = 'Содержание: ' .. row.upkeep .. ' золота за ход' end
     if locked_by then lines[#lines + 1] = 'Откроет постройка: ' .. locked_by end
@@ -162,7 +174,7 @@ local function fill_row(view, row, active, open, order, changed, needs)
     view.padlock:SetVisible(locked)
     local n = row.numbers or {}
     local has_numbers = n.reload ~= nil
-    local values = {damage_text(row), has_numbers and (number_text(n.reload or 0) .. ' с') or '', has_numbers and (row.range_text or ((n.range or 0) .. ' м')) or '', has_numbers and tostring(n.ammo or '') or ''}
+    local values = {damage_text(row), has_numbers and (number_text(n.reload or 0) .. ' с') or '', has_numbers and (row.range_text or (range_now(M.selected, row) .. ' м')) or '', has_numbers and tostring(n.ammo or '') or ''}
     for i, stat in ipairs(view.stats) do
         stat.icon:SetVisible(has_numbers)
         grey(stat.icon, locked)
@@ -222,7 +234,11 @@ local function refresh()
     for i, view in ipairs(ui.rows) do
         local row = spec.rows[i]
         if row then
-            fill_row(view, row, choice[M.selected] == row.key, open[M.selected], order, changed, needs)
+            local row_needs = needs
+            if not row_needs and spec.requires_name and row.key ~= 'empty' and not c.requires_ok(M.selected) then
+                row_needs = spec.requires_name .. ' (постройка «' .. building_name(spec.requires_building) .. '»)'
+            end
+            fill_row(view, row, choice[M.selected] == row.key, open[M.selected], order, changed, row_needs)
         else
             view.button:SetVisible(false)
         end
@@ -508,6 +524,56 @@ end
 
 M.on_click = guarded(on_click)
 
+-- ---------------- the crew's cards on the game's tree of buildings ----------------
+-- The tree (ui/campaign ui/building_construction_popup) has no place for this: its card list only shows units a building recruits. So a card of ours is laid on each tile whose
+-- building opens a crew option: the option's own unit card in a bright frame coloured by its group (data/crew_options.json, card_frames), at the tile's top right, where the game has its own cards of units. The tree is made anew by every click, so it is looked
+-- at by a timer while the slots are on the screen: the popups open on the mouse, with no event for a script. It lives inside the tile and goes away with it.
+local CARD_W, CARD_H, CARD_STEP = 30, 54, 28
+
+local function decorate_tile(tile, key)
+    local cards = DATA.building_cards[key]
+    if not cards then return 0 end
+    local n = 0
+    for i, card in ipairs(cards) do
+        local id = 'mtb_crew_card_' .. i
+        if not find_uicomponent(tile, id) then
+            local x, y = 50 + (i - 1) * CARD_STEP, -24
+            local picture = image(tile, id, card.card, x, y, CARD_W, CARD_H)
+            local edge = image(tile, id .. '_frame', card.frame, x - 3, y - 3, CARD_W + 6, CARD_H + 6)
+            picture:SetInteractive(false)
+            edge:SetInteractive(false)
+            n = n + 1
+        end
+    end
+    return n
+end
+
+-- Tiles are found by name, by the game's own search. A walk over the open tree with ChildCount and Find breaks the game's script bindings for good: after it every Id() and ChildCount()
+-- of every component returns a function (runs 20261104-163806, -164729, -165425).
+function M.decorate_tree(slot)
+    local popup = find_uicomponent(slot, 'building_construction_popup')
+    if not popup then return 0 end
+    local count = 0
+    for key in pairs(DATA.building_cards) do
+        local tile = find_uicomponent(popup, key) or find_uicomponent(popup, 'CcoBuildingLevelRecord' .. key)
+        if tile then count = count + decorate_tile(tile, key) end
+    end
+    return count
+end
+
+function M.watch_tree()
+    local list = find_uicomponent(core:get_ui_root(), 'horde_slot_list')
+    if not list or not list:VisibleFromRoot() then return 0 end
+    local count = 0
+    for i = 1, list:ChildCount() - 1 do
+        local slot = UIComponent(list:Find(i))
+        local cat = find_uicomponent(slot, 'building_categories_popup')
+        local pop = find_uicomponent(slot, 'building_construction_popup')
+        if (cat and cat:Visible()) or (pop and pop:Visible()) then count = count + M.decorate_tree(slot) end
+    end
+    return count
+end
+
 M.start = guarded(function()
     local c = crew()
     log('start: crew=' .. tostring(c ~= nil) .. ' profile=' .. tostring(c and c.profile()) .. ' local=' .. tostring(cm:get_local_faction_name(true)) .. ' status=' .. tostring(c and c.status))
@@ -531,6 +597,8 @@ M.start = guarded(function()
         if b and b:CurrentState() ~= 'inactive' then b:SetState('inactive') end
     end), 2000, 'mtb_crew_button_watch')
     for _, name in ipairs({'click', 'turn', 'panel', 'turn_start'}) do core:remove_listener('tww3_mtb_crew_ui_' .. name) end
+    -- The tree opens on the mouse, without any event of its own: looked at twice a second while the horde's slots are on the screen, by name only.
+    core:get_tm():repeat_real_callback(guarded(M.watch_tree), 500, 'mtb_crew_tree_watch')
     core:add_listener('tww3_mtb_crew_ui_click', 'ComponentLClickUp', function(context)
         local id = context.string
         return id == BUTTON or id == CLOSE or id == PANEL or string.sub(id, 1, #PLATE) == PLATE or string.sub(id, 1, #ROW) == ROW or string.sub(id, 1, #ZONE) == ZONE

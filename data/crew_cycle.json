@@ -3924,6 +3924,68 @@
      "far_views": "close_fit"
     }
    ]
+  },
+  "fb_live": {
+   "_about": "One game for the whole batch of docs/feedback.md: a new campaign, then tools/fb_check.py drives it from outside through tools/rc.py; the hold ends when it writes build/crew/cycle/CONTINUE.",
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 3400,
+   "wait_end_turn": 200,
+   "steps": [
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "hold": 3300
+    }
+   ]
+  },
+  "fb_final": {
+   "_about": "The last check: the user's own mods, good graphics: tools/fb_check.py --final drives it.",
+   "new_campaign": "wh3_dlc25_dwf_malakai",
+   "limit": 2000,
+   "wait_end_turn": 240,
+   "steps": [
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "wait": 2
+    },
+    {
+     "lua": "local n = 0; for _ = 1, 4 do local e = mtb.find(\"events\", true); local b = e and mtb.find(\"button_accept\", true, e); if b then b:SimulateLClick(); n = n + 1 end end; return n"
+    },
+    {
+     "hold": 1900
+    }
+   ],
+   "mods_file": "build/crew_ui/user_mods.txt",
+   "high": true
+  },
+  "fb_shot": {
+   "_about": "A quick look from a save: tools/fb_check.py hatches.",
+   "save": "Новаторы_Автосохранение353408270.save",
+   "high": true,
+   "limit": 500,
+   "steps": [
+    {
+     "prog_lua": "return P.peace()"
+    },
+    {
+     "hold": 450
+    }
+   ]
   }
  },
  "far_views": {

@@ -5,7 +5,6 @@ every LOD. The hull is written as our own model, used only by our own mount and 
 Grungni keep the game's files. Each detail becomes a model in the frame of one seat, bound to the root of the rider's skeleton.
 """
 import json
-import math
 import re
 import sys
 from pathlib import Path
@@ -115,6 +114,18 @@ def build():
     for detail in SPEC["details"]:
         parts = moved[detail["name"]]
         lods = sorted({li for li, _, _ in parts})
+        if detail.get("hull_frame"):        # shown as a slot of the hull's own definition: same skeleton, same place
+            model = {"version": source["version"], "skeleton": source["skeleton"], "lods": [], "lod_headers": []}
+            table = {}
+            for new_li, li in enumerate(lods):
+                model["lods"].append([next(p for l, _, p in parts if l == li)])
+                model["lod_headers"].append(source["lod_headers"][li])
+                table[new_li] = [stock_materials[(li, detail["mesh"])]]
+            base = detail["out"]
+            files[(base + ".rigid_model_v2").replace("/", SEP)] = rmv2.save(model)
+            files[(base + ".wsmodel").replace("/", SEP)] = rmv2.wsmodel(base + ".rigid_model_v2", table)
+            models[detail["name"]] = base + ".wsmodel"
+            continue
         model = {"version": source["version"], "skeleton": RIDER_SKELETON, "lods": [], "lod_headers": []}
         table = {}
         ox, oy, oz = detail["seat_origin"]
@@ -153,75 +164,106 @@ def _patch_model(source, mesh, material, out, name, models):
             (out + ".wsmodel").replace("/", SEP): rmv2.wsmodel(out + ".rigid_model_v2", {0: [material]})}
 
 
+def _nearest(hull, x, y, z):
+    return min(hull.verts, key=lambda v: (v.x - x) ** 2 + (v.y - y) ** 2 + (v.z - z) ** 2)
+
+
+def _hole_loops(mesh, area):
+    """The edges that have a triangle on one side only, inside a box, walked into loops of vertex indexes."""
+    count = {}
+    for a, b, c in mesh.tris:
+        for e in ((a, b), (b, c), (c, a)):
+            key = (min(e), max(e))
+            count[key] = count.get(key, 0) + 1
+    near = {}
+    for (a, b), n in count.items():
+        if n != 1:
+            continue
+        if all(area[0] <= mesh.verts[v].x <= area[3] and area[1] <= mesh.verts[v].y <= area[4] and area[2] <= mesh.verts[v].z <= area[5] for v in (a, b)):
+            near.setdefault(a, []).append(b)
+            near.setdefault(b, []).append(a)
+    loops, seen = [], set()
+    for start in near:
+        if start in seen or len(near[start]) != 2:
+            continue
+        loop, prev, cur = [start], None, start
+        seen.add(start)
+        while True:
+            nxt = [v for v in near[cur] if v != prev]
+            if not nxt or nxt[0] == start or nxt[0] in seen or len(near.get(nxt[0], [])) != 2:
+                break
+            prev, cur = cur, nxt[0]
+            loop.append(cur)
+            seen.add(cur)
+        loops.append(loop)
+    return loops
+
+
 def patches(source, stock_materials, models):
-    """The plain ship of a barge without its bays: pieces over the port and the bomb niches (data/hull_parts.json, patches). A variant of the mount has them as a slot."""
+    """The plain ship of a barge without its bays. The port is cut out of the hull (data/hull_parts.json, details, port), so the hole of each side gets a plug made of
+    the hole's own edge: flush with the planks, the texture running on from them. The bomb niches: the hull's curve between their front and rear rims."""
     spec = SPEC["patches"]
+    files = {}
+    # the plugs, on every LOD of the hull
+    port = spec["port"]
+    model = {"version": source["version"], "skeleton": source["skeleton"], "lods": [], "lod_headers": []}
+    table = {}
+    for li, meshes in enumerate(source["lods"]):
+        hull = meshes[0]
+        mesh = hull.copy()
+        mesh.verts, mesh.tris = [], []
+        for sign in (1, -1):
+            box = port["hole_box"]
+            area = (box[0], box[1], box[2], box[3], box[4], box[5]) if sign > 0 else (-box[3], box[1], box[2], -box[0], box[4], box[5])
+            loops = _hole_loops(hull, area)
+            if not loops:
+                raise SystemExit(f"no hole of the port in the hull, LOD {li}, side {sign}")
+            loop = max(loops, key=len)
+            if len(loop) < 6:
+                raise SystemExit(f"the port's hole is {len(loop)} vertices, LOD {li}")
+            base = len(mesh.verts)
+            for v in loop:
+                mesh.verts.append(hull.verts[v].copy())
+            centre = hull.verts[loop[0]].copy()
+            centre.x = sum(hull.verts[v].x for v in loop) / len(loop)
+            centre.y = sum(hull.verts[v].y for v in loop) / len(loop)
+            centre.z = sum(hull.verts[v].z for v in loop) / len(loop)
+            mesh.verts.append(centre)
+            n = len(loop)
+            for i in range(n):
+                mesh.tris.append((base + n, base + i, base + (i + 1) % n))
+        _both_sides(mesh)
+        model["lods"].append([mesh])
+        model["lod_headers"].append(source["lod_headers"][li])
+        table[li] = [stock_materials[(li, 0)]]
+    files[(port["out"] + ".rigid_model_v2").replace("/", SEP)] = rmv2.save(model)
+    files[(port["out"] + ".wsmodel").replace("/", SEP)] = rmv2.wsmodel(port["out"] + ".rigid_model_v2", table)
+    models["patch_port"] = port["out"] + ".wsmodel"
+    # the niches
     hull = source["lods"][0][0]
     material = stock_materials[(0, 0)]
-    files = {}
+    mesh = hull.copy()
+    mesh.verts, mesh.tris = [], []
+    # the look from a triangle of the steel beside the niches: the rim's own texture coordinates cross transparent parts of the sheet (run 20261104-173323, seen through)
+    want = spec["bombs"]["template"]
 
     def centre(t):
         return tuple(sum(getattr(hull.verts[i], axis) for i in t) / 3 for axis in "xyz")
-    # plates: a triangle of the steel around the niches gives the look, the height comes from the rim
-    want = spec["bombs"]["template"]
     template = next(t for t in hull.tris if want["x"][0] <= centre(t)[0] <= want["x"][1] and want["z"][0] <= centre(t)[2] <= want["z"][1] and centre(t)[1] < want["y_below"])
     corners = [hull.verts[i] for i in template]
-    mesh = hull.copy()
-    mesh.verts, mesh.tris = [], []
-    x0, x1 = spec["bombs"]["x"]
     for sign in (1, -1):
-        for z0, z1 in spec["bombs"]["z"]:
+        for strip in spec["bombs"]["strips"]:
             base = len(mesh.verts)
-            for n, (x, z) in enumerate(((x0, z0), (x1, z0), (x1, z1), (x0, z1))):
-                v = corners[min(n, 2)].copy()
-                v.x, v.y, v.z = x * sign, spec["bombs"]["y"], z
+            for n, (x, y, z) in enumerate(strip["front"] + strip["rear"]):
+                at = _nearest(hull, x * sign, y, z)
+                v = corners[n % 3].copy()
+                v.x, v.y, v.z = at.x, at.y, at.z
                 mesh.verts.append(v)
-            mesh.tris += [(base, base + 1, base + 2), (base, base + 2, base + 3)]
+            n = len(strip["front"])
+            for i in range(n - 1):
+                mesh.tris += [(base + i, base + i + 1, base + n + i + 1), (base + i, base + n + i + 1, base + n + i)]
     _both_sides(mesh)
     files.update(_patch_model(source, mesh, material, spec["bombs"]["out"], "patch_bombs", models))
-    # over the port: a round lid in the colour of the planks, in the plane of the port's outer ring. Each side has its own template, for the normals.
-    port = spec["port"]
-    box = port["ring_box"]
-    rim = [v for v in hull.verts if v.x > 1.3 and box[0] <= v.z <= box[1] and box[2] <= v.y <= box[3]]
-    # the plane of the port's outermost vertices, a little beyond the farthest of them: x = a + b z + c y
-    points = [(v.z, v.y, v.x) for v in rim]
-    n_ = len(points)
-    zm, ym, xm = (sum(p_[i] for p_ in points) / n_ for i in range(3))
-    szz = sum((p_[0] - zm) ** 2 for p_ in points)
-    syy = sum((p_[1] - ym) ** 2 for p_ in points)
-    szy = sum((p_[0] - zm) * (p_[1] - ym) for p_ in points)
-    szx = sum((p_[0] - zm) * (p_[2] - xm) for p_ in points)
-    syx = sum((p_[1] - ym) * (p_[2] - xm) for p_ in points)
-    det = szz * syy - szy * szy
-    slope_z, slope_y = (szx * syy - syx * szy) / det, (syx * szz - szx * szy) / det
-    lift = max(x - (xm + slope_z * (z - zm) + slope_y * (y - ym)) for z, y, x in points)
-
-    def plank(sign):
-        def area(t):
-            a_, b_, c_ = (hull.verts[i] for i in t)
-            return abs((b_.y - a_.y) * (c_.z - a_.z) - (b_.z - a_.z) * (c_.y - a_.y))
-        want_ = port["template"]
-        found = [t for t in hull.tris if want_["z"][0] <= centre(t)[2] <= want_["z"][1] and want_["y"][0] <= centre(t)[1] <= want_["y"][1] and centre(t)[0] * sign > want_["x_above"]]
-        return [hull.verts[i] for i in max(found, key=area)]
-    mesh = hull.copy()
-    mesh.verts, mesh.tris = [], []
-    sides = 32
-    for sign in (1, -1):
-        corners_ = plank(sign)
-        base = len(mesh.verts)
-        for n in range(sides + 1):
-            v = corners_[n % 3].copy()
-            if n == sides:
-                y, z = port["y"], port["z"]
-            else:
-                angle = 2 * math.pi * n / sides
-                y, z = port["y"] + port["radius"] * math.sin(angle), port["z"] + port["radius"] * math.cos(angle)
-            v.x, v.y, v.z = (xm + slope_z * (z - zm) + slope_y * (y - ym) + lift + port["proud"]) * sign, y, z
-            mesh.verts.append(v)
-        for n in range(sides):
-            mesh.tris.append((base + sides, base + n, base + (n + 1) % sides))
-    _both_sides(mesh)
-    files.update(_patch_model(source, mesh, material, port["out"], "patch_port", models))
     return files
 
 

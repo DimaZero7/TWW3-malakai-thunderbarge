@@ -17,6 +17,7 @@ import gamepack  # noqa: E402
 BUILDING_LINE_SCOPE = "force_to_force_own"
 SEP = chr(92)
 ART = REPO / "data" / "ui"
+CARDS = ART / "crew_cards"
 UI_DIR = "ui/tww3_mtb/"
 NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 TEXT_LIGHT = "#FFF8D7FF"
@@ -142,6 +143,8 @@ def files():
     def path(name, ext):
         return f"ui{SEP}tww3_mtb{SEP}{name}{ext}"
     out = {path(f.stem, ".png"): f.read_bytes() for f in sorted(ART.glob("*.png"))}
+    if CARDS.exists():
+        out |= {f"ui{SEP}tww3_mtb{SEP}crew_cards{SEP}{f.name}": f.read_bytes() for f in sorted(CARDS.glob("*.png"))}
     layouts = {
         "image": image_layout("image"),
         "zone": zone_layout("zone"),
@@ -223,48 +226,92 @@ def game_text(prefix):
 
 
 def building_lines(config, t, stock, bindings):
-    """One green line per building of the table, in its list of effects: what it gives the barge. Written from data/crew_options.json, so the table changes in one place.
-    A row of effects with no bonus: only its text does anything. Adds to the tables t, returns {loc key: text}."""
+    """The green lines of a building, in its list of effects: what it gives the barge. Written from data/crew_options.json, so the table changes in one place.
+    A row of effects with no bonus: only its text does anything. One effect per line. Adds to the tables t, returns {loc key: text}."""
+    prefix = config["buildings_prefix"]
     names = game_text("building_culture_variants_name_")
-    renamed = {config["buildings_prefix"] + short: name for short, name in config.get("building_names", {}).items()}
+    renamed = {prefix + short: name for short, name in config.get("building_names", {}).items()}
+    for chain in config.get("new_chains", []):
+        renamed |= {prefix + level["key"]: level["name"] for level in chain["levels"]}
 
     def name_of(key):
         return renamed.get(key) or names.get(f"building_culture_variants_name_{key}", key)
     groups = config["groups"]
-    mount_building = {g: k for k, b in bindings.items() for g in groups if groups[g].get("mount") == b["option"] and b["group"] == g}
+    mount_building = {b["group"]: k for k, pairs in bindings.items() for b in pairs if groups[b["group"]].get("mount") == b["option"]}
     like = next(r for r in stock["effects"] if r["effect"] == "wh3_dlc25_effect_ability_enable_thunderburner_upgraded")
     t.setdefault("effects", [])
     t.setdefault("building_effects_junction", [])
     loc = {}
-    for key, binding in bindings.items():
-        group, option = groups[binding["group"]], binding["option"]
-        opt = group["options"][option]
-        label = group["ui"]["name"].lower()
-        name = opt["ui"]["name"]
-        if group.get("mount") == option:
-            text = f"Крепление: {group['mount_name']}, {len(group["seats"])} места, пока без оружия. Оружие открывают другие постройки, ставится в панели экипажа"
-        elif group.get("mount"):
-            text = f"Оружие: {name} ({label}). Нужны {group['mount_name']} (постройка «{name_of(mount_building[binding['group']])}»). Ставится в панели экипажа"
-        elif opt.get("ability"):
-            text = f"{name}: стрела на носу шара и способность в бою. Ставится в панели экипажа"
-        elif key.removeprefix(config["buildings_prefix"]) in config["auto_active"]:
-            text = f"Экипаж: {name} ({label}) встают сразу"
-        else:
-            text = f"Экипаж: открывает «{name}» ({label}). Ставится в панели экипажа"
-        effect = "mtb_effect_crew_" + key.removeprefix(config["buildings_prefix"])
-        t["effects"].append(dict(like, effect=effect, is_positive_value_good=True))
-        t["building_effects_junction"].append({"building": key, "effect": effect, "effect_scope": BUILDING_LINE_SCOPE, "value": 1.0, "value_damaged": 1.0, "value_ruined": 0.0, "context_requirement": ""})
-        loc[f"effects_description_{effect}"] = text
+    lines = {}
+    for key, pairs in bindings.items():
+        short = key.removeprefix(prefix)
+        if short in config.get("no_auto_line", []):
+            continue
+        for binding in pairs:
+            group, option = groups[binding["group"]], binding["option"]
+            opt = group["options"][option]
+            label = group["ui"]["name"].lower()
+            name = opt["ui"]["name"]
+            if group.get("mount") == option:
+                text = f"Крепление: {group['mount_name']}, {len(group['seats'])} места, пока без оружия. Оружие открывают другие постройки, ставится в панели экипажа"
+            elif group.get("mount"):
+                need = f"Нужны {group['mount_name']} (постройка «{name_of(mount_building[binding['group']])}»)"
+                if group.get("requires"):
+                    need += f" и {group['requires']['name']} (постройка «{name_of(prefix + group['requires']['building'])}»)"
+                text = f"Открывает в экипаже: {name} ({label}). {need}. Ставится в панели экипажа"
+            elif opt.get("ability"):
+                text = f"Открывает в экипаже: {name}, стрела на носу шара и способность в бою. Ставится в панели экипажа"
+            elif short in config["auto_active"]:
+                text = f"Экипаж: {name} ({label}) встают сразу"
+            else:
+                text = f"Открывает в экипаже: {name} ({label}). Ставится в панели экипажа"
+            lines.setdefault(short, []).append(text)
+    for short, more in config.get("building_lines", {}).items():
+        lines.setdefault(short, []).extend(more)
+    for short, texts in lines.items():
+        for number, text in enumerate(texts):
+            effect = f"mtb_effect_crew_{short}" + (f"_{number}" if number else "")
+            t["effects"].append(dict(like, effect=effect, is_positive_value_good=True))
+            t["building_effects_junction"].append({"building": prefix + short, "effect": effect, "effect_scope": BUILDING_LINE_SCOPE, "value": 1.0, "value_damaged": 1.0, "value_ruined": 0.0, "context_requirement": ""})
+            loc[f"effects_description_{effect}"] = text
     for key, name in renamed.items():
         loc[f"building_culture_variants_name_{key}"] = name
     return loc
+
+
+def own_card_name(config, group_key, key):
+    """The name in data/ui/crew_cards of an option's own drawn card, or None. <group>_<option> first, then <option>: stock, say, is an option of several groups, so a bare name is taken only for a name no other group has."""
+    if (CARDS / f"{group_key}_{key}_small.png").exists() or (CARDS / f"{group_key}_{key}.png").exists():
+        return f"{group_key}_{key}"
+    unique = sum(key in g["options"] for g in config["groups"].values()) == 1
+    if unique and ((CARDS / f"{key}_small.png").exists() or (CARDS / f"{key}.png").exists()):
+        return key
+    return None
+
+
+def drawn_path(name, small=False):
+    """The pack's path of a drawn card, the small one on the tree when there is one."""
+    if small and (CARDS / f"{name}_small.png").exists():
+        return f"{UI_DIR}crew_cards/{name}_small.png"
+    if (CARDS / f"{name}.png").exists():
+        return f"{UI_DIR}crew_cards/{name}.png"
+    return f"{UI_DIR}crew_cards/{name}_small.png"
+
+
+def card_path(ui):
+    """The picture of an option's card, as the panel shows it."""
+    if ui.get("own_card"):
+        return f"{UI_DIR}{ui['own_card']}.png"
+    if ui.get("card"):
+        return f"ui/units/icons/{ui['card']}.png"
+    return None
 
 
 def data(config, t, stock, bindings):
     """The Lua data of the panel."""
     t = dict(t, _stock=stock)
     art = json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8"))
-    unlocked_by = {(b["group"], b["option"]): key for key, b in bindings.items()}
+    unlocked_by = {(b["group"], b["option"]): key for key, pairs in bindings.items() for b in pairs}
     groups = {}
     for group_key, group in config["groups"].items():
         rows = []
@@ -272,15 +319,38 @@ def data(config, t, stock, bindings):
             ui = opt.get("ui") or {}
             if ui.get("hidden") or ui.get("none"):
                 continue
+            drawn = own_card_name(config, group_key, key)
+            if drawn:
+                ui = dict(ui, own_card="crew_cards/" + (drawn if (CARDS / f"{drawn}.png").exists() else drawn + "_small"))
             rows.append(dict(ui, key=key, numbers=group_numbers(t, group_key, key, opt, group), building=unlocked_by.get((group_key, key), ""), upkeep=upkeep(opt, stock)))
         # empty first, then in the order of the buildings table
         order = list(bindings)
         rows.sort(key=lambda r: -1 if r["key"] == "empty" else order.index(r["building"]) if r["building"] in order else 99)
         groups[group_key] = dict(group["ui"], rows=rows, seats=len(group["seats"]))
+        if group.get("boost") and group["boost"]["steps"][0].get("effective_range"):
+            groups[group_key]["range_steps"] = [step["effective_range"] for step in group["boost"]["steps"]]
+        if group.get("requires"):
+            groups[group_key]["requires_name"] = group["requires"]["name"]
+            groups[group_key]["requires_building"] = config["buildings_prefix"] + group["requires"]["building"]
         none = group["options"].get("none")
         if none:
             groups[group_key]["none_name"] = none["ui"]["name"]
             groups[group_key]["mount_name"] = group["mount_name"]
             groups[group_key]["mount_building"] = unlocked_by[(group_key, group["mount"])]
-    order = [g for g in ("cupolas", "harpoon", "cannons", "rifles", "bombs", "deck") if not config["groups"][g].get("always")]
-    return {"groups": groups, "art": art, "order": order, "drawn": ["cupolas", "harpoon", "cannons", "rifles", "bombs", "deck"]}
+    order = [g for g in ("cupolas", "harpoon", "cannons", "rifles", "bombs", "deck", "pub") if not config["groups"][g].get("always") and not config["groups"][g].get("no_panel")]
+    # the crew cards on the buildings of the game's tree
+    cards = {}
+    for key, pairs in bindings.items():
+        if key.removeprefix(config["buildings_prefix"]) in config.get("no_card", []):     # the hull's own row of the tree: the tile stands beside the others' columns
+            continue
+        for b in pairs:
+            group = config["groups"][b["group"]]
+            if group.get("no_panel") or group.get("mount") == b["option"]:
+                continue
+            option = group["options"][b["option"]]
+            drawn = own_card_name(config, b["group"], b["option"])
+            path = drawn_path(drawn, small=True) if drawn else card_path(option.get("ui") or {})
+            if path:
+                frame = option.get("card_frame") or group.get("card_frame") or "gold"
+                cards.setdefault(key, []).append({"card": path, "frame": f"{UI_DIR}card_frame_{frame}.png"})
+    return {"groups": groups, "art": art, "order": order, "drawn": ["cupolas", "harpoon", "cannons", "rifles", "bombs", "deck", "pub"], "building_cards": cards}
