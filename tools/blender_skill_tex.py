@@ -160,8 +160,36 @@ def fix():
     d = np.hypot((xx - cx) / STRETCH_X, yy - cy)
     dph = np.hypot(xx - (PORTHOLE_C[0] - WIN[0]), yy - (PORTHOLE_C[1] - WIN[1]))
     m = np.clip((R + FEATHER - d) / FEATHER, 0, 1) * np.clip((dph - PORTHOLE_KEEP) / 6.0, 0, 1)   # defect, feathered
-    e = np.polyval(edge, xx)
+    # the belt's real top edge per column (where the wood's colour gives way to grey steel, to a tenth of a pixel)
+    ecol = np.polyval(edge, np.arange(W, dtype=float))
+    bc0 = win["base_colour"][..., :3]
+    satc = bc0.max(2) - bc0.min(2)
+    et = np.full(W, np.nan)
+    for x in range(W):
+        y0 = int(ecol[x]) - 8
+        if y0 < 1 or y0 + 17 >= H:
+            continue
+        col = satc[y0:y0 + 17, x]
+        for k in range(1, 15):
+            if col[k - 1] >= 30 > col[k] and (col[k:k + 3] < 30).all():
+                et[x] = y0 + k - 1 + (col[k - 1] - 30) / max(col[k - 1] - col[k], 1e-3)
+                break
+    xs_all = np.arange(W)
+    edge_cols_defect = np.abs(xs_all - cx) < (R + FEATHER + 6) * STRETCH_X
+    res_e = et - ecol
+    okc = np.isfinite(res_e) & ~edge_cols_defect & (np.abs(res_e) < 4)
+    # destination edge: the real edge outside, a straight blend of its offset across the defect (no steps, no wobble)
+    de_col = ecol + np.interp(xs_all, xs_all[okc], res_e[okc])
+    lo, hi = xs_all[okc & (xs_all < cx)].max(), xs_all[okc & (xs_all > cx)].min()
+    span = (xs_all > lo) & (xs_all < hi)
+    de_col[span] = ecol[span] + np.interp(xs_all[span], [lo, hi], [res_e[lo], res_e[hi]])
+    et_f = np.where(np.isfinite(et) & (np.abs(res_e) < 4), et, de_col)   # columns without a clear edge: the blended line
+    e = de_col[np.clip(xx.astype(int), 0, W - 1)]
     steel = yy > e
+
+    def src_edge(sx):
+        """Real edge at source columns (outside the window: nan)."""
+        return np.interp(sx, xs_all, et_f, left=np.nan, right=np.nan)
     pcx, pcy = PORTHOLE_C[0] - WIN[0], PORTHOLE_C[1] - WIN[1]
 
     from scipy import ndimage as nd
@@ -188,7 +216,7 @@ def fix():
         for sx, sy, ok in cands:
             first = ok & ~taken
             taken |= ok
-            w = nd.gaussian_filter(first.astype(np.float32), 5.0) * ok
+            w = nd.gaussian_filter(first.astype(np.float32), 3.0) * ok
             ws.append(w)
         tot = np.sum(ws, 0)
         return [(sx, sy, w / np.maximum(tot, 1e-6)) for (sx, sy, _), w in zip(cands, ws)], tot > 1e-6
@@ -202,40 +230,58 @@ def fix():
         return ac[0] + rho * np.cos(p2), ac[1] + rho * np.sin(p2)
 
     def edge_src(sh):
+        """Same height over the belt's real edge (at the source column), moved along the belt by sh."""
         sx = xx + sh
-        return sx, yy - e + np.polyval(edge, sx)
+        se = src_edge(sx)
+        return sx, yy - e + se
 
     wc = []
     for sh in WOOD_SHIFTS:                                        # planks first: keep the plank coordinate
         sx, sy = plank_src(sh)
-        wc.append((sx, sy, clean(sx, sy, bad_wood) & (sy < np.polyval(edge, sx) - 3)))
+        se = src_edge(sx)
+        wc.append((sx, sy, clean(sx, sy, bad_wood) & np.isfinite(se) & (sy < np.nan_to_num(se, nan=-1e4) - 2.5)))
     for sh in (200, 240, -150):                                   # the strip just above the belt: keep the edge coordinate
         sx, sy = edge_src(sh)
-        wc.append((sx, sy, clean(sx, sy, bad_wood) & (sy < np.polyval(edge, sx) - 1)))
+        ok = np.isfinite(sy)
+        sy = np.nan_to_num(sy)
+        wc.append((sx, sy, ok & clean(sx, sy, bad_wood) & (yy < e - 0.5)))
     wpick, wok = pick(wc)
     sc = []
     for sh in STEEL_SHIFTS:
         sx, sy = edge_src(sh)
-        sc.append((sx, sy, clean(sx, sy, bad_steel) & (sy > np.polyval(edge, sx) + 1)))
+        ok = np.isfinite(sy)
+        sy = np.nan_to_num(sy)
+        sc.append((sx, sy, ok & clean(sx, sy, bad_steel) & (yy > e - 1.5)))
     spick, sok = pick(sc)
     need = m > 0
     report_missing = [int((~wok & need & (yy < e)).sum()), int((~sok & need & (yy >= e)).sum())]
 
-    def sample(img, picks, ok):
+    ring_w = (d > R + FEATHER + 4) & (d < R + FEATHER + 34) & (dph > PORTHOLE_KEEP + 6) & (yy < e - 3)
+
+    def sample(img, picks, ok, tone=False):
+        """Weighted sum of the candidates; with tone, each candidate is first brought to the ring's median (its own
+        source stretch can be a shade lighter or darker, which shows as a band where the sources meet)."""
         acc = np.zeros(img.shape, np.float32)
+        target = np.median(img[ring_w], 0) if tone else None
         for sx, sy, w in picks:
             sel = w > 0
             if sel.any():
-                acc[sel] += w[sel, None] * _bilinear(img, sx[sel], sy[sel])
+                smp = _bilinear(img, sx[sel], sy[sel])
+                if tone:
+                    core = w[sel] > 0.5
+                    if core.sum() > 200:
+                        smp = smp + (target - np.median(smp[core], 0))[None, :]
+                acc[sel] += w[sel, None] * smp
         acc[~ok] = img[~ok]
         return acc
-    blend = np.clip((yy - e) + 0.5, 0, 1)[..., None]               # one pixel wide transition at the edge
+    blend = np.clip((yy - e) + 0.5, 0, 1)[..., None]               # one pixel wide transition at the real edge line
     ring = (d > R + FEATHER + 4) & (d < R + FEATHER + 34) & (dph > PORTHOLE_KEEP + 6)
     report = {"edge_points": int(keep.sum()), "edge_res_px": float(np.abs(pts[keep, 1] - np.polyval(edge, pts[keep, 0])).max()),
-              "plank_slopes": [[int(a), round(float(b), 3)] for a, b in zip(qx, qs)], "without_source_px_wood_steel": report_missing, "arc_centre_atlas": [round(float(ac[0] + WIN[0]), 1), round(float(ac[1] + WIN[1]), 1)], "arc_fit_err_deg": round(arc_err, 2)}
+              "plank_slopes": [[int(a), round(float(b), 3)] for a, b in zip(qx, qs)], "without_source_px_wood_steel": report_missing, "arc_centre_atlas": [round(float(ac[0] + WIN[0]), 1), round(float(ac[1] + WIN[1]), 1)], "arc_fit_err_deg": round(arc_err, 2),
+              "edge_cols_found": int(np.isfinite(et).sum()), "edge_offset_ends_px": [round(float(res_e[lo]), 2), round(float(res_e[hi]), 2)]}
     out = {}
     for name, img in win.items():
-        wood = sample(img, wpick, wok)
+        wood = sample(img, wpick, wok, tone=name != "normal")
         stl = sample(img, spick, sok)
         fill = wood * (1 - blend) + stl * blend
         for cls in (False, True):                                    # tone check against the ring outside (reported, not applied:
