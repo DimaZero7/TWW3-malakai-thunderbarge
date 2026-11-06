@@ -72,7 +72,7 @@ def hull_mesh(li, stock_mesh):
     out = stock_mesh.copy()
     out.verts, out.tris = [], []
     remap = {}
-    moved = renormed = new = 0
+    moved = renormed = new = uv_moved = 0
     for i in used:
         gp = np.array(to_game(P[i]))
         gn = _unit(to_game(NR[i]))
@@ -87,6 +87,10 @@ def hull_mesh(li, stock_mesh):
                 t2, b2 = _reframe(src, gn)
                 br.set_shading(v, n=gn, t=t2, b=b2)
                 renormed += 1
+            new_uv = (float(VUV[i, 0]), float(1 - VUV[i, 1]))
+            if max(abs(a - b) for a, b in zip(new_uv, br.uv(src))) > 1e-6:      # moved in the scene (barrel caps etc.)
+                br.set_shading(v, uv_=new_uv)
+                uv_moved += 1
         else:
             k = (round(gp[0], 4), round(gp[1], 4), round(gp[2], 4))
             cands = key.get(k)
@@ -105,7 +109,7 @@ def hull_mesh(li, stock_mesh):
     out.tris = [tuple(remap[i] for i in t) for t in tris]
     if len(out.verts) > 65535:
         raise ValueError("too many vertices")
-    return out, dict(verts=len(out.verts), tris=len(out.tris), moved=moved, renormed=renormed, new=new,
+    return out, dict(verts=len(out.verts), tris=len(out.tris), moved=moved, renormed=renormed, new=new, uv_moved=uv_moved,
                      dropped=len(stock_mesh.verts) - (len(used) - new))
 
 
