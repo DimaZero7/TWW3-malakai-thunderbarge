@@ -305,10 +305,10 @@ def cradle(cx, cy, r, kx, ky, twist=True, back=False):
 
 def bombs():
     """The two bombs that hang over the side, as on the model: iron balls of four riveted plates in a rope basket, hung by a knot from the forecastle's
-    lower brass band and from the corner of the stern deck's trim. Size: 1.17 of the model across (r 24). Chosen of three tries (build/web/shots/bomb_variants.png)."""
+    lower brass band and from the corner of the stern deck's trim. Size: 1.17 of the model across (r 24). Variant B of three tries (build/web/shots/bomb_variants.png), chosen by the user."""
     out = []
     for cx, cy, kx, ky in ((375, 478, 388, 445), (640, 476, 626, 439)):
-        out += ball(cx, cy, 24) + cradle(cx, cy, 24, kx, ky)
+        out += ball(cx, cy, 24) + cradle(cx, cy, 24, kx, ky, back=True)      # variant B, the user's choice: the rope behind the ball seen too
     return out
 
 
