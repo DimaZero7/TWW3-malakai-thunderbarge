@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Дух Грунгни: экран корабля</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/css/page.css">
+<script type="importmap">
+{"imports": {"three": "/build/vendor/three/build/three.module.js", "three/addons/": "/build/vendor/three/examples/jsm/"}}
+</script>
+</head>
+<body>
+<header id="bar">
+  <span class="tag">Проверка без игры</span>
+  <span id="turn">Ход 1</span>
+  <button id="end_turn" title="Кнопка игры: конец хода. Постройки идут на ход вперёд">Конец хода</button>
+  <ul id="log"></ul>
+</header>
+<main>
+  <section id="left"><div id="screen"></div></section>
+  <section id="right">
+    <div id="view3d"></div>
+    <div id="tools3d">
+      <button id="view_port">Вид на порт</button>
+      <button id="view_all">Общий вид</button>
+      <span id="hull"></span>
+    </div>
+    <div id="loading">Загрузка модели…</div>
+  </section>
+</main>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

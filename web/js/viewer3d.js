@@ -1,0 +1,93 @@
+// The barge in 3D: the game's models as tools/web_export.py writes them (build/web/models), turned and zoomed with the mouse.
+// Not the game's renderer: simple light, base colour and normal map only (no material map, no faction colours, no emissive).
+
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+// Places in three.js axes: the game's x is mirrored (tools/web_export.py, to_gltf). The port is cut at game x 0.9..2.05, y 0.45..1.98, z 5.0..6.5 (data/hull_parts.json);
+// this view looks at the side whose port the drawing shows, bow to the left as on the panel.
+const PORT = new THREE.Vector3(1.5, 1.2, 5.75);
+const PORT_CAMERA = new THREE.Vector3(7.5, 2.6, 7.2);
+const ALL_TARGET = new THREE.Vector3(0, 7, -1.5);
+const ALL_CAMERA = new THREE.Vector3(34, 14, 16);
+
+export class Viewer {
+    constructor(host) {
+        this.host = host;
+        this.renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+        host.appendChild(this.renderer.domElement);
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x7d8a94);
+        this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 500);
+        this.scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x4a3a2a, 1.6));
+        const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
+        sun.position.set(20, 30, 14);
+        this.scene.add(sun);
+        const fill = new THREE.DirectionalLight(0xc8d4e0, 0.7);
+        fill.position.set(-20, 8, -14);
+        this.scene.add(fill);
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.enableDamping = false;     // no drift after the mouse lets go
+        this.controls.minDistance = 2;
+        this.controls.maxDistance = 120;
+        this.models = {};
+        this.current = null;
+        this.wanted = null;
+        new ResizeObserver(() => this.resize()).observe(host);
+        this.resize();
+        this.view('all');
+        const loop = () => { this.controls.update(); this.renderer.render(this.scene, this.camera); requestAnimationFrame(loop); };
+        loop();
+    }
+
+    resize() {
+        const w = this.host.clientWidth, h = this.host.clientHeight;
+        if (!w || !h) return;
+        this.renderer.setSize(w, h);
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+    }
+
+    async load(name, url) {
+        const gltf = await new GLTFLoader().loadAsync(url);
+        const root = gltf.scene;
+        root.traverse(o => {
+            if (o.isMesh && o.material.normalMap) {
+                // The game's normal maps are DirectX style (green down); three.js reads them OpenGL style
+                o.material.normalScale.set(1, -1);
+            }
+        });
+        root.visible = false;
+        root.name = name;
+        this.scene.add(root);
+        this.models[name] = root;
+        if (this.wanted === name) this.show(name);
+        return root;
+    }
+
+    // Shows one hull: hull_closed (no port) or hull_port (stock, with the port)
+    show(name) {
+        this.wanted = name;
+        if (!this.models[name]) return;
+        for (const [k, m] of Object.entries(this.models)) m.visible = k === name;
+        this.current = name;
+    }
+
+    // The camera from the direction of eye to target, as far as the view needs to hold a ball of this radius whatever the shape of the window
+    view(which) {
+        const [target, eye, radius] = which === 'port' ? [PORT, PORT_CAMERA, 2.6] : [ALL_TARGET, ALL_CAMERA, 17];
+        const vfov = THREE.MathUtils.degToRad(this.camera.fov);
+        const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
+        const distance = radius / Math.sin(Math.min(vfov, hfov) / 2);
+        const dir = eye.clone().sub(target).normalize();
+        this.controls.target.copy(target);
+        this.camera.position.copy(target).addScaledVector(dir, distance);
+        this.lastView = which;
+        this.controls.update();
+    }
+}

@@ -1,0 +1,7 @@
+{
+ "_about": "Start of the simulated game (web/js/game_sim.js), not mod data. gold: as at the start of Malakai's campaign on the user's screenshot (docs/design/panel-upgrades-proposal.md, section 4); income per turn is not modelled; built: the hull already stands, so the barge exists.",
+ "turn": 1,
+ "gold": 6000,
+ "income": 0,
+ "built": ["airship_hull_1", "airship_hull_2"]
+}

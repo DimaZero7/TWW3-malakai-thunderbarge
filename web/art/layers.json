@@ -1,0 +1,24 @@
+{
+ "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size); ink layers are in data/crew_ui_art.json, layers.",
+ "places": {
+  "port_pencil": [
+   313.75,
+   526.25,
+   51.25,
+   51.88
+  ],
+  "port_build": [
+   313.75,
+   526.25,
+   51.25,
+   51.88
+  ]
+ },
+ "parts": {
+  "port": {
+   "pencil": "port_pencil",
+   "build": "port_build",
+   "ink": "mount_cannons"
+  }
+ }
+}
