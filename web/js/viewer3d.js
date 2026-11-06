@@ -11,6 +11,15 @@ const PORT = new THREE.Vector3(1.5, 1.2, 5.75);
 const PORT_CAMERA = new THREE.Vector3(7.5, 2.6, 7.2);
 const ALL_TARGET = new THREE.Vector3(0, 7, -1.5);
 const ALL_CAMERA = new THREE.Vector3(34, 14, 16);
+// target, a point the camera looks from, the radius the view must hold. The game's left side is three.js +x (x is mirrored).
+const VIEWS = {
+    port: [PORT, PORT_CAMERA, 2.6],
+    port_right: [new THREE.Vector3(-PORT.x, PORT.y, PORT.z), new THREE.Vector3(-PORT_CAMERA.x, PORT_CAMERA.y, PORT_CAMERA.z), 2.6],     // only by ?view=port_right
+    all: [ALL_TARGET, ALL_CAMERA, 17],
+    left: [ALL_TARGET, new THREE.Vector3(40, 9, -1.5), 15],
+    right: [ALL_TARGET, new THREE.Vector3(-40, 9, -1.5), 15],
+    below: [new THREE.Vector3(0, 1, -1.5), new THREE.Vector3(6, -40, -1.4), 12],
+};
 
 export class Viewer {
     constructor(host) {
@@ -31,6 +40,9 @@ export class Viewer {
         const fill = new THREE.DirectionalLight(0xc8d4e0, 0.7);
         fill.position.set(-20, 8, -14);
         this.scene.add(fill);
+        const under = new THREE.DirectionalLight(0xc8d4e0, 0.6);     // so that the bottom is seen from below
+        under.position.set(4, -30, 2);
+        this.scene.add(under);
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = false;     // no drift after the mouse lets go
         this.controls.minDistance = 2;
@@ -70,17 +82,34 @@ export class Viewer {
         return root;
     }
 
-    // Shows one hull: hull_closed (no port) or hull_port (stock, with the port)
+    // The hull shown: hull_base, or hull_stock for a look at the stock ship
     show(name) {
         this.wanted = name;
-        if (!this.models[name]) return;
-        for (const [k, m] of Object.entries(this.models)) m.visible = k === name;
         this.current = name;
+        if (this.models[name]) this.models[name].visible = true;
+    }
+
+    // A detail on or off: its own model, and the nodes of the hull it replaces (the port's plug, the hatch covers) the other way round
+    setPart(name, on, hides = []) {
+        if (this.models[name]) this.models[name].visible = on;
+        const hull = this.models[this.current];
+        if (!hull) return;
+        for (const node of hides) {
+            const o = hull.getObjectByName(node);
+            if (o) o.visible = !on;
+        }
+    }
+
+    hiddenNodes() {
+        const out = [];
+        const hull = this.models[this.current];
+        if (hull) hull.traverse(o => { if (o !== hull && !o.visible) out.push(o.name); });
+        return out;
     }
 
     // The camera from the direction of eye to target, as far as the view needs to hold a ball of this radius whatever the shape of the window
     view(which) {
-        const [target, eye, radius] = which === 'port' ? [PORT, PORT_CAMERA, 2.6] : [ALL_TARGET, ALL_CAMERA, 17];
+        const [target, eye, radius] = VIEWS[which];
         const vfov = THREE.MathUtils.degToRad(this.camera.fov);
         const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
         const distance = radius / Math.sin(Math.min(vfov, hfov) / 2);

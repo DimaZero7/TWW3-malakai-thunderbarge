@@ -48,15 +48,18 @@ export function makePanel(root, M, data, art, blueprint, flags) {
 
     // the drawing and its layers: pencil, hatching, ink per part, all created, one visible (SetVisible), as the panel's mount_ and occ_ layers
     const sx = pad, sy = top;
-    const sheet = image(frame, 'scheme', LAYOUTS + 'blueprint.png', sx, sy, scheme_w, scheme_h);
+    const sheet = image(frame, 'scheme', LAYOUTS + blueprint.sheet + '.png', sx, sy, scheme_w, scheme_h);
     const place = (name) => art.places[name] || data.art.layers[name];
+    // a layer of the panel's own art (data/crew_ui_art.json: mount_cannons, mount_bombs) or of tools/web_art.py
+    const layerPath = (name) => (data.art.layers[name] ? LAYOUTS : WEB_ART) + name + '.png';
     for (const [part, spec] of Object.entries(blueprint.parts)) {
+        if (!spec.enabled && !flags.all_parts) continue;      // only the data is ready: the base drawing has nothing of it
         const layers = {};
         for (const stage of ['pencil', 'build', 'ink']) {
             const name = spec[stage];
+            if (!name) continue;                               // not drawn yet
             const p = place(name);
-            const path = stage === 'ink' ? LAYOUTS + name + '.png' : WEB_ART + name + '.png';
-            layers[stage] = image(sheet, `${part}_${stage}`, path, p[0] * scale, p[1] * scale, p[2] * scale, p[3] * scale);
+            layers[stage] = image(sheet, `${part}_${stage}`, layerPath(name), p[0] * scale, p[1] * scale, p[2] * scale, p[3] * scale);
         }
         // the turns left, live text on the drawing while it is built (TurnsToCompletion in the game)
         layers.turns = text(sheet, `${part}_turns`, 'text_ink', spec.turns_at[0] * scale, spec.turns_at[1] * scale, 80, 22, '');
@@ -151,8 +154,8 @@ function refresh(view, M) {
     view.gold.SetStateText(String(M.game.treasury()));
     for (const [part, layers] of Object.entries(view.layers)) {
         const stage = M.stage(part);
-        for (const s of ['pencil', 'build', 'ink']) layers[s].SetVisible(s === stage);
-        const st = M.status(M.prefix + M.parts[part].building);
+        for (const s of ['pencil', 'build', 'ink']) if (layers[s]) layers[s].SetVisible(s === stage);
+        const st = stage === 'build' ? M.status(M.prefix + M.parts[part].building) : {};
         layers.turns.SetVisible(stage === 'build');
         layers.turns.SetStateText(st.state === 'building' ? turnsText(st.turns) : '');
     }

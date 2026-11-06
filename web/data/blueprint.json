@@ -1,8 +1,29 @@
 {
- "_about": "Parts of the drawing that have stages (web/js/barge_buildings.js, stage). building: the level without the prefix that makes the part; ink: its layer in data/crew_ui_art.json; pencil, build: layers of web/art/layers.json (tools/web_art.py); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760).",
- "parts": {
-  "port": {"building": "mtb_guns_1", "ink": "mount_cannons", "pencil": "port_pencil", "build": "port_build", "turns_at": [362, 538]}
- },
+ "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from.",
+ "sheet": "web/blueprint_base",
  "chains": ["mtb_guns"],
- "first_only": true
+ "first_only": true,
+ "parts": {
+  "port": {"name": "Орудийный порт", "building": "mtb_guns_1", "enabled": true,
+           "pencil": "port_pencil", "build": "port_build", "ink": "mount_cannons", "turns_at": [362, 538],
+           "model": {"part": "part_port", "hides": ["port_plug"]}, "source": "stock hull around the port (tools/web_export.py, port_split); base hull build/solid_hull_hatches"},
+  "porthole": {"name": "Иллюминатор на носу", "building": "support_radius_1", "planned": "пост наблюдения (сигнальная система)", "enabled": false,
+               "pencil": "porthole_pencil", "build": "porthole_build", "ink": "porthole_ink", "turns_at": [318, 462],
+               "model": {"part": "part_porthole", "hides": []}, "source": "build/solid_hull_porthole/porthole_part"},
+  "stern_armour": {"name": "Кормовые доски-руль", "building": null, "planned": "постройка руля: броня привода и манёвренность; в данных мода её ещё нет", "enabled": false,
+                   "pencil": "stern_armour_pencil", "build": "stern_armour_build", "ink": "stern_armour_ink", "turns_at": [676, 470],
+                   "model": {"part": "part_stern_armour", "hides": []}, "source": "build/solid_hull_stern/stern_armour_part"},
+  "forsage_tank": {"name": "Бак «Форсажа» с красным вентилем", "building": "engines_2", "planned": "«Форсаж» (engines_2 и engines_3)", "enabled": false,
+                   "pencil": null, "build": null, "ink": null, "turns_at": [860, 470],
+                   "model": {"part": "part_forsage_tank", "hides": []}, "source": "build/solid_hull_tank/tank_part"},
+  "bomb_hatches": {"name": "Бомбовые люки", "building": "mtb_hatches_1", "planned": "бомбовая ветка", "enabled": false,
+                   "pencil": null, "build": null, "ink": "mount_bombs", "turns_at": [520, 560],
+                   "model": {"part": "part_bomb_hatches", "hides": ["hatch_covers"]}, "source": "build/solid_hull_hatches/hatches_part; the covers are build/solid_hull_hatches/parts"},
+  "side_shields": {"name": "Круглые щиты на борту", "building": null, "planned": "обшивка; в данных мода её ещё нет", "enabled": false,
+                   "pencil": "side_shields_pencil", "build": "side_shields_build", "ink": "side_shields_ink", "turns_at": [530, 470],
+                   "model": {"part": "part_side_shields", "hides": []}, "source": "cut by boxes from build/solid_hull_hatches (tools/web_export.py, SHIELDS)"},
+  "balloon_shields": {"name": "Круглые щиты на шаре", "building": null, "planned": "обшивка; в данных мода её ещё нет", "enabled": false,
+                      "pencil": null, "build": null, "ink": null, "turns_at": [530, 240],
+                      "model": {"part": "part_balloon_shields", "hides": []}, "source": "cut by boxes from build/solid_hull_hatches (tools/web_export.py, SHIELDS)"}
+ }
 }

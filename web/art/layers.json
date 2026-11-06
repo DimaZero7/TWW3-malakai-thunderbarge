@@ -1,5 +1,5 @@
 {
- "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size); ink layers are in data/crew_ui_art.json, layers.",
+ "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size). The ink of the port is data/ui/mount_cannons.png, placed by data/crew_ui_art.json; every other layer is in web/art. blueprint_base.png: the panel's drawing without the details below.",
  "places": {
   "port_pencil": [
    313.75,
@@ -12,6 +12,60 @@
    526.25,
    51.25,
    51.88
+  ],
+  "side_shields_ink": [
+   405.0,
+   478.12,
+   290.0,
+   50.0
+  ],
+  "side_shields_pencil": [
+   405.62,
+   478.75,
+   288.75,
+   49.38
+  ],
+  "side_shields_build": [
+   402.5,
+   475.62,
+   295.0,
+   54.38
+  ],
+  "porthole_ink": [
+   284.38,
+   461.25,
+   31.25,
+   30.0
+  ],
+  "porthole_pencil": [
+   285.0,
+   461.88,
+   30.0,
+   29.38
+  ],
+  "porthole_build": [
+   283.12,
+   460.0,
+   33.12,
+   32.5
+  ],
+  "stern_armour_ink": [
+   668.75,
+   311.25,
+   94.38,
+   318.12
+  ],
+  "stern_armour_pencil": [
+   668.75,
+   311.88,
+   94.38,
+   316.88
+  ],
+  "stern_armour_build": [
+   668.75,
+   311.25,
+   94.38,
+   318.12
   ]
  },
  "parts": {
@@ -19,6 +73,21 @@
    "pencil": "port_pencil",
    "build": "port_build",
    "ink": "mount_cannons"
+  },
+  "side_shields": {
+   "pencil": "side_shields_pencil",
+   "build": "side_shields_build",
+   "ink": "side_shields_ink"
+  },
+  "porthole": {
+   "pencil": "porthole_pencil",
+   "build": "porthole_build",
+   "ink": "porthole_ink"
+  },
+  "stern_armour": {
+   "pencil": "stern_armour_pencil",
+   "build": "stern_armour_build",
+   "ink": "stern_armour_ink"
   }
  }
 }

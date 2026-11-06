@@ -14,7 +14,7 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 #screen { position: relative; overflow: hidden; }
 #view3d { position: absolute; inset: 0; }
 #view3d canvas { display: block; }
-#tools3d { position: absolute; left: 10px; top: 10px; display: flex; gap: 8px; align-items: center; }
+#tools3d { position: absolute; left: 10px; top: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 #hull { color: #f3e3c0; text-shadow: 0 1px 2px #000; }
 #loading { position: absolute; left: 10px; bottom: 10px; color: #f3e3c0; text-shadow: 0 1px 2px #000; }
 

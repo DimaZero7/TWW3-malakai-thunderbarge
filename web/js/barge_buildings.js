@@ -28,6 +28,7 @@ export function makeBuildings(data, game, parts) {
     // {state: built | building | open | locked, turns, why}. why: the reason as the panel prints it.
     M.status = key => {
         const row = M.level(key);
+        if (!row) return {state: 'unknown', why: `Нет в выгрузке: ${key}`};     // a building of a chain the page does not export yet
         if (game.has_building(row.key)) return {state: 'built'};
         const turns = game.under_construction(row.key);
         if (turns !== null) return {state: 'building', turns};
@@ -84,9 +85,14 @@ export function makeBuildings(data, game, parts) {
         return {ok: true};
     };
 
-    // The stage of a part of the drawing: pencil (not built), build (under construction), ink (built). parts: web/data/blueprint.json.
+    // The stage of a part of the drawing and the model: pencil (not built), build (under construction), ink (built); none for a part not connected yet
+    // (web/data/blueprint.json, enabled). M.all_parts (?parts=all): every part as built, to look at the whole ship.
+    M.all_parts = false;
     M.stage = part => {
-        const s = M.status(prefix + parts[part].building);
+        const p = parts[part];
+        if (M.all_parts) return 'ink';
+        if (!p.enabled || !p.building) return 'none';
+        const s = M.status(prefix + p.building);
         return s.state === 'built' ? 'ink' : s.state === 'building' ? 'build' : 'pencil';
     };
 
