@@ -218,21 +218,98 @@ def belt():
     return out
 
 
-def bomb(x, y, r, rope_from):
-    """A round bomb hanging in a rope net."""
+ROPE = "#8f5a2c"
+IRON = "#d6cfc2"
+
+
+def arc_pts(cx, cy, rx, ry, a0, a1, n=24):
+    return [(cx + rx * math.cos(math.radians(a0 + (a1 - a0) * i / n)), cy + ry * math.sin(math.radians(a0 + (a1 - a0) * i / n))) for i in range(n + 1)]
+
+
+def crescent(cx, cy, r, dx, dy):
+    """The shaded side of a ball lit from the upper left: the ball minus a shifted ball."""
     out = []
-    for fx, fy in rope_from:
-        out.append(art.path(f"M{fx:.1f} {fy:.1f} L{x + (fx - x) * 0.25:.1f} {y - r + 2:.1f}", 1.2))
-    pts = round_points(x, y, r - 1, 20)
-    out += [art.circle(x, y, r, 1.7, art.INK, "#e6dccb"), art.hatch(pts, 55, 6.5, 0.9, art.INK, 0.9), art.hatch(pts, 125, 6.5, 0.9, art.INK, 0.9),
-            art.hatch([(x - r, y + 3), (x + r, y + 3), (x + r * 0.6, y + r), (x - r * 0.6, y + r)], 20, 3, 0.6),
-            art.path(f"M{x - 5:.1f} {y - r - 3:.1f} L{x + 5:.1f} {y - r - 3:.1f} L{x + 4:.1f} {y - r + 1:.1f} L{x - 4:.1f} {y - r + 1:.1f} Z", 1.2, art.INK, STEEL)]
+    for i in range(41):
+        a = math.radians(-60 + 210 * i / 40)
+        out.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    for i in range(41):
+        a = math.radians(150 - 210 * i / 40)
+        x, y = cx + dx + r * math.cos(a), cy + dy + r * math.sin(a)
+        if math.hypot(x - cx, y - cy) <= r:
+            out.append((x, y))
+    return out
+
+
+def ball(cx, cy, r, heavy=False):
+    """An iron ball of four plates as on the model: the outline, one seam round the middle and one over the top (a cross on the side we see,
+    a little turned), rivets in pairs beside the seams, the lug on top, the shade of a ball lit from the upper left."""
+    out = [art.circle(cx, cy, r, 1.8, art.INK, IRON)]
+    sh = crescent(cx, cy, r, -r * 0.42, -r * 0.42)
+    out.append(art.hatch(sh, 50, 2.4, 0.8, art.INK, 0.8))
+    if heavy:
+        out.append(art.hatch(sh, 140, 2.8, 0.6, art.INK, 0.6))
+    # the seams: double lines; the middle one bowed (seen a little from above), the upright one bowed (the ball turned a little)
+    sx = cx - r * 0.12
+    for k in (-1.3, 1.3):
+        out.append(art.path(art.smooth(arc_pts(cx, cy + k + 1, r * 0.99, r * 0.16, 0, 180, 16)), 0.9))
+        out.append(art.path(art.smooth(arc_pts(sx + k, cy, r * 0.22, r * 0.99, -90, 90, 16)), 0.9))
+    # rivets in pairs beside the seams, on each plate
+    for qx in (-1, 1):
+        for qy in (-1, 1):
+            out.append(art.dot(sx + qx * r * 0.45, cy + qy * r * 0.2 + 1, 1.3))
+            out.append(art.dot(sx + r * 0.1 + qx * r * 0.2, cy + qy * r * 0.55, 1.3))
+    out.append(f'<ellipse cx="{cx:.1f}" cy="{cy - r - 2.6:.1f}" rx="3.6" ry="3.0" fill="none" stroke="{art.INK}" stroke-width="1.5"/>')
+    return out
+
+
+def rope(points, w=1.6, twist=True):
+    """A rope: a brown line in ink with short slanted strokes along it, as the drawing's wale."""
+    d = art.smooth(points) if len(points) > 2 else art.poly(points)
+    out = [art.path(d, w + 1.2, art.INK), art.path(d, w, ROPE)]
+    if twist:
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            L = math.hypot(x1 - x0, y1 - y0)
+            n = int(L / 3.2)
+            for i in range(1, n):
+                t = i / n
+                x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+                ux, uy = (x1 - x0) / L, (y1 - y0) / L
+                out.append(art.path(f"M{x - uy * 1.3 - ux * 0.9:.1f} {y + ux * 1.3 - uy * 0.9:.1f} L{x + uy * 1.3 + ux * 0.9:.1f} {y - ux * 1.3 + uy * 0.9:.1f}", 0.5, art.INK, op=0.8))
+    return out
+
+
+def knot(x, y, r=2.6):
+    return [art.circle(x, y, r, 1.2, art.INK, ROPE)]
+
+
+def cradle(cx, cy, r, kx, ky, twist=True, back=False):
+    """The rope basket: from the knot two ropes run straight down in front of the ball to a ring round it under its middle; three ropes from the ring
+    meet under the ball in a knot. back: the rope behind the ball, thin, seen past its side."""
+    out = []
+    ring = arc_pts(cx, cy + r * 0.42, r * 0.92, r * 0.22, 0, 180, 16)
+    left, right = ring[-1], ring[0]
+    if back:
+        out.append(art.path(art.poly([(kx, ky), (cx - r * 1.0, cy - r * 0.1)]), 0.9, art.INK, op=0.7))
+    out += rope([(kx, ky), ring[11]], twist=twist)
+    out += rope([(kx, ky), (right[0] + 1.5, right[1])], twist=twist)
+    out += rope(ring, 1.3, twist)
+    bottom = (cx + r * 0.05, cy + r * 1.08)
+    for i in (4, 11):
+        out += rope([ring[i], bottom], 1.1, twist)
+        out += knot(*ring[i], 1.9)
+    out += rope([left, bottom], 1.1, twist)
+    out += knot(*bottom, 2.3)
+    out += knot(kx, ky, 3.0)
     return out
 
 
 def bombs():
-    """The two bombs that hang over the side: one under the forecastle rail, one under the stern deck's front corner."""
-    return bomb(mx(4.67), my(2.75), 19, [(mx(4.9), my(3.3)), (mx(4.4), my(3.3))]) + bomb(mx(-2.75), my(1.75), 19, [(mx(-2.3), my(2.67)), (mx(-2.5), my(2.67))])
+    """The two bombs that hang over the side, as on the model: iron balls of four riveted plates in a rope basket, hung by a knot from the forecastle's
+    lower brass band and from the corner of the stern deck's trim. Size: 1.17 of the model across (r 24). Chosen of three tries (build/web/shots/bomb_variants.png)."""
+    out = []
+    for cx, cy, kx, ky in ((375, 478, 388, 445), (640, 476, 626, 439)):
+        out += ball(cx, cy, 24) + cradle(cx, cy, 24, kx, ky)
+    return out
 
 
 FORECASTLE_END = 405        # where the forecastle's rail steps down to the waist, as hull_top() has it

@@ -22,6 +22,8 @@ const VIEWS = {
     drive: [new THREE.Vector3(2.5, 2.2, -7.6), new THREE.Vector3(40, 2.4, -7.6), 3.6],
     bow: [new THREE.Vector3(2.5, 1.6, 5.2), new THREE.Vector3(40, 1.8, 5.2), 3.4],
     waist: [new THREE.Vector3(2.5, 2.6, 0.6), new THREE.Vector3(40, 2.8, 0.6), 5.2],
+    bomb: [new THREE.Vector3(2.8, 3.1, 4.66), new THREE.Vector3(40, 3.3, 4.66), 1.3],
+    bomb_aft: [new THREE.Vector3(2.8, 2.0, -2.73), new THREE.Vector3(40, 2.2, -2.73), 1.1],
     below: [new THREE.Vector3(0, 1, -1.5), new THREE.Vector3(6, -40, -1.4), 12],
 };
 
