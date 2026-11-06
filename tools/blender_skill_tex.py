@@ -4,6 +4,7 @@
   blender_skill_tex.py fix                         writes the patched copies to build/solid_hull_skill/tex/
 """
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -53,6 +54,9 @@ WIN = (640, 3456, 1664, 4096)        # read window for the sources
 CENTRE, R, FEATHER = (1052.0, 3787.0), 94.0, 16.0
 STRETCH_X = 1.1                      # the defect is a little wider than tall (the ring's padding streaks at the sides)
 PORTHOLE_C, PORTHOLE_KEEP = (1031.0, 3652.0), 51.0   # the porthole's own painted ring stays
+BOTTOM_PLANK_ON = False                                   # tried for the bottom plank; off: the stock gaps there are no arcs
+BOTTOM_GAP, BOTTOM_GAP_HALF = 1126.0, 5.0                # radius (from the arc centre) of the bottom plank's gap
+BOTTOM_PLANK = (1093.0, 1160.0)                          # radii of the bottom plank band (belt line .. next gap)
 KNOT = (1205, 3670, 1310, 3720)                      # atlas box of a distinctive knot, not used as a source
 WOOD_SHIFTS = (-230, 230, -270, 270, -320, 320)      # arc-length shifts of the wood source along the planks, first clean wins
 STEEL_SHIFTS = (164, 246, 328, 410, -164, -246)                # x shifts of the steel along the belt edge: whole plate seam spacings
@@ -147,6 +151,76 @@ def arc_centre(normal, edge, r_in, r_out):
     return c, float(np.median(err[k]))
 
 
+GAP_POINTS = REPO / "build" / "solid_hull_skill" / "gap_points.json"   # the stock gap the bottom plank must continue
+BOTTOM_TOP = 1160.0                  # arc radius just under the next gap up: the bottom plank's band ends here
+GAP_HALF = 5                         # half height of a gap's profile (dark line and its light edge), px
+
+
+def bottom_plank(out, win, m, e, ac):
+    """The plank over the belt, inside the fill: lines are erased (the strong ridges of the normal map, the same pixels in
+    every map, refilled along the planks), then one gap is laid along the stock gap that enters from both sides
+    (GAP_POINTS: atlas points picked on the stock gap left and right of the port), copied from that gap's own stretch."""
+    from scipy import ndimage as nd
+    pts = np.array([p["atlas"] for p in json.loads(GAP_POINTS.read_text()) if p]) - np.array(WIN[:2])
+    cx, cy = CENTRE[0] - WIN[0], CENTRE[1] - WIN[1]
+    phc = math.atan2(cy - ac[1], cx - ac[0])
+    to_sr = lambda x, y: ((np.arctan2(y - ac[1], x - ac[0]) - phc) * 1120.0, np.hypot(x - ac[0], y - ac[1]))
+    gs, gr = to_sr(pts[:, 0], pts[:, 1])
+    gfit = np.polyfit(gs, gr, 1)                                  # the gap: radius as a straight function of arc length
+    S = np.arange(-340, 341, 1.0)
+    Rr = np.arange(1080, 1175, 1.0)
+    SS, RR = np.meshgrid(S, Rr)
+    PH = phc + SS / 1120.0
+    X, Y = ac[0] + RR * np.cos(PH), ac[1] + RR * np.sin(PH)
+    unw = {k: np.stack([nd.map_coordinates(v[..., c], [Y, X], order=1) for c in range(4)], -1) for k, v in out.items()}
+    stk = {k: np.stack([nd.map_coordinates(win[k][..., c], [Y, X], order=1) for c in range(4)], -1) for k in out}
+    ny = unw["normal"][..., 1]
+    hp = ny - nd.median_filter(ny, size=(13, 1))
+    ridge = nd.binary_dilation(np.abs(hp) > 9, np.ones((3, 1), bool))
+    g_here = np.polyval(gfit, SS)
+    eY = nd.map_coordinates(e, [Y, X], order=1)
+    in_band = (RR < BOTTOM_TOP) & (Y < eY - 3)                    # above the belt's dark line, under the next gap
+    erase = ridge & in_band
+    # inpainting along the planks: an erased pixel takes the average of the clean pixels of its own row (same arc
+    # radius) nearby, so what fills in looks like the wood's grain, which runs along the planks
+    good = (~erase).astype(np.float32)
+    for k in unw:
+        a = unw[k]
+        filled = a.copy()
+        todo = erase.copy()
+        for sig in (6, 14, 30):
+            den = nd.gaussian_filter1d(good, sig, axis=1)
+            num = np.stack([nd.gaussian_filter1d(a[..., c] * good, sig, axis=1) for c in range(4)], -1)
+            ok = todo & (den > 0.15)
+            filled[ok] = num[ok] / den[ok, None]
+            todo &= ~ok
+        unw[k] = filled
+    # lay the gap: profile copied from the stock gap's own stretch (right of the port), same offset from its line
+    src_s0, src_s1 = gs.max() - 70, gs.max()                     # stretch of the stock gap to copy
+    period = src_s1 - src_s0
+    s_src = src_s0 + np.mod(SS - src_s0, period)
+    off = RR - g_here
+    gap_zone = (np.abs(off) <= GAP_HALF + 1) & in_band
+    r_src = np.polyval(gfit, s_src) + off
+    Xs, Ys = ac[0] + r_src * np.cos(phc + s_src / 1120.0), ac[1] + r_src * np.sin(phc + s_src / 1120.0)
+    wgt = np.clip(GAP_HALF + 1.5 - np.abs(off), 0, 1)
+    for k in unw:
+        src = np.stack([nd.map_coordinates(win[k][..., c], [Ys, Xs], order=1) for c in range(4)], -1)
+        unw[k] = np.where(gap_zone[..., None], unw[k] * (1 - wgt[..., None]) + src * wgt[..., None], unw[k])
+    # back to the atlas: pixels of the fill inside the band
+    H, W = m.shape
+    yy, xx = np.mgrid[0:H, 0:W].astype(float)
+    ss, rr = to_sr(xx, yy)
+    sel = (m > 0.01) & (rr >= Rr[0]) & (rr < BOTTOM_TOP) & (yy < e - 3) & (np.abs(ss) < 340)
+    fi, fj = (rr[sel] - Rr[0]), (ss[sel] - S[0])
+    band_m = m[sel]
+    for k in out:
+        new = np.stack([nd.map_coordinates(unw[k][..., c], [fi, fj], order=1) for c in range(4)], -1)
+        out[k][sel] = out[k][sel] * (1 - band_m[:, None]) + new * band_m[:, None]
+    return {"gap_fit_r_of_s": [round(float(x), 5) for x in gfit], "gap_points_res_px": round(float(np.abs(gr - np.polyval(gfit, gs)).max()), 2),
+            "erased_px": int(erase.sum()), "band_px": int(sel.sum())}
+
+
 def fix():
     OUT.mkdir(parents=True, exist_ok=True)
     win = {}
@@ -236,6 +310,14 @@ def fix():
         return sx, yy - e + se
 
     wc = []
+    # the bottom plank over the belt (between the belt's dark line and the next gap): its own gap at BOTTOM_GAP comes
+    # from the left, where the stock has it; the rest of the plank from the right, where the stock plank is clean
+    gap_band = (np.abs(rho - BOTTOM_GAP) <= BOTTOM_GAP_HALF) & BOTTOM_PLANK_ON
+    plank_band = (rho > BOTTOM_PLANK[0]) & (rho < BOTTOM_PLANK[1]) & ~gap_band & BOTTOM_PLANK_ON
+    for sh, band in ((-230, gap_band), (-270, gap_band), (230, plank_band), (270, plank_band), (320, plank_band)):
+        sx, sy = plank_src(sh)
+        se = src_edge(sx)
+        wc.append((sx, sy, band & clean(sx, sy, bad_wood) & np.isfinite(se) & (sy < np.nan_to_num(se, nan=-1e4) - 2.5)))
     for sh in WOOD_SHIFTS:                                        # planks first: keep the plank coordinate
         sx, sy = plank_src(sh)
         se = src_edge(sx)
@@ -301,6 +383,8 @@ def fix():
         if name == "normal":
             Image.fromarray(out[name][by0:by0 + BOX[3] - BOX[1], bx0:bx0 + BOX[2] - BOX[0], 3].astype(np.uint8)).save(OUT / "box_normal_a.png")
             Image.fromarray(img[by0:by0 + BOX[3] - BOX[1], bx0:bx0 + BOX[2] - BOX[0], 3].astype(np.uint8)).save(OUT / "box_normal_stock_a.png")
+    if GAP_POINTS.exists():
+        report["bottom_plank"] = bottom_plank(out, win, m, e, ac)
     # write level 0 and the mips of the box
     bx0, by0 = BOX[0] - WIN[0], BOX[1] - WIN[1]
     bw, bh = BOX[2] - BOX[0], BOX[3] - BOX[1]
