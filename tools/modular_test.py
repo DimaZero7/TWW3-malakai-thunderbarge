@@ -224,7 +224,13 @@ def patch_crew(source, extra):
 
 
 def patch_ammo(source, seats):
-    return patch_once(source, '["seat_count"] = 29', f'["seat_count"] = {seats}', "ammo Lua")
+    """32 riders, and the base of the pool for 32: the game's pool is primary_ammo x num_men (run 20261106-184308: scale 1.10 = 32 / 29,
+    rifles 466 shots instead of 422), so a base of 29 men gave every group 10 % more."""
+    text = patch_once(source, '["seat_count"] = 29', f'["seat_count"] = {seats}', "ammo Lua")
+    m = re.findall(r'\["primary_base"\] = (\d+)', text)
+    if len(m) != 1 or int(m[0]) % 29:
+        raise SystemExit(f"ammo Lua: primary_base {m}")
+    return patch_once(text, f'["primary_base"] = {m[0]}', f'["primary_base"] = {int(m[0]) // 29 * seats}', "ammo Lua")
 
 
 # ---------------------------------------------------------------- build ----------------------------------------------------------------
@@ -406,7 +412,7 @@ def views(targets):
             {"name": "far_tank", "at": tank, "az": -55, "el": 25, "frame": 12},
             {"name": "far_porthole", "at": port_left, "az": -70, "el": 8, "frame": 8},
             {"name": "far_stern", "at": stern, "az": -140, "el": 12, "frame": 14},
-            {"name": "far_below", "at": hatch, "az": -40, "el": -35, "frame": 14},
+            {"name": "far_below", "at": hatch, "az": -40, "el": -6, "frame": 14},    # -35 from 200 m put the camera into the ground (run 20261106-184308)
             {"name": "far_player", "at": [0, 0, 6], "az": -30, "el": 20, "fov": 40, "dists": [200]},
         ]},
     }
@@ -517,13 +523,32 @@ def check():
     for n in sorted(wanted - set(game_names)):
         fail(f"not in the pack or the game: {n}")
     print(f"models named by the new definitions: {len(need_models)}, materials {len(need_materials)}, textures {len(need_textures)}; from the game: {len(game_names)}")
+    # every seat model, put on its seat by the game's tech skeleton (R q + t, then F into hull space), lands on the cut model's own place
+    frames, _ = mp.tech_frames(mp.game_file(mp.TECH))
+    for spec in PARTS:
+        p = config["lua_parts"][spec["name"]]
+        _, rot, tt = frames[p["seat"]]
+        for state, path in (("on", spec["model"]), ("off", spec["off_model"])):
+            if not path:
+                continue
+            source = load_model(spec["root"], path)
+            seat = rmv2.load(files[f"{D}tww3_mtb_part_{spec['name']}_{state}.rigid_model_v2".replace("/", SEP)])
+            worst = 0.0
+            for lod_a, lod_b in zip(source["lods"], seat["lods"]):
+                for ma, mb in zip(lod_a, lod_b):
+                    for va, vb in zip(ma.verts, mb.verts):
+                        w = [tt[k] + sum(rot[k][j] * (vb.x, vb.y, vb.z)[j] for j in range(3)) for k in range(3)]
+                        worst = max(worst, math.dist((va.x, va.y, va.z), (mp.F[0] * w[0], w[1], mp.F[2] * w[2])))
+            if worst > 0.005:
+                fail(f"{spec['name']} {state}: the seat model lands up to {worst:.3f} m off its place")
+            print(f"{spec['name']} {state} on {p['seat']}: lands on its place within {worst * 1000:.1f} mm ({mp.TECH.rsplit('/', 1)[1]})")
     # Lua: the patch is in, the config is right, it parses, and the offline run of the seat writer (tools/modular_offline.py, lupa)
     crew = files[CREW_LUA].decode("utf-8")
     for needle in ("CONFIG.seat_count = 32", "part_rows(mr, found)", "hull_code()", "M.set_parts"):
         if needle not in crew:
             fail(f"crew Lua: no {needle}")
-    if '["seat_count"] = 32' not in files[AMMO_LUA].decode("utf-8"):
-        fail("ammo Lua: seat_count")
+    if '["seat_count"] = 32' not in files[AMMO_LUA].decode("utf-8") or '["primary_base"] = 1280' not in files[AMMO_LUA].decode("utf-8"):
+        fail("ammo Lua: seat_count 32 and primary_base 40 x 32")
     out = subprocess.run([shutil.which("python") or "python", str(REPO / "tools" / "modular_offline.py")], capture_output=True, text=True, errors="replace")
     print(out.stdout.strip()[-3000:])
     if out.returncode != 0:
@@ -698,6 +723,8 @@ def run(args):
             time.sleep(1)
         session.dir = Path(rc.state()["run"])
         (TEST / "last_run.txt").write_text(str(session.dir), encoding="utf-8")
+        for name in (CONFIG_FILE.name, "build_report.json"):      # the verdict reads the run's own copies, not a later build's
+            shutil.copy2(TEST / name, session.dir / name)
         session.log("run", session.dir, "stash", bool(stashed))
         session.wait_mode("campaign", 900)
         time.sleep(8)
@@ -871,7 +898,8 @@ def men_lines(text):
 def verdict(run_dir):
     """Lines PASS / FAIL / INFO / LOOK from the files of a run; written to verdict.txt and verdict.json."""
     run_dir = Path(run_dir)
-    config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    config = json.loads(((run_dir / CONFIG_FILE.name) if (run_dir / CONFIG_FILE.name).exists() else CONFIG_FILE).read_text(encoding="utf-8"))
+    report_file = (run_dir / "build_report.json") if (run_dir / "build_report.json").exists() else TEST / "build_report.json"
     lines = []
 
     def line(kind, text):
@@ -900,7 +928,7 @@ def verdict(run_dir):
              f"{label} men in the battle: script {m.group(1) + '/' + m.group(2) if m else '-'}, vector {v.group(1) if v else '-'} (want {n})")
         ml = men_lines(men)
         unit = re.search(r"unit at (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) bearing (-?[\d.]+)", men)
-        built = json.loads((TEST / "build_report.json").read_text(encoding="utf-8"))["parts"] if (TEST / "build_report.json").exists() else {}
+        built = json.loads(report_file.read_text(encoding="utf-8"))["parts"] if report_file.exists() else {}
         for name, p in config["lua_parts"].items():
             mine = [x for x in ml.values() if x[1] == p[parts[name]]]
             crew = [x for x in ml.values() if x[0] == p["seat"] and not x[1].startswith("mtb_bp_part_")]
@@ -945,8 +973,14 @@ def verdict(run_dir):
     for b in burst.splitlines():
         m = re.search(r"^(\S+) dist=(\S+) .* neighbours=\[([^\]]*)\]", b)
         if m:
-            worst = max((float(x) for x in m.group(3).split(",") if x.strip()), default=0)
-            line("INFO" if worst < 0.05 else "LOOK", f"burst {m.group(1)} at {m.group(2)} m: worst change between frames {worst:.3f} (> 0.05: look for a blinking detail)")
+            steps = sorted(float(x) for x in m.group(3).split(",") if x.strip())
+            worst, median = (steps[-1], steps[len(steps) // 2]) if steps else (0.0, 0.0)
+            if worst == 0:
+                line("LOOK", f"burst {m.group(1)} at {m.group(2)} m: all frames the same: the camera saw nothing that moves (in the ground?)")
+            elif worst < 0.05 or worst < 2.5 * median:
+                line("INFO", f"burst {m.group(1)} at {m.group(2)} m: change {median:.3f}..{worst:.3f} between every pair, steady: the barge drifting, no blink")
+            else:
+                line("LOOK", f"burst {m.group(1)} at {m.group(2)} m: one pair {worst:.3f} against {median:.3f}: look at that pair for a blinking detail")
     status = json.loads(read("status.json") or "{}")
     exp = json.loads(read("experiment.json") or "{}")
     line("PASS" if status.get("game_gone") and status.get("prefs_restored") and (status.get("user_files") or {}).get("saves_identical") else "FAIL",

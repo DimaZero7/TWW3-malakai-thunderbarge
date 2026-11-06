@@ -35,7 +35,10 @@ HULL_MOUNT = "wh3_dlc25_dwf_mnt_veh_thunderbarge_grungni"
 HULL_TABLE = "zeppelin01_dlc25_thunderbarge_grungni"
 NO_HARPOON_TABLE = HULL_TABLE.replace("zeppelin01", "zepnoharp1")
 OWN_HULL_WS = "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_hull.wsmodel"
-TECH = "warmachines/aircraft/dwf_thunderbarge/thunderbarge_tech/dwf_thunderbarge_01.anim"
+# The tech skeleton the game uses for our hull: dwf_thunderbarge.anim, not _01. The men of runs/20261106-184308-modular_test and
+# 20261104-175714-cycle_fb_shot stand on its points within 0.05 m (mean, positions printed to 0.1 m); on _01 0.3 m, up to 0.97 m.
+# With _01 the porthole on ap_crew_left_upper_0 (30 deg there, 90 deg here) went into the hull and onto the bow (docs/design/modular-parts.md).
+TECH = "warmachines/aircraft/dwf_thunderbarge/thunderbarge_tech/dwf_thunderbarge.anim"
 HIDDEN = "wh3_dlc23_chd_veh_hidden_rider"
 AVOID = {"ap_thunderburner"}          # a weapon seat: a patch on it once took the ability's place (docs/design/progression-proposal.md)
 F = (-1.0, 1.0, -1.0)
