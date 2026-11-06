@@ -122,7 +122,10 @@ def material_copy(name):
     return text
 
 
-def write():
+def write(out=None, tex=None):
+    """out: the output root (default OUT); tex: the folder of the three tww3_mtb_ DDS to copy in (default build/solid_hull_skill/tex)."""
+    out = Path(out) if out else OUT
+    tex = Path(tex) if tex else REPO / "build" / "solid_hull_skill" / "tex"
     stock_blob = br.STOCK.read_bytes()
     model = rmv2.load(stock_blob)
     report = {}
@@ -131,7 +134,7 @@ def write():
         model["lods"][li][0] = mesh
         report[f"lod{li}"] = rep
     blob = rmv2.save(model)
-    gpath = OUT / GEOM
+    gpath = out / GEOM
     gpath.parent.mkdir(parents=True, exist_ok=True)
     gpath.write_bytes(blob)
     # wsmodel: part 0 gets the material copies, the other parts stay stock
@@ -144,16 +147,16 @@ def write():
         used.add(name)
         return f'{m.group(1)}warmachines/materials/tww3_mtb_{name}</material>'
     ws = re.sub(r'(<material lod_index="\d+" part_index="0">)([^<]+)</material>', part0, ws)
-    wpath = OUT / "warmachines" / "aircraft" / "dwf_thunderbarge" / "tww3_mtb_dwf_thunderbarge_grungni_01.wsmodel"
+    wpath = out / "warmachines" / "aircraft" / "dwf_thunderbarge" / "tww3_mtb_dwf_thunderbarge_grungni_01.wsmodel"
     wpath.write_text(ws, encoding="utf-8")
-    mdir = OUT / "warmachines" / "materials"
+    mdir = out / "warmachines" / "materials"
     mdir.mkdir(parents=True, exist_ok=True)
     for name in sorted(used):
         (mdir / f"tww3_mtb_{name}").write_text(material_copy(name), encoding="utf-8")
-    tdir = OUT / "warmachines" / "tex"
+    tdir = out / "warmachines" / "tex"
     tdir.mkdir(parents=True, exist_ok=True)
     for k in TEX:
-        src = REPO / "build" / "solid_hull_skill" / "tex" / f"tww3_mtb_dwf_thunderbarge_grungni_01_{k}.dds"
+        src = tex / f"tww3_mtb_dwf_thunderbarge_grungni_01_{k}.dds"
         (tdir / src.name).write_bytes(src.read_bytes())
-    report["files"] = [str(p.relative_to(OUT)) for p in sorted(OUT.rglob("*")) if p.is_file()]
+    report["files"] = [str(p.relative_to(out)) for p in sorted((out / "warmachines").rglob("*")) if p.is_file()]
     return report

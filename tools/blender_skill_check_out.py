@@ -1,6 +1,6 @@
 """Reads back what blender_skill_write_rmv2 wrote and compares it with the stock files (plain python + numpy).
 
-  python tools/blender_skill_check_out.py      prints a JSON report
+  python tools/blender_skill_check_out.py [OUT_DIR]      prints a JSON report (OUT_DIR: the output root, default build/solid_hull_skill/out)
 """
 import json
 import math
@@ -49,6 +49,10 @@ def dds_info(path):
 
 
 def main():
+    global OUT, NEW
+    if len(sys.argv) > 1:
+        OUT = Path(sys.argv[1]).resolve()
+        NEW = OUT / "warmachines/aircraft/dwf_thunderbarge/tww3_mtb_dwf_thunderbarge_01.rigid_model_v2"
     s = rmv2.load((GAME / "stock.rigid_model_v2").read_bytes())
     blob = NEW.read_bytes()
     m = rmv2.load(blob)
