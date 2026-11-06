@@ -42,8 +42,8 @@ if __name__ == "__main__":
 # ---- the fix ------------------------------------------------------------------------------------------------------
 # All coordinates are atlas pixels of level 0. The painted port (disc, ring, its shadow) sits where the hull's planks
 # meet the steel belt. Each part is refilled from the same atlas along its own structure:
-#   wood: along the plank family (planks are curves y = q(x) + w; the fill keeps w, so gaps continue straight and
-#         parallel and are the very planks of the neighbourhood);
+#   wood: along the plank arcs (on the atlas the planks are concentric arcs; the fill keeps the distance from their
+#         centre, so every gap continues on its own arc through the defect and meets the same gap on the far side);
 #   steel: along the belt's top edge (y = e(x) + t; the fill keeps t, so the edge, the rivet row and the plate seams
 #         continue; the shift is one plate seam spacing so a seam lands where the stock seam enters the disc).
 # Tone is checked (medians of the fill against a ring just outside, per material); the material map (metal, gloss)
@@ -53,7 +53,8 @@ WIN = (640, 3456, 1664, 4096)        # read window for the sources
 CENTRE, R, FEATHER = (1052.0, 3787.0), 94.0, 16.0
 STRETCH_X = 1.1                      # the defect is a little wider than tall (the ring's padding streaks at the sides)
 PORTHOLE_C, PORTHOLE_KEEP = (1031.0, 3652.0), 51.0   # the porthole's own painted ring stays
-WOOD_SHIFTS = (-136, -150, 200, 230)                 # x shifts of the wood source along the planks, first clean wins
+KNOT = (1205, 3670, 1310, 3720)                      # atlas box of a distinctive knot, not used as a source
+WOOD_SHIFTS = (-230, 230, -270, 270, -320, 320)      # arc-length shifts of the wood source along the planks, first clean wins
 STEEL_SHIFTS = (164, 246, 328, 410, -164, -246)                # x shifts of the steel along the belt edge: whole plate seam spacings
 
 
@@ -113,6 +114,39 @@ def plank_profile(normal, edge):
     return q, np.array(xs), np.array(sl)
 
 
+def arc_centre(normal, edge, r_in, r_out):
+    """Centre of the plank arcs: on the atlas the planks are concentric arcs (a cone's unwrap), so at each coherent pixel
+    the direction across the planks points at the centre. Least squares over a ring around the defect.
+    Returns the centre (window px) and the median angle error (deg)."""
+    from scipy import ndimage as nd
+    H, W = normal.shape[:2]
+    yy, xx = np.mgrid[0:H, 0:W].astype(float)
+    cx, cy = CENTRE[0] - WIN[0], CENTRE[1] - WIN[1]
+    d = np.hypot((xx - cx) / STRETCH_X, yy - cy)
+    g = normal[..., 1]
+    gx, gy = nd.sobel(g, 1), nd.sobel(g, 0)
+    Jxx, Jxy, Jyy = [nd.gaussian_filter(v, 4) for v in (gx * gx, gx * gy, gy * gy)]
+    tr, det = Jxx + Jyy, Jxx * Jyy - Jxy ** 2
+    l1 = tr / 2 + np.sqrt(np.maximum(tr * tr / 4 - det, 0))
+    coh = (2 * l1 - tr) / np.maximum(tr, 1e-6)
+    vx, vy = Jxy, l1 - Jxx
+    nn = np.hypot(vx, vy) + 1e-9
+    tx, ty = -vy / nn, vx / nn
+    sel = ((d > r_in) & (d < r_out) & (yy < np.polyval(edge, xx) - 8) & (coh > 0.5)
+           & (np.hypot(xx - (PORTHOLE_C[0] - WIN[0]), yy - (PORTHOLE_C[1] - WIN[1])) > PORTHOLE_KEEP + 15))
+    idx = np.where(sel.ravel())[0][::3]
+    X, Y, TX, TY, Wt = xx.ravel()[idx], yy.ravel()[idx], tx.ravel()[idx], ty.ravel()[idx], coh.ravel()[idx]
+    A, b = np.c_[TX, TY] * Wt[:, None], (TX * X + TY * Y) * Wt
+    k = np.ones(len(X), bool)
+    for _ in range(4):
+        c = np.linalg.lstsq(A[k], b[k], rcond=None)[0]
+        rad = np.c_[X - c[0], Y - c[1]]
+        rad /= np.linalg.norm(rad, axis=1)[:, None]
+        err = np.degrees(np.arcsin(np.clip(np.abs(rad[:, 0] * TX + rad[:, 1] * TY), 0, 1)))
+        k = err < np.percentile(err, 80)
+    return c, float(np.median(err[k]))
+
+
 def fix():
     OUT.mkdir(parents=True, exist_ok=True)
     win = {}
@@ -136,6 +170,8 @@ def fix():
     big = nd.binary_opening((sat > 45) | (lum > 225), np.ones((9, 9), bool))      # large painted items on steel, not rivets
     bad_steel = nd.binary_dilation(big, np.ones((13, 13), bool))
     bad_wood = nd.binary_dilation(nd.binary_opening(lum > 150, np.ones((7, 7), bool)), np.ones((13, 13), bool))
+    kx0, ky0, kx1, ky1 = (k - o for k, o in zip(KNOT, (WIN[0], WIN[1], WIN[0], WIN[1])))
+    bad_wood[ky0:ky1, kx0:kx1] = True                              # a knot right of the port: copied, it would repeat
 
     def clean(sx, sy, bad):
         """Source pixels free of the port's paint, the porthole's ring and the atlas features at the left."""
@@ -157,9 +193,13 @@ def fix():
         tot = np.sum(ws, 0)
         return [(sx, sy, w / np.maximum(tot, 1e-6)) for (sx, sy, _), w in zip(cands, ws)], tot > 1e-6
 
+    ac, arc_err = arc_centre(win["normal"], edge, R + FEATHER + 10, R + FEATHER + 150)
+    rho, phi = np.hypot(xx - ac[0], yy - ac[1]), np.arctan2(yy - ac[1], xx - ac[0])
+
     def plank_src(sh):
-        sx = xx + sh
-        return sx, yy - np.polyval(q, xx) + np.polyval(q, sx)
+        """Same plank arc (same distance from the arc centre), moved along it by sh pixels of arc length."""
+        p2 = phi + sh / rho
+        return ac[0] + rho * np.cos(p2), ac[1] + rho * np.sin(p2)
 
     def edge_src(sh):
         sx = xx + sh
@@ -192,7 +232,7 @@ def fix():
     blend = np.clip((yy - e) + 0.5, 0, 1)[..., None]               # one pixel wide transition at the edge
     ring = (d > R + FEATHER + 4) & (d < R + FEATHER + 34) & (dph > PORTHOLE_KEEP + 6)
     report = {"edge_points": int(keep.sum()), "edge_res_px": float(np.abs(pts[keep, 1] - np.polyval(edge, pts[keep, 0])).max()),
-              "plank_slopes": [[int(a), round(float(b), 3)] for a, b in zip(qx, qs)], "without_source_px_wood_steel": report_missing}
+              "plank_slopes": [[int(a), round(float(b), 3)] for a, b in zip(qx, qs)], "without_source_px_wood_steel": report_missing, "arc_centre_atlas": [round(float(ac[0] + WIN[0]), 1), round(float(ac[1] + WIN[1]), 1)], "arc_fit_err_deg": round(arc_err, 2)}
     out = {}
     for name, img in win.items():
         wood = sample(img, wpick, wok)
