@@ -18,6 +18,10 @@ const VIEWS = {
     all: [ALL_TARGET, ALL_CAMERA, 17],
     left: [ALL_TARGET, new THREE.Vector3(40, 9, -1.5), 15],
     right: [ALL_TARGET, new THREE.Vector3(-40, 9, -1.5), 15],
+    // close looks from the left side, bow to the left as on the drawing; only by ?view= (comparing the drawing with the model)
+    drive: [new THREE.Vector3(2.5, 2.2, -7.6), new THREE.Vector3(40, 2.4, -7.6), 3.6],
+    bow: [new THREE.Vector3(2.5, 1.6, 5.2), new THREE.Vector3(40, 1.8, 5.2), 3.4],
+    waist: [new THREE.Vector3(2.5, 2.6, 0.6), new THREE.Vector3(40, 2.8, 0.6), 5.2],
     below: [new THREE.Vector3(0, 1, -1.5), new THREE.Vector3(6, -40, -1.4), 12],
 };
 

@@ -1,17 +1,17 @@
 {
- "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size). The ink of the port is data/ui/mount_cannons.png, placed by data/crew_ui_art.json; every other layer is in web/art. blueprint_base.png: the panel's drawing without the details below.",
+ "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size). blueprint_base.png: the panel's drawing without the details below, with the drive, steel belt, gunwale and bombs as the base model has them. The port is drawn at its place on the model.",
  "places": {
-  "port_pencil": [
-   313.75,
-   526.25,
-   51.25,
+  "port_build": [
+   311.88,
+   508.75,
+   51.88,
    51.88
   ],
-  "port_build": [
-   313.75,
-   526.25,
-   51.25,
-   51.88
+  "port_ink": [
+   318.12,
+   515.0,
+   39.38,
+   39.38
   ],
   "side_shields_ink": [
    405.0,
@@ -70,9 +70,9 @@
  },
  "parts": {
   "port": {
-   "pencil": "port_pencil",
+   "pencil": null,
    "build": "port_build",
-   "ink": "mount_cannons"
+   "ink": "port_ink"
   },
   "side_shields": {
    "pencil": "side_shields_pencil",

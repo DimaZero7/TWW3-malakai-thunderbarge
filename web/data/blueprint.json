@@ -5,7 +5,7 @@
  "first_only": true,
  "parts": {
   "port": {"name": "Орудийный порт", "building": "mtb_guns_1", "enabled": true,
-           "pencil": "port_pencil", "build": "port_build", "ink": "mount_cannons", "turns_at": [362, 538],
+           "pencil": null, "build": "port_build", "ink": "port_ink", "turns_at": [360, 520],
            "model": {"part": "part_port", "hides": ["port_plug"]}, "source": "stock hull around the port (tools/web_export.py, port_split); base hull build/solid_hull_hatches"},
   "porthole": {"name": "Иллюминатор на носу", "building": "support_radius_1", "planned": "пост наблюдения (сигнальная система)", "enabled": false,
                "pencil": "porthole_pencil", "build": "porthole_build", "ink": "porthole_ink", "turns_at": [318, 462],

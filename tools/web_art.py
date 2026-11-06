@@ -72,12 +72,17 @@ def _index(items, item, what):
 
 
 def hull_split():
-    """(hull without shields and porthole, the side shields, the porthole) from crew_ui_art.hull()."""
+    """(hull before the shields, hull from its outline on, the side shields, the porthole) from crew_ui_art.hull(). The rope wale of the whole
+    length is taken out of the first list: trim() draws the gunwale as the model has it."""
     items = art.hull()
     first_shield = _index(items, art.circle(430, 503, 22.5, 1.5, art.INK, "#fff1dc"), "first shield")
     porthole = _index(items, art.circle(300, 476, 13, 1.6, art.INK, "#fff1dc"), "porthole")
     outline = _index(items, art.path(art.poly(art.hull_outline(), True), 2.6), "hull outline")
-    return items[:first_shield] + items[outline:], items[first_shield:porthole], items[porthole:outline]
+    wale = wale_items()
+    pre = [i for i in items[:first_shield] if i not in wale]
+    if len(pre) != first_shield - len(wale):
+        raise SystemExit("the rope wale of tools/crew_ui_art.py changed, look again")
+    return pre, items[outline:], items[first_shield:porthole], items[porthole:outline]
 
 
 STERN_FIN = "M672 616 L672 352 C 672 330 694 314 716 314 C 738 314 760 330 760 352 L760 626 L716 626 Z"
@@ -123,16 +128,183 @@ def build_of(items, area):
     return ink_pale(items, 0.45) + [art.hatch(area, 45, 3.6, 1.1, CHALK, 0.75)] + pencil_of(items)
 
 
+# ---------------- the base barge as the model has it (compared with build/solid_hull_hatches side by side, 06.11.2026) ----------------
+# Places come from the model: x = 246 + (8.3 - z) * 36 as tools/crew_ui_art.py; heights y = 598 - 41.5 * (y_model + 0.33), fitted to the drawn keel
+# (y -0.33 on the model) and forecastle rail (4.2). The drawing's 35 per unit does not hold for the hull: it is a sketch, taller in the waist.
+def mx(z):
+    return 246 + (8.3 - z) * 36
+
+
+def my(y):
+    return 598 - 41.5 * (y + 0.33)
+
+
+STEEL = "#9c968c"
+BRASS = "#d9a76a"
+
+
+def gear(cx, cy, r, n, spokes, hub, inner):
+    teeth = []
+    for i in range(n * 2):
+        a = i * math.pi / n
+        rr = r + (6 if i % 2 == 0 else 0)
+        teeth.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    out = [art.shape(art.poly(teeth, True), "#fff1dc"), art.path(art.poly(teeth, True), 1.6), art.circle(cx, cy, inner, 1.3),
+           art.circle(cx, cy, inner - 4, 0.8, art.INK, op=0.7), art.circle(cx, cy, hub, 1.4, art.INK, STEEL)]
+    for k in range(spokes):
+        a = math.radians(k * 360 / spokes + (0 if spokes == 4 else 22.5))      # the big gear's cross stands upright, as on the model
+        ca, sa = math.cos(a), math.sin(a)
+        w = 3.2 if spokes == 4 else 1.4
+        out.append(art.path(f"M{cx + hub * ca:.1f} {cy + hub * sa:.1f} L{cx + (inner - 4) * ca:.1f} {cy + (inner - 4) * sa:.1f}", w))
+    return out
+
+
+def drive():
+    """The screw's drive as on the model: the small gear high at the stern, the big gear before it, the gear's axle running down through a neck into the
+    shaft's casing, the casing along the hull, a banded hub, the blades and the pointed cap."""
+    out = []
+    out += gear(mx(-8.25), my(3.67), 41, 11, 8, 6, 33)              # small gear, behind
+    out += gear(mx(-6.25), my(2.5), 47, 12, 4, 9, 38)               # big gear, in front of it
+    gx, gy = mx(-6.25), my(2.5)
+    neck = f"M{gx - 7:.1f} {gy + 4:.1f} L{gx + 7:.1f} {gy + 4:.1f} L{gx + 13:.1f} {my(1.55):.1f} L{gx - 13:.1f} {my(1.55):.1f} Z"
+    out += [art.shape(neck, "#fff1dc"), art.path(neck, 1.6), art.path(f"M{gx - 10:.1f} {gy + 26:.1f} L{gx + 10:.1f} {gy + 26:.1f}", 1.2)]
+    # the casing: a long rounded tube from the waist past the stern
+    x0, x1, top, bottom = mx(-4.6), mx(-8.1), my(1.67), my(0.83)
+    mid = (top + bottom) / 2
+    casing = f"M{x1:.1f} {top:.1f} L{x0 + 14:.1f} {top:.1f} C {x0 - 2:.1f} {top:.1f} {x0 - 6:.1f} {mid:.1f} {x0 - 6:.1f} {mid:.1f} C {x0 - 6:.1f} {mid:.1f} {x0 - 2:.1f} {bottom:.1f} {x0 + 14:.1f} {bottom:.1f} L{x1:.1f} {bottom:.1f} Z"
+    out += [art.shape(casing, "#fff1dc"), art.path(casing, 1.8), art.hatch([(x0, mid + 4), (x1, mid + 4), (x1, bottom), (x0, bottom)], 70, 3.4, 0.7)]
+    for bx in (x0 + 18, x0 + 46, x1 - 6):
+        out.append(art.path(f"M{bx:.1f} {top - 1:.1f} L{bx:.1f} {bottom + 1:.1f} M{bx + 5:.1f} {top - 1:.1f} L{bx + 5:.1f} {bottom + 1:.1f}", 1.1))
+        for ry in (top + 5, bottom - 5):
+            out.append(art.dot(bx + 2.5, ry, 1.0))
+    # the hub: a barrel with bands
+    h0, h1 = mx(-8.1), mx(-9.2)
+    hub = f"M{h0:.1f} {top + 1:.1f} L{h1:.1f} {top + 3:.1f} L{h1:.1f} {bottom - 3:.1f} L{h0:.1f} {bottom - 1:.1f} Z"
+    out += [art.shape(hub, "#fff1dc"), art.path(hub, 1.6)]
+    for k in range(1, 4):
+        bx = h0 + (h1 - h0) * k / 4
+        out.append(art.path(f"M{bx:.1f} {top + 2:.1f} L{bx:.1f} {bottom - 2:.1f}", 1.0))
+    # blades: up, down, and two seen end on, then the pointed cap
+    bx = mx(-9.6)
+    for d in (-1, 1):
+        tip = my(2.33) if d < 0 else my(0.17) + 18
+        blade = f"M{bx - 4:.1f} {mid + d * 8:.1f} C {bx - 12:.1f} {mid + d * 30:.1f} {bx - 8:.1f} {tip:.1f} {bx + 2:.1f} {tip:.1f} C {bx + 10:.1f} {tip:.1f} {bx + 10:.1f} {mid + d * 30:.1f} {bx + 6:.1f} {mid + d * 8:.1f} Z"
+        out += [art.shape(blade, "#fff1dc"), art.path(blade, 1.5)]
+    for dy in (-6, 6):
+        out += [art.path(f"M{bx - 9:.1f} {mid + dy:.1f} L{bx + 11:.1f} {mid + dy * 0.6:.1f}", 3.2), art.path(f"M{bx - 9:.1f} {mid + dy:.1f} L{bx + 11:.1f} {mid + dy * 0.6:.1f}", 1.4, "#fff1dc")]
+    tip = mx(-11.1)
+    cap = f"M{bx + 8:.1f} {mid - 9:.1f} L{bx + 8:.1f} {mid + 9:.1f} L{tip:.1f} {mid:.1f} Z"
+    out += [art.shape(cap, "#fff1dc"), art.path(cap, 1.5), art.hatch([(bx + 8, mid), (tip, mid), (bx + 8, mid + 9)], 80, 3, 0.7)]
+    return out
+
+
+def belt():
+    """The steel belt along the bottom of the hull, from under the bow's curve to the stern: plates with seams and rivets; the rod along it."""
+    top = my(1.0)
+    xs = [x for x in range(int(mx(7.1)), int(mx(-8.2)) + 1, 4) if art.hull_bottom(x) > top + 2]
+    lower = [(x, art.hull_bottom(x) - 0.5) for x in xs]
+    band = [(xs[0], top)] + [(xs[-1], top)] + lower[::-1]
+    out = [art.shape(art.poly(band, True), STEEL, 0.5), art.path(f"M{xs[0]} {top:.1f} L{xs[-1]} {top:.1f}", 1.4)]
+    x = xs[0] + 18
+    while x < xs[-1] - 6:
+        out.append(art.path(f"M{x:.1f} {top:.1f} L{x:.1f} {art.hull_bottom(x) - 1:.1f}", 0.8))
+        for k in (-3, 3):
+            out.append(art.dot(x + k, top + 4, 0.9))
+        x += 0.85 * 36
+    # the rod in front of the belt
+    r0, r1, ry = mx(4.6), mx(-4.9), my(0.5)
+    rod = f"M{r0:.1f} {ry - 3:.1f} L{r1:.1f} {ry - 3:.1f} Q {r1 + 4:.1f} {ry:.1f} {r1:.1f} {ry + 3:.1f} L{r0:.1f} {ry + 3:.1f} Q {r0 - 4:.1f} {ry:.1f} {r0:.1f} {ry - 3:.1f} Z"
+    out += [art.shape(rod, "#fff1dc"), art.path(rod, 1.3)]
+    return out
+
+
+def bomb(x, y, r, rope_from):
+    """A round bomb hanging in a rope net."""
+    out = []
+    for fx, fy in rope_from:
+        out.append(art.path(f"M{fx:.1f} {fy:.1f} L{x + (fx - x) * 0.25:.1f} {y - r + 2:.1f}", 1.2))
+    pts = round_points(x, y, r - 1, 20)
+    out += [art.circle(x, y, r, 1.7, art.INK, "#e6dccb"), art.hatch(pts, 55, 6.5, 0.9, art.INK, 0.9), art.hatch(pts, 125, 6.5, 0.9, art.INK, 0.9),
+            art.hatch([(x - r, y + 3), (x + r, y + 3), (x + r * 0.6, y + r), (x - r * 0.6, y + r)], 20, 3, 0.6),
+            art.path(f"M{x - 5:.1f} {y - r - 3:.1f} L{x + 5:.1f} {y - r - 3:.1f} L{x + 4:.1f} {y - r + 1:.1f} L{x - 4:.1f} {y - r + 1:.1f} Z", 1.2, art.INK, STEEL)]
+    return out
+
+
+def bombs():
+    """The two bombs that hang over the side: one under the forecastle rail, one under the stern deck's front corner."""
+    return bomb(mx(4.67), my(2.75), 19, [(mx(4.9), my(3.3)), (mx(4.4), my(3.3))]) + bomb(mx(-2.75), my(1.75), 19, [(mx(-2.3), my(2.67)), (mx(-2.5), my(2.67))])
+
+
+FORECASTLE_END = 405        # where the forecastle's rail steps down to the waist, as hull_top() has it
+
+
+def wale_items():
+    """The strings crew_ui_art.hull() writes for the rope wale along the whole hull."""
+    a = [(x, art.hull_top(x) + 14) for x in range(250, 866, 12)]
+    b = [(x, art.hull_top(x) + 27) for x in range(250, 866, 12)]
+    items = [art.shape(art.poly(a + b[::-1], True), "#8f5a2c", 0.30), art.path(art.smooth(a), 1.5), art.path(art.smooth(b), 1.5)]
+    items += [art.path(f"M{x} {art.hull_top(x) + 14 + 13:.1f} L{x + 6} {art.hull_top(x) + 14:.1f}", 0.7, art.INK, op=0.8) for x in range(256, 860, 8)]
+    return items
+
+
+def trim():
+    """The gunwale as on the model: a brass cap rail with rivets along the whole top edge (down the forecastle's step and round the stern deck's),
+    the rope wale between two brass bands only on the forecastle."""
+    xs = list(range(250, 862, 4))
+    top = [(x, art.hull_top(x)) for x in xs]
+    low = [(x, art.hull_top(x) + 6) for x in xs]
+    out = [art.shape(art.poly(top + low[::-1], True), BRASS, 0.55), art.path(art.smooth(low[::2]), 1.0)]
+    for x in range(256, 858, 16):
+        out.append(art.dot(x, art.hull_top(x) + 3, 0.9))
+    fx = [x for x in range(250, FORECASTLE_END + 1, 6)]
+    a = [(x, art.hull_top(x) + 14) for x in fx]
+    b = [(x, art.hull_top(x) + 27) for x in fx]
+    c = [(x, art.hull_top(x) + 33) for x in fx]
+    out += [art.shape(art.poly(a + b[::-1], True), "#8f5a2c", 0.30), art.path(art.smooth(a), 1.5), art.path(art.smooth(b), 1.5),
+            art.shape(art.poly(b + c[::-1], True), BRASS, 0.55), art.path(art.smooth(c), 1.0)]
+    for x in range(256, FORECASTLE_END - 4, 8):
+        out.append(art.path(f"M{x} {art.hull_top(x) + 27:.1f} L{x + 6} {art.hull_top(x) + 14:.1f}", 0.7, art.INK, op=0.8))
+    # the groups of four rivets at the butt joints of the waist
+    for z in (0.9, -3.8):
+        for dx in (-2.5, 2.5):
+            for dy in (-2.5, 2.5):
+                out.append(art.dot(mx(z) + dx, my(1.25) + dy, 1.0))
+    return out
+
+
+def gear_start(items):
+    """Where the old stern gear, shaft and screw start in crew_ui_art.rear_parts(): they end where the stern boards begin."""
+    gx, gy, gr = 846, 424, 34
+    teeth = []
+    for i in range(28):
+        a = i * math.pi / 14
+        r = gr + (5 if i % 2 == 0 else 0)
+        teeth.append((gx + r * math.cos(a), gy + r * math.sin(a)))
+    return _index(items, art.shape(art.poly(teeth, True), "#fff1dc"), "stern gear")
+
+
+PORT_AT = (mx(5.75), my(1.2))       # the port's centre on the model (data/hull_parts.json, port), on the steel belt's upper edge
+
+
+def at_port(items):
+    """Parts drawn round crew_ui_art.CANNON moved to the port's place on the model."""
+    dx, dy = PORT_AT[0] - art.CANNON[0], PORT_AT[1] - art.CANNON[1]
+    return [f'<g transform="translate({dx:.1f} {dy:.1f})">{"".join(items)}</g>']
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    hull_items, shields, porthole = hull_split()
+    hull_pre, hull_post, shields, porthole = hull_split()
     rear_items, stern = rear_split()
+    # the hull with the steel belt, the gunwale and the hanging bombs under its outline; the stern with the drive as the model has it
+    hull_items = hull_pre + belt() + trim() + bombs() + hull_post
+    rear_items = rear_items[:gear_start(rear_items)] + drive()
     blueprint_base(hull_items, rear_items).save(OUT / "blueprint_base.png", optimize=True)
     places = {}
-    # the port: its ink is the panel's own mount_cannons (data/ui), pencil and build drawn here
-    layer("port_pencil", port_pencil(), places)
-    layer("port_build", port_build(), places)
-    parts = {"port": {"pencil": "port_pencil", "build": "port_build", "ink": "mount_cannons"}}
+    # the port: no mark at all while it is not built (the base model has none); being built and built at its place on the model
+    layer("port_build", at_port(port_build()), places)
+    layer("port_ink", at_port(art.mount_cannons()), places)
+    parts = {"port": {"pencil": None, "build": "port_build", "ink": "port_ink"}}
     # the details taken off the base barge: ink, pencil, build, ready for when their buildings are connected
     x, y = 300, 476
     removed = {
@@ -148,8 +320,8 @@ def main():
         layer(f"{name}_build", build_of(items, area), places)
         parts[name] = {"pencil": f"{name}_pencil", "build": f"{name}_build", "ink": f"{name}_ink"}
     (OUT / "layers.json").write_text(json.dumps({
-        "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size). The ink of the port is data/ui/mount_cannons.png, "
-                  "placed by data/crew_ui_art.json; every other layer is in web/art. blueprint_base.png: the panel's drawing without the details below.",
+        "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size). blueprint_base.png: the panel's drawing without the "
+                  "details below, with the drive, steel belt, gunwale and bombs as the base model has them. The port is drawn at its place on the model.",
         "places": places, "parts": parts}, indent=1), encoding="utf-8")
     for f in sorted(OUT.glob("*.png")):
         print(f.name, f.stat().st_size)
