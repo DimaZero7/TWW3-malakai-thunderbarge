@@ -46,7 +46,8 @@ if __name__ == "__main__":
 #         parallel and are the very planks of the neighbourhood);
 #   steel: along the belt's top edge (y = e(x) + t; the fill keeps t, so the edge, the rivet row and the plate seams
 #         continue; the shift is one plate seam spacing so a seam lands where the stock seam enters the disc).
-# Tone is checked (medians of the fill against a ring just outside, per material), not shifted.
+# Tone is checked (medians of the fill against a ring just outside, per material); the material map (metal, gloss)
+# is shifted to the ring's medians, base colour and normal are not.
 BOX = (896, 3584, 1280, 3968)        # rewritten box at level 0 (aligned to 128 so mips stay block aligned)
 WIN = (640, 3456, 1664, 4096)        # read window for the sources
 CENTRE, R, FEATHER = (1052.0, 3787.0), 94.0, 16.0
@@ -201,8 +202,11 @@ def fix():
             sel = ring & (steel == cls)                              # the sources are the same planks and plates nearby)
             insel = (m > 0.99) & (steel == cls)
             if sel.sum() > 50 and insel.sum() > 50:
+                ring_med, fill_med = np.median(img[sel], 0), np.median(fill[insel], 0)
                 report[f"{name}_mean_{'steel' if cls else 'wood'}_ring_vs_fill"] = [
-                    [round(float(x), 1) for x in np.median(img[sel], 0)], [round(float(x), 1) for x in np.median(fill[insel], 0)]]
+                    [round(float(x), 1) for x in ring_med], [round(float(x), 1) for x in fill_med]]
+                if name == "material_map":                           # gloss must match, or the fill shines in spots
+                    fill[steel == cls] += (ring_med - fill_med)[None, :]
         res = img * (1 - m[..., None]) + fill * m[..., None]
         out[name] = np.clip(res, 0, 255)
         bx0, by0 = BOX[0] - WIN[0], BOX[1] - WIN[1]

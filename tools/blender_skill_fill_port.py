@@ -458,3 +458,23 @@ def measure(li, ctx, radius=1.15):
                     fd.append(math.degrees(math.acos(np.clip(np.dot(s_n, np.array(f.normal)), -1, 1))))
             out[tag]["patch_face_vs_field_deg_mean_max"] = [round(float(np.mean(fd)), 1), round(float(np.max(fd)), 1)] if fd else None
     return out
+
+
+def drop_loose(li):
+    """Deletes the edges and vertices that the removed port faces leave behind (FACES_ONLY keeps them, so the stock
+    indices stay put while both sides are filled). Blender draws loose edges as lines in every shading mode; the
+    written model never had them (only used vertices are written). Call after both sides of a LOD are done."""
+    me = bpy.data.objects[f"GEO-lod{li}"].data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    loose_e = [e for e in bm.edges if not e.link_faces]
+    bmesh.ops.delete(bm, geom=loose_e, context="EDGES")
+    loose_v = [v for v in bm.verts if not v.link_faces]
+    bmesh.ops.delete(bm, geom=loose_v, context="VERTS")
+    bm.to_mesh(me)
+    bm.free()
+    nr = np.empty(len(me.vertices) * 3)
+    me.attributes["nrm"].data.foreach_get("vector", nr)
+    me.normals_split_custom_set_from_vertices([tuple(x) for x in nr.reshape(-1, 3)])
+    me.update()
+    return len(loose_e), len(loose_v)
