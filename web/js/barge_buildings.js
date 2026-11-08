@@ -144,9 +144,14 @@ export function makeBuildings(data, game, parts) {
     // Malakai's side: he stands as a shooter on the left or the right side (docs/design/barge-upgrades-ideas.md, «Место Малакая»).
     // GAME: cm:set_saved_value('mtb_malakai_side', side); src/tww3_mtb_crew.lua would put him on a rifle seat of that side before a battle.
     M.malakai_side = () => side;
+    // The hint: the marks glow until the player changes the side once (a tutorial's flag; GAME: cm:set_saved_value('mtb_malakai_side_chosen', true)).
+    let sideChosen = false;
+    M.side_hint = () => !sideChosen;
+    M.set_side_chosen_silently = v => { sideChosen = !!v; };
     M.set_malakai_side = s => {
         if (s === side) return;
         side = s;
+        sideChosen = true;
         message = `Малакай встанет на ${s === 'left' ? 'левый' : 'правый'} борт.`;
         fire();
     };

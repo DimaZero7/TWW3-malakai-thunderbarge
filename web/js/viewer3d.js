@@ -24,6 +24,8 @@ const VIEWS = {
     waist: [new THREE.Vector3(2.5, 2.6, 0.6), new THREE.Vector3(40, 2.8, 0.6), 5.2],
     bomb: [new THREE.Vector3(2.8, 3.1, 4.66), new THREE.Vector3(40, 3.3, 4.66), 1.3],
     bomb_aft: [new THREE.Vector3(2.8, 2.0, -2.73), new THREE.Vector3(40, 2.2, -2.73), 1.1],
+    pub: [new THREE.Vector3(0, 2.6, -4.2), new THREE.Vector3(3, 6, 6), 2.6],               // the cabin under the stern deck, from the waist towards the stern
+    rings: [new THREE.Vector3(0, 21.0, -0.7), new THREE.Vector3(12, 27, 8), 7],             // the crow's nests' rings on top of the balloon
     below: [new THREE.Vector3(0, 1, -1.5), new THREE.Vector3(6, -40, -1.4), 12],
 };
 

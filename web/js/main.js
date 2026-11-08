@@ -87,7 +87,7 @@ async function main() {
     M.on_change(update);
     // The page's state lives through a reload: localStorage, one key per stage; the buttons of the bar: build up to the selected building, forget all.
     const saveKey = 'mtb_web_state_' + stageName;
-    const save = () => { try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), selected: panel.view.selected})); } catch (e) { /* no storage: the page still works */ } };
+    const save = () => { try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected})); } catch (e) { /* no storage: the page still works */ } };
     M.on_change(save);
     panel.view.onSelect = save;
     try {
@@ -95,6 +95,7 @@ async function main() {
         if (saved && !flags.steps) {
             game.restore(saved);
             if (saved.side) M.set_side_silently(saved.side);
+            M.set_side_chosen_silently(saved.side_chosen);
             if (saved.selected && M.level(saved.selected)) panel.view.selected = saved.selected;
         }
     } catch (e) { /* a broken or missing save: start fresh */ }
@@ -118,7 +119,8 @@ async function main() {
         host.style.width = root.Width() * k + 'px';
         host.style.height = root.Height() * k + 'px';
     };
-    makeOverview(document.getElementById('overview')).catch(e => console.error(e));
+    // the overview leaves out what the panel's tree already holds
+    makeOverview(document.getElementById('overview'), (blueprint.tree ? blueprint.tree.nodes : []).map(k => data.prefix + k)).catch(e => console.error(e));
     new ResizeObserver(fit).observe(document.getElementById('left'));
     fit();
     update();

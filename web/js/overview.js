@@ -58,14 +58,20 @@ function card(c) {
     </div>`;
 }
 
-export async function makeOverview(host) {
+// inTree: the keys of the buildings already in the panel's tree; their cards leave the overview, a chain left empty leaves with them.
+export async function makeOverview(host, inTree = []) {
     const r = await fetch('/build/overview.json');
     if (!r.ok) { host.innerHTML = `<p class="ov-error">Нет build/web/overview.json: py -3.14 tools/web_export.py --overview</p>`; return; }
     const data = await r.json();
+    const taken = new Set(inTree);
+    const takenNames = [];
+    for (const chain of data.chains) for (const c of chain.cards) if (taken.has(c.key)) takenNames.push(c.name || c.short);
+    data.chains = data.chains.map(chain => ({...chain, cards: chain.cards.filter(c => !taken.has(c.key))})).filter(chain => chain.cards.length);
     const total = data.chains.reduce((n, c) => n + c.cards.length, 0);
     const incomplete = data.chains.filter(c => c.missing.length);
     let html = `<h2>Все цепочки построек барки</h2>
-      <p class="ov-intro">${data.chains.length} цепочек, ${total} построек. Порядок: корпус, затем цепочки экипажа (пушки, стрелки, купола, люки, гарпун, паб), затем остальные по тиру.
+      ${takenNames.length ? `<p class="ov-taken">В дереве уже: ${takenNames.map(n => `«${esc(n)}»`).join(', ')}. Их карточек здесь нет.</p>` : ''}
+      <p class="ov-intro">Осталось: ${data.chains.length} цепочек, ${total} построек. Порядок: корпус, затем цепочки экипажа (пушки, стрелки, купола, люки, гарпун, паб), затем остальные по тиру.
       Зелёным — строки мода; эффекты игры, которые мод выключает, не показаны. ⚙ — деталь модели, которую приносит постройка.
       ${incomplete.length ? `Неполные данные: ${incomplete.map(c => `«${esc(c.title)}» (${c.missing.map(m => MISSING[m] || m).join(', ')})`).join('; ')}.` : 'Все данные полные.'}
       ${data.units_from_schema ? '' : ' Найм отрядов не показан: нет схемы таблиц.'}</p>`;

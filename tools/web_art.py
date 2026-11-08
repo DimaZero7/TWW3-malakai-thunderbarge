@@ -774,6 +774,21 @@ def side_art(places):
             "portrait": "ui/portraits/round/mtb_malakai.png", "portrait_inset": 4}
 
 
+def side_glow():
+    """The orange halo under a side mark while the player has not chosen a side yet: two phases, the panel switches them by a timer, as the game blinks
+    the buttons of its tutorials. A soft ring, transparent in the middle and outside."""
+    import numpy as np
+    from PIL import Image
+    n = 128
+    yy, xx = np.mgrid[0:n, 0:n]
+    r = np.hypot(xx - n / 2 + 0.5, yy - n / 2 + 0.5) / (n / 2)
+    for name, strength in (("glow_a", 1.0), ("glow_b", 0.55)):
+        a = np.clip(np.exp(-((r - 0.70) / 0.17) ** 2) * 255 * strength, 0, 255)
+        rgba = np.zeros((n, n, 4), np.uint8)
+        rgba[..., 0], rgba[..., 1], rgba[..., 2], rgba[..., 3] = 255, 150, 30, a.astype(np.uint8)
+        Image.fromarray(rgba, "RGBA").save(OUT / f"{name}.png", optimize=True)
+
+
 def tree_line():
     """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
     from PIL import Image
@@ -828,6 +843,7 @@ def main():
     (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts}, indent=1), encoding="utf-8")
     tree_line()
     node_back()
+    side_glow()
     # the hull's second level being built over the frame (last: the drawings above keep their random hatching)
     layer("barge_build", barge_build(), places)
     parts["barge"] = {"pencil": None, "build": "barge_build", "ink": None}

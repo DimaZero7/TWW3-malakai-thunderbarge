@@ -222,6 +222,42 @@
     "hides": []
    },
    "source": "cut by boxes from build/solid_hull_hatches (tools/web_export.py, SHIELDS)"
+  },
+  "pub": {
+   "name": "Паб в кормовой каюте (стол, бочки)",
+   "building": "beer_hall_1",
+   "planned": "пивная, первый уровень",
+   "enabled": false,
+   "pencil": null,
+   "build": null,
+   "ink": "occ_pub",
+   "turns_at": [
+    700,
+    430
+   ],
+   "model": {
+    "part": "part_pub",
+    "hides": []
+   },
+   "source": "cut from build/solid_hull_hatches by data/hull_parts.json, details pub"
+  },
+  "rings": {
+   "name": "Кольца вороньих гнёзд на шаре",
+   "building": "mtb_nest_1",
+   "planned": "заготовка под воронье гнездо",
+   "enabled": false,
+   "pencil": null,
+   "build": null,
+   "ink": "mount_cupolas",
+   "turns_at": [
+    520,
+    60
+   ],
+   "model": {
+    "part": "part_rings",
+    "hides": []
+   },
+   "source": "cut from build/solid_hull_hatches by data/hull_parts.json, details rings"
   }
  },
  "tree_demo": {

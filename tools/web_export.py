@@ -67,6 +67,9 @@ SHIELDS = {
     "side_shields": {"abs_x": (2.35, 2.9), "y": (1.3, 2.8), "z": (-1.8, 3.95), "least": 1.0, "pieces": 60},
     "balloon_shields": {"abs_x": (4.3, 6.1), "y": (13.9, 16.05), "z": (-9.7, 5.5), "least": 1.5, "pieces": 72},
 }
+# The pub (table, barrels, mugs) and the crow's nests' rings: the mod cuts them out of the hull by the boxes of data/hull_parts.json (tools/hull_parts.py,
+# details pub and rings) and stands them on crew seats the beer hall and the nests switch on. The base hull of build/solid_hull_* still has them: cut the same way.
+MOD_DETAILS = ["pub", "rings"]
 # The gun port: the base hull has it closed with new geometry (planks and steel over it). Where the base differs from the stock hull around the port
 # (data/hull_parts.json, patches.port.hole_box, widened) its triangles are the plug; the stock triangles of the same place, port included, are the part.
 PORT_MARGIN = 0.5
@@ -356,7 +359,23 @@ def export_models(stock_too=False):
         if pieces != spec["pieces"]:
             raise SystemExit(f"{name}: {pieces} pieces in the box, expected {spec['pieces']}: the hull changed, look at the box again")
         cuts[name] = tris
-    hull0_cut, _ = split(hull0, set().union(*cuts.values()))
+    # the mod's own details out of their meshes, by its boxes and its rule (connected pieces wholly inside a box)
+    mod_cuts = {}
+    for name in MOD_DETAILS:
+        detail = next(d for d in hull_parts.SPEC["details"] if d["name"] == name)
+        mesh = base[detail["mesh"]][0]
+        tris = set()
+        for piece, box in hull_parts.pieces(mesh):
+            if any(hull_parts.inside(box, area) for area in detail["boxes"]):
+                tris.update(piece)
+        if not tris:
+            raise SystemExit(f"{name}: nothing of data/hull_parts.json's boxes in the base hull")
+        mod_cuts[name] = (detail["mesh"], tris)
+    removed = {0: set().union(*cuts.values())}
+    for mi, tris in mod_cuts.values():
+        removed[mi] = removed.get(mi, set()) | tris
+    hull0_cut, _ = split(hull0, removed[0])
+    base = [(base[i][0] if i not in removed or i == 0 else split(base[i][0], removed[i])[0], base[i][1]) for i in range(len(base))]
     part_meshes = {name: load_model(DT + model + ".rigid_model_v2", DT + model + ".wsmodel", REPO / "build" / folder) for name, (folder, model) in PART_MODELS.items()}
     plug, port = port_split(hull0_cut, stock[0][0], [m for meshes in part_meshes.values() for m, _ in meshes])
     hull0_open, plug_mesh = split(hull0_cut, plug)
@@ -365,13 +384,18 @@ def export_models(stock_too=False):
     report["hull"] = g.add("hull", [(hull0_open, material0)] + base[1:], BASE)
     report["port_plug"] = g.add("port_plug", [(plug_mesh, material0)], BASE)
     report["hatch_covers"] = g.add("hatch_covers", load_model(*HATCH_COVERS, BASE), BASE)
-    textures += g.write({"source": str(BASE.relative_to(REPO)), "about": "the base barge: no shields, porthole, stern boards, forsage tank; port and hatches closed"})
+    textures += g.write({"source": str(BASE.relative_to(REPO)), "about": "the base barge: no shields, porthole, stern boards, forsage tank, pub, nests' rings; port and hatches closed"})
     # the parts: shields (stock pieces read the stock texture: same triangles, same UV), the port, the details of build/solid_hull_*
     for name, tris in cuts.items():
         _, piece = split(hull0, tris)
         g = Gltf("part_" + name)
         report["part_" + name] = g.add(name, [(piece, stock[0][1])], None)
         textures += g.write({"source": f"cut from {BASE_HULL[0]} by tools/web_export.py, SHIELDS"})
+    for name, (mi, tris) in mod_cuts.items():
+        _, piece = split(load_model(*BASE_HULL, BASE)[mi][0], tris)
+        g = Gltf("part_" + name)
+        report["part_" + name] = g.add(name, [(piece, stock[mi][1])], None)
+        textures += g.write({"source": f"cut from {BASE_HULL[0]} by data/hull_parts.json, details {name} (tools/hull_parts.py's rule)"})
     g = Gltf("part_port")
     report["part_port"] = g.add("port", [(port_mesh, stock[0][1])], None)
     textures += g.write({"source": "the stock hull around the port, tools/web_export.py, port_split"})

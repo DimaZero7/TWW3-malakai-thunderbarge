@@ -77,6 +77,18 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         const p = place('plan_ship');
         view.side = {show_when: blueprint.malakai_side.show_when, plan: image(sheet, 'plan_ship', WEB_ART + 'plan_ship.png', p[0] * scale, p[1] * scale, p[2] * scale, p[3] * scale), marks: {}};
         view.side.portraits = {};
+        // the halo under each mark while the side was never chosen: two pictures switched by a timer, as the game blinks a tutorial's button
+        view.side.glows = {};
+        for (const s of ['left', 'right']) {
+            const g = ms.mark * 0.75;
+            view.side.glows[s] = image(sheet, 'side_glow_' + s, WEB_ART + 'glow_a.png', (ms.marks[s][0] - g / 2) * scale, (ms.marks[s][1] - g / 2) * scale,
+                                       (ms.mark + g) * scale, (ms.mark + g) * scale);
+        }
+        view.side.phase = 0;
+        setInterval(() => {         // GAME: core:get_tm():repeat_real_callback(..., 450, 'mtb_side_hint')
+            view.side.phase = 1 - view.side.phase;
+            for (const g of Object.values(view.side.glows)) g.SetImagePath(WEB_ART + (view.side.phase ? 'glow_b.png' : 'glow_a.png'), 0);
+        }, 450);
         for (const s of ['left', 'right']) {
             const b = make(sheet, SIDE + s, 'button_mark');
             size(b, ms.mark * scale, ms.mark * scale);
@@ -335,10 +347,14 @@ function refresh(view, M) {
             b.SetVisible(shown);
             b.SetState(s === side ? 'selected' : 'active');
             const name = s === 'left' ? 'левом' : 'правом';
-            b.SetTooltipText(s === side ? `Малакай на ${name} борту: стреляет стрелком` : `Пустой борт. Щёлкните, чтобы поставить Малакая на ${s === 'left' ? 'левый' : 'правый'} борт`, true);
+            b.SetTooltipText(M.side_hint() ? 'Выберите борт для Малакая'
+                : s === side ? `Малакай на ${name} борту: стреляет стрелком` : `Пустой борт. Щёлкните, чтобы поставить Малакая на ${s === 'left' ? 'левый' : 'правый'} борт`, true);
         }
         // the drawing shows the left side (bow to the left): there he is in ink; on the right side he stands behind it, in pencil
         for (const s of ['left', 'right']) view.side.portraits[s].SetVisible(shown && s === side);
+        const hint = shown && M.side_hint();
+        // only the empty side glows: the place Malakai can be moved to
+        for (const [s, g] of Object.entries(view.side.glows)) g.SetVisible(hint && s !== side);
         view.side.near.SetVisible(bargeStage === 'ink' && side === 'left');
         view.side.far.SetVisible(bargeStage === 'ink' && side === 'right');
         view.side.near_build.SetVisible(bargeStage === 'build' && side === 'left');
