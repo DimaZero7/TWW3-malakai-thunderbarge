@@ -31,6 +31,9 @@ async function main() {
     const cards = {};
     for (const chain of overview.chains) for (const c of chain.cards) cards[c.key] = c;
     const M = makeBuildings(data, game, blueprint.parts);
+    const treeSpec = blueprint.tree || {};
+    for (const [k, needs] of Object.entries(treeSpec.requires || {})) M.extra_requires[data.prefix + k] = needs.map(n => data.prefix + n);
+    for (const k of treeSpec.not_connected || []) M.not_connected.add(data.prefix + k);
     flags.all_parts = flags.parts === 'all';
     M.all_parts = flags.all_parts;
 

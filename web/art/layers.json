@@ -79,6 +79,18 @@
    920.62,
    566.88
   ],
+  "pub_ink": [
+   670.0,
+   443.75,
+   148.12,
+   70.62
+  ],
+  "pub_build": [
+   663.75,
+   438.12,
+   160.62,
+   81.88
+  ],
   "plan_ship": [
    54.38,
    560.0,
@@ -140,6 +152,11 @@
    "pencil": null,
    "build": "barge_build",
    "ink": null
+  },
+  "pub": {
+   "pencil": null,
+   "build": "pub_build",
+   "ink": "pub_ink"
   }
  },
  "malakai_side": {

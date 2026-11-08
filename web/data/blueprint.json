@@ -1,5 +1,5 @@
 {
- "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from. stages: what the page shows at each stage of the ship, ?stage=<name> in the address; stage: the one shown without it. planks: the bare timber of the yard (tools/web_art.py, planks b), no buildings yet, no model; barge: the base barge with the guns' first building and the details. hull1: the hull's first level alone (sheets: the drawing per stage of sheet_part: bare timber, the same with the frame hatched over it, the frame; built: what stands at the start of this stage, overriding web/data/sim.json; demolish: the demolish button shown; frame_scheme: a scheme of keel and frames from three.js primitives in 3D while the frame stands, there is no model of it). tree: the stage's buildings as a tree (nodes: levels without the prefix; links from the data; direction: down, the first buildings on top, or up). tree_demo: the example shown by ?tree=demo; ?dir=up|down overrides the direction. sheets: a list of rules, the first whose part is at its stage gives the drawing, the last is the default. model_when: the part whose building shows the base barge in 3D (hull_base, no details); before it the frame's scheme or the text. demolish_mode step_down: demolishing a level leaves the level below standing (the game removes the whole building), and only the top level of a chain may be demolished. malakai_side: the chooser of Malakai's side (plan and marks of web/art/layers.json, malakai_side); show_when: the part whose building must stand.",
+ "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from. stages: what the page shows at each stage of the ship, ?stage=<name> in the address; stage: the one shown without it. planks: the bare timber of the yard (tools/web_art.py, planks b), no buildings yet, no model; barge: the base barge with the guns' first building and the details. hull1: the hull's first level alone (sheets: the drawing per stage of sheet_part: bare timber, the same with the frame hatched over it, the frame; built: what stands at the start of this stage, overriding web/data/sim.json; demolish: the demolish button shown; frame_scheme: a scheme of keel and frames from three.js primitives in 3D while the frame stands, there is no model of it). tree: the stage's buildings as a tree (nodes: levels without the prefix; links from the data; direction: down, the first buildings on top, or up). tree_demo: the example shown by ?tree=demo; ?dir=up|down overrides the direction. sheets: a list of rules, the first whose part is at its stage gives the drawing, the last is the default. model_when: the part whose building shows the base barge in 3D (hull_base, no details); before it the frame's scheme or the text. demolish_mode step_down: demolishing a level leaves the level below standing (the game removes the whole building), and only the top level of a chain may be demolished. malakai_side: the chooser of Malakai's side (plan and marks of web/art/layers.json, malakai_side); show_when: the part whose building must stand. tree.requires: what a node needs on the page beyond the mod's data (the mod's requirement of these buildings is the hull's tier only); tree.not_connected: nodes shown, not yet orderable. tree.branches: side branches off the trunk (the hull): their nodes, the colour of their frame and lines (a name of data/crew_options.json, card_frames: tools/web_art.py draws branch_frame_<colour>.png and tree_line_<colour>.png), the side they stand on.",
  "stage": "hull1",
  "stages": {
   "planks": {
@@ -73,18 +73,59 @@
      ],
      "model": null,
      "source": "drawing: tools/web_art.py barge_build; model: build/web/models/hull_base.gltf"
+    },
+    "pub": {
+     "name": "Паб в кормовой каюте",
+     "building": "beer_hall_1",
+     "enabled": true,
+     "pencil": null,
+     "build": "pub_build",
+     "ink": "pub_ink",
+     "turns_at": [
+      700,
+      430
+     ],
+     "model": {
+      "part": "part_pub",
+      "hides": []
+     },
+     "source": "drawing: data/ui/occ_pub.png; model: cut by data/hull_parts.json, details pub"
     }
    },
    "model": null,
-   "caption": "Дерево построек корпуса: заготовка под корабль, над ней прочный корпус.",
+   "caption": "Дерево построек корабля: заготовка, прочный корпус, пивной чертог, дальше стрелки.",
    "no_ship": "Корабль ещё не построен",
    "frame_scheme": true,
    "tree": {
     "nodes": [
      "airship_hull_1",
-     "airship_hull_2"
+     "airship_hull_2",
+     "beer_hall_1",
+     "crew_weapons_1"
     ],
-    "direction": "up"
+    "direction": "up",
+    "requires": {
+     "beer_hall_1": [
+      "airship_hull_2"
+     ],
+     "crew_weapons_1": [
+      "beer_hall_1"
+     ]
+    },
+    "not_connected": [
+     "crew_weapons_1"
+    ],
+    "branches": {
+     "crew": {
+      "name": "Экипаж: стрелки",
+      "nodes": [
+       "beer_hall_1",
+       "crew_weapons_1"
+      ],
+      "colour": "gold",
+      "side": "left"
+     }
+    }
    },
    "model_when": "barge",
    "demolish_mode": "step_down",
@@ -230,7 +271,7 @@
    "enabled": false,
    "pencil": null,
    "build": null,
-   "ink": "occ_pub",
+   "ink": "pub_ink",
    "turns_at": [
     700,
     430

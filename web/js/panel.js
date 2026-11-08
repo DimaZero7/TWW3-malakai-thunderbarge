@@ -80,15 +80,27 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         // the halo under each mark while the side was never chosen: two pictures switched by a timer, as the game blinks a tutorial's button
         view.side.glows = {};
         const glow = ms.glow;
+        // one image per phase, all loaded once, one shown at a time: as a component with a state per phase (SetState by a timer in the game)
         for (const s of ['left', 'right']) {
             const size = ms.mark * glow.size, off = (size - ms.mark) / 2;
-            view.side.glows[s] = image(sheet, 'side_glow_' + s, WEB_ART + 'glow_0.png', (ms.marks[s][0] - off) * scale, (ms.marks[s][1] - off) * scale, size * scale, size * scale);
-            view.side.glows[s].SetPassive();
+            const holder = image(sheet, 'side_glow_' + s, WEB_ART + 'glow_0.png', (ms.marks[s][0] - off) * scale, (ms.marks[s][1] - off) * scale, size * scale, size * scale);
+            holder.SetPassive();
+            holder.phases = [];
+            for (let i = 1; i < glow.phases; i++) {
+                const ph = image(holder, 'phase_' + i, WEB_ART + `glow_${i}.png`, 0, 0, size * scale, size * scale);
+                ph.SetVisible(false);
+                holder.phases.push(ph);
+            }
+            holder.img.style.visibility = 'visible';
+            view.side.glows[s] = holder;
         }
         view.side.phase = 0;
-        setInterval(() => {         // GAME: core:get_tm():repeat_real_callback(..., step, 'mtb_side_hint'), SetImagePath per phase
+        setInterval(() => {         // GAME: core:get_tm():repeat_real_callback(..., step, 'mtb_side_hint') and SetState per phase
             view.side.phase = (view.side.phase + 1) % glow.phases;
-            for (const g of Object.values(view.side.glows)) if (g.Visible()) g.SetImagePath(WEB_ART + `glow_${view.side.phase}.png`, 0);
+            for (const g of Object.values(view.side.glows)) {
+                g.img.style.visibility = view.side.phase === 0 ? 'visible' : 'hidden';
+                g.phases.forEach((ph, i) => ph.SetVisible(view.side.phase === i + 1));
+            }
         }, glow.step_ms);
         for (const s of ['left', 'right']) {
             const b = make(sheet, SIDE + s, 'button_mark');
@@ -149,11 +161,12 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view.detail = text(column, 'detail', 'text_body', 14, 0, column_w - 28, 44, '');
     view.lines = text(column, 'lines', 'text_green', 14, 0, column_w - 28, 80, '');
     // commands
-    const button_w = (column_w - 28 - 10) / 2, button_h = 46;
-    const buttons_y = scheme_h - foot_h - button_h - 34;
+    // the three commands in one row at the foot, so the tree and the details above have the room
+    const button_w = (column_w - 28 - 16) / 3, button_h = 42;
+    const buttons_y = scheme_h - foot_h - button_h - 30;
     view.order = makeButton(column, ORDER, 14, buttons_y, button_w, button_h, 'Заказать');
-    view.cancel = makeButton(column, CANCEL, 14 + button_w + 10, buttons_y, button_w, button_h, 'Отменить');
-    view.demolish = makeButton(column, DEMOLISH, 14, buttons_y - button_h - 8, button_w, button_h, 'Снести');
+    view.cancel = makeButton(column, CANCEL, 14 + button_w + 8, buttons_y, button_w, button_h, 'Отменить');
+    view.demolish = makeButton(column, DEMOLISH, 14 + 2 * (button_w + 8), buttons_y, button_w, button_h, 'Снести');
     view.demolishShown = !!blueprint.demolish;
     view.demolish.button.SetVisible(!!(flags.full || blueprint.demolish));
     view.demolish.button.SetTooltipText('Снести постройку. Золото не возвращается: возврата при сносе в данных нет (допущение). В игре корпус снести нельзя, здесь можно для проверки', true);
@@ -182,7 +195,9 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
 // Tiers by depth (the longest way from a node with no requirement), the order inside a tier by the mean place of the nodes it needs (one pass, enough
 // for a small tree), every tier spread evenly across the width. direction "down": the first buildings on top, what needs them below; "up": the other way.
 // Lines run square: from a node to halfway, across, on to the other node; lines that meet share their halfway.
-const NODE = 68, TIER_GAP = 104, LINE = 3;
+const NODE = 64, TIER_GAP = 92, LINE = 3;
+// columns of the tree when it has side branches: the trunk right of the middle, a left branch, a right branch
+const COLUMN = {trunk: 0.62, left: 0.2, right: 0.86};
 const TREE = 'mtb_tree_node_';
 
 export function treeLayout(nodes) {
@@ -198,6 +213,19 @@ export function treeLayout(nodes) {
     const tiers = [];
     for (const n of nodes) (tiers[tier[n.key]] ||= []).push(n.key);
     const place = {};
+    if (nodes.some(n => n.branch)) {        // a trunk and side branches: each node in its column (several in one row of a column are spread around it)
+        const cols = {};
+        for (const n of nodes) {
+            const col = n.branch ? n.branch.side : 'trunk';
+            const key = col + ':' + tier[n.key];
+            (cols[key] ||= []).push(n.key);
+        }
+        for (const [key, keys] of Object.entries(cols)) {
+            const c = COLUMN[key.split(':')[0]];
+            keys.forEach((k, i) => { place[k] = c + (i - (keys.length - 1) / 2) * 0.18; });
+        }
+        return {tier, tiers, place};
+    }
     tiers.forEach((keys, t) => {
         if (t > 0) {
             const mean = k => { const ps = byKey[k].needs.filter(p => place[p] !== undefined); return ps.length ? ps.reduce((a, p) => a + place[p], 0) / ps.length : 0.5; };
@@ -213,12 +241,14 @@ function treeNodes(blueprint, M, flags) {
     // the level below in the same chain and the buildings each level requires, when they are in the tree too
     if (flags.tree === 'demo' && blueprint.tree_demo) return blueprint.tree_demo.nodes.map(n => ({...n, demo: true}));
     const keys = (blueprint.tree ? blueprint.tree.nodes : []).map(k => M.prefix + k);
+    const branchOf = {};
+    for (const [name, br] of Object.entries((blueprint.tree && blueprint.tree.branches) || {})) for (const k of br.nodes) branchOf[M.prefix + k] = {name, ...br};
     return keys.map(key => {
         const row = M.level(key);
         const chain = M.chain(row.chain);
         const below = chain && chain.levels.find(l => l.level === row.level - 1);
-        const needs = [...(below ? [below.key] : []), ...row.requires].filter(k => keys.includes(k));
-        return {key, name: row.name, icon: row.icon ? 'ui/buildings/icons/tww3_mtb_' + row.icon : null, needs};
+        const needs = [...(below ? [below.key] : []), ...row.requires, ...(M.extra_requires[key] || [])].filter(k => keys.includes(k));
+        return {key, name: row.name, icon: row.icon ? 'ui/buildings/icons/tww3_mtb_' + row.icon : null, needs, branch: branchOf[key] || null};
     });
 }
 
@@ -234,8 +264,8 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
     }
     // the lines first, under the nodes
     let seg = 0;
-    const line = (x0, y0, x1, y1) => {
-        const c = image(parent, `tree_line_${seg++}`, WEB_ART + 'tree_line.png', Math.min(x0, x1) - LINE / 2, Math.min(y0, y1) - LINE / 2,
+    const line = (x0, y0, x1, y1, colour) => {
+        const c = image(parent, `tree_line_${seg++}`, WEB_ART + (colour ? `tree_line_${colour}.png` : 'tree_line.png'), Math.min(x0, x1) - LINE / 2, Math.min(y0, y1) - LINE / 2,
                         Math.abs(x1 - x0) + LINE, Math.abs(y1 - y0) + LINE);
         return c;
     };
@@ -247,7 +277,8 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
             const down = b.y > a.y;
             const ay = down ? a.y + NODE : a.y, by = down ? b.y : b.y + NODE;
             const mid = (ay + by) / 2;
-            line(ax, ay, ax, mid); line(ax, mid, bx, mid); line(bx, mid, bx, by);
+            const colour = n.branch && n.branch.colour;       // a line into a branch's node has the branch's colour
+            line(ax, ay, ax, mid, colour); line(ax, mid, bx, mid, colour); line(bx, mid, bx, by, colour);
         }
     }
     // A node is the game's own building slot (ui/templates/building_frame.twui.xml, square_building_button): the parchment tile building_frame.png,
@@ -260,8 +291,11 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         b.SetInteractive(true);
         const v = {node: n, button: b};
         v.icon = image(b, 'icon', n.icon || D + 'icon_check.png', 0, 0, NODE, NODE);
-        v.plain = image(b, 'plain', D + 'building_frame_plain.png', 0, 0, NODE, NODE);
-        v.frameSelected = image(b, 'selected', D + 'building_frame_selected.png', 0, 0, NODE, NODE);
+        // a branch's node: its colour's frame, always shown (the slot's states still grey or dim the whole node); the trunk: the game's built frame
+        v.plain = image(b, 'plain', n.branch ? WEB_ART + `branch_frame_${n.branch.colour}.png` : D + 'building_frame_plain.png', 0, 0, NODE, NODE);
+        v.branch = n.branch;
+        // selection: the game's orange frame on the trunk; on a branch the branch's own colour, lighter, with a bright rim (the colour stays)
+        v.frameSelected = image(b, 'selected', n.branch ? WEB_ART + `branch_frame_${n.branch.colour}_selected.png` : D + 'building_frame_selected.png', 0, 0, NODE, NODE);
         v.constructing = image(b, 'constructing', D + 'constructing_1.png', 6, 6, NODE - 12, NODE - 12);
         v.constructing.SetImageColour(255, 255, 255, 0x64);
         v.check = image(b, 'check', D + 'icon_check_green.png', NODE - 28, 2, 26, 23);
@@ -315,7 +349,7 @@ function refreshTree(view, M) {
         // (the template's selected state has none: in the game's horde tree nothing stays selected, a click orders)
         const selected = view.selected === v.node.key;
         v.frameSelected.SetVisible(selected);
-        v.plain.SetVisible(built && !selected);
+        v.plain.SetVisible((built || !!v.branch) && !(selected && !v.branch));
         v.hover.SetVisible(false); v.hoverSelected.SetVisible(false);
         v.button.SetHoverChild(selected ? v.hoverSelected : v.hover);
         v.check.SetVisible(built);

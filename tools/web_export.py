@@ -167,6 +167,12 @@ def export_data():
     for chain in config["new_chains"]:
         chain_rows = sorted((r for r in rows.values() if r["chain"] == chain["key"]), key=lambda r: r["level"])
         chains.append({"key": chain["key"], "levels": [level_of(r) for r in chain_rows]})
+    # the game's own side chains of the barge too (the beer hall, the crew training, ...), visible ones only, so the page's tree can hold them
+    ours = {c["key"] for c in config["new_chains"]}
+    for chain in sorted({r["chain"] for r in rows.values() if r["level_name"].startswith(prefix)} - ours - {hull_chain}):
+        chain_rows = sorted((r for r in rows.values() if r["chain"] == chain and r["level_name"].startswith(prefix)), key=lambda r: r["level"])
+        if any(r["visible_in_ui"] for r in chain_rows):
+            chains.append({"key": chain, "levels": [level_of(r) for r in chain_rows if r["visible_in_ui"]]})
     groups = {}
     for group_key, group in config["groups"].items():
         groups[group_key] = {"name": group["ui"]["name"], "about": group["ui"]["about"], "start": group["start"], "seats": len(group["seats"]),

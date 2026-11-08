@@ -5,6 +5,10 @@
 
 export function makeBuildings(data, game, parts) {
     const M = {game, prefix: data.prefix, parts};
+    // The page's own requirements over the mod's data (blueprint.json, tree.requires: full keys) and the nodes shown but not orderable yet
+    M.extra_requires = {};
+    M.not_connected = new Set();
+    const needsOf = row => [...row.requires, ...(M.extra_requires[row.key] || [])];
     const prefix = data.prefix;
     const levels = {};
     for (const row of data.hull) levels[row.key] = row;
@@ -46,6 +50,10 @@ export function makeBuildings(data, game, parts) {
         for (const need of row.requires) {
             if (!game.has_building(need)) return {state: 'locked', why: `Нужна постройка «${M.level(need) ? M.level(need).name : need.slice(prefix.length)}»`};
         }
+        for (const need of M.extra_requires[row.key] || []) {
+            if (!game.has_building(need)) return {state: 'locked', why: `Нужен: ${M.level(need) ? M.level(need).name : need.slice(prefix.length)}`};
+        }
+        if (M.not_connected.has(row.key)) return {state: 'locked', why: 'Пока не подключено на странице'};
         if (game.treasury() < row.cost) return {state: 'locked', why: `Не хватает золота: нужно ${row.cost}`, poor: true};
         return {state: 'open'};
     };
@@ -88,7 +96,7 @@ export function makeBuildings(data, game, parts) {
             const top = chain && [...chain.levels].reverse().find(l => game.standing(l.key));
             return {ok: false, why: `Сначала снесите «${top ? top.name : 'верхний уровень'}»: он стоит на этой постройке`};
         }
-        const needing = Object.values(levels).filter(l => l.requires.includes(row.key) && game.has_building(l.key));
+        const needing = Object.values(levels).filter(l => needsOf(l).includes(row.key) && game.has_building(l.key));
         if (needing.length) return {ok: false, why: `Сначала снесите «${needing[0].name}»: ей нужна эта постройка`};
         return {ok: true};
     };
@@ -127,14 +135,14 @@ export function makeBuildings(data, game, parts) {
             const chain = M.chain(row.chain);
             const below = chain && chain.levels.find(l => l.level === row.level - 1);
             if (below) walk(below.key);
-            for (const r of row.requires) walk(r);
+            for (const r of needsOf(row)) walk(r);
             out.push(row.key);
         };
         walk(key);
         return out;
     };
     M.debug_build_to = key => {
-        for (const k of M.needs_all(key)) game.debug_complete(k);
+        for (const k of M.needs_all(key)) if (!M.not_connected.has(k)) game.debug_complete(k);
         message = `Отладка: построено до «${M.level(key).name}» без ходов и золота.`;
         fire();
     };

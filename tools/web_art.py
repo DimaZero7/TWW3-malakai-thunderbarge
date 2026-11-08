@@ -799,6 +799,75 @@ def side_glow(variant="a", out_prefix="glow"):
 GLOW_SIZE = 1.3
 GLOW_VARIANT = "a"
 
+def pub_seen_through(variant=None):
+    """The pub cabin seen through the hull's side, in the middle between the panel's solid box and its dashed place: a thin even outline (outside the
+    ink's wobble, so it stays straight), a light warm wash, the men, table and barrels of crew_ui_art.occ_pub in ink, the hull's lines showing a little.
+    a: plain line, wash 0.45, contents full; b: plain line and the deck beam's shade on top, wash 0.38; c: a fine dashed line, wash 0.42."""
+    variant = variant or PUB_VARIANT
+    x0, y0, x1, y1 = art.PUB
+    inside = art.occ_pub()[2:]          # without occ_pub's solid box and dark beam
+    wash, line = {"a": (0.45, ""), "b": (0.38, ""), "c": (0.42, 'stroke-dasharray="3 1.6"')}[variant]
+    out = [f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0}" fill="{art.PAPER}" opacity="{wash}"/>']
+    if variant == "b":
+        out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="9" fill="#7a5128" opacity="0.35"/>')
+    out.append(f'<g filter="url(#ink)">{"".join(inside)}</g>')
+    out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0}" fill="none" stroke="{art.INK}" stroke-width="1.3" opacity="0.9" {line}/>')
+    return out
+
+
+PUB_VARIANT = "b"
+
+
+def layer_plain(name, parts, places):
+    """As layer(), without the wobble over the whole picture: a part that wobbles marks it itself (<g filter="url(#ink)">)."""
+    w, h = round(art.DRAW_W * art.SCALE), round(art.DRAW_H * art.SCALE)
+    im = art.paint("web_" + name, art.svg_page(parts, filtered=False), w, h)
+    box = im.getbbox()
+    pad = 2
+    box = (max(box[0] - pad, 0), max(box[1] - pad, 0), min(box[2] + pad, w), min(box[3] + pad, h))
+    im.crop(box).save(OUT / f"{name}.png", optimize=True)
+    places[name] = [round(box[0] / art.SCALE, 2), round(box[1] / art.SCALE, 2), round((box[2] - box[0]) / art.SCALE, 2), round((box[3] - box[1]) / art.SCALE, 2)]
+
+
+def branch_selected_frames():
+    """The frame of a selected node of a branch: the branch's colour, lighter, a bright inner rim, so the selection keeps the branch's colour."""
+    from PIL import Image, ImageDraw
+    colours = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))["card_frames"]
+    for name, pair in colours.items():
+        if name.startswith("_"):
+            continue
+        light = tuple(min(255, v + 70) for v in pair[0]) + (255,)
+        n = 148
+        im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, n - 1, n - 1), outline=(30, 14, 0, 255), width=3)
+        d.rectangle((3, 3, n - 4, n - 4), outline=tuple(pair[0]) + (255,), width=8)
+        d.rectangle((11, 11, n - 12, n - 12), outline=light, width=4)
+        d.rectangle((15, 15, n - 16, n - 16), outline=(255, 250, 225, 200), width=2)
+        im.save(OUT / f"branch_frame_{name}_selected.png", optimize=True)
+
+def branch_frames():
+    """The frame of a side branch's nodes in the tree and its lines, one per colour of data/crew_options.json, card_frames (the crew cards' frames of the mod:
+    gold for the riflemen, blue for the guns, ...): a square ring the slot's size, light outside, dark inside, light corners as the cards'."""
+    from PIL import Image, ImageDraw
+    colours = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))["card_frames"]
+    for name, pair in colours.items():
+        if name.startswith("_"):
+            continue
+        light, dark = tuple(pair[0]) + (255,), tuple(pair[1]) + (255,)
+        n = 148
+        im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, n - 1, n - 1), outline=(30, 14, 0, 255), width=3)
+        d.rectangle((3, 3, n - 4, n - 4), outline=light, width=6)
+        d.rectangle((9, 9, n - 10, n - 10), outline=dark, width=2)
+        corner = tuple(min(255, v + 60) for v in pair[0]) + (255,)
+        for x, y in ((0, 0), (n - 18, 0), (0, n - 18), (n - 18, n - 18)):
+            d.rectangle((x, y, x + 17, y + 17), fill=corner, outline=(30, 14, 0, 255), width=2)
+        im.save(OUT / f"branch_frame_{name}.png", optimize=True)
+        Image.new("RGBA", (4, 4), light).save(OUT / f"tree_line_{name}.png")
+
+
 def tree_line():
     """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
     from PIL import Image
@@ -852,10 +921,18 @@ def main():
     parts["frame"] = {"pencil": None, "build": "frame_build", "ink": None}
     (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts}, indent=1), encoding="utf-8")
     tree_line()
+    branch_frames()
+    branch_selected_frames()
     node_back()
     # the hull's second level being built over the frame (last: the drawings above keep their random hatching)
     layer("barge_build", barge_build(), places)
     parts["barge"] = {"pencil": None, "build": "barge_build", "ink": None}
+    # the pub: the cabin seen through the hull's side, as the panel's dashed place of the pub was (crew_ui_art.bay_marks): a dashed outline, a thin wash,
+    # the men, table and barrels of crew_ui_art.occ_pub in ink but a little see-through, so the planks and the drive show behind
+    x0, y0, x1, y1 = art.PUB
+    layer_plain("pub_ink", pub_seen_through(), places)
+    layer("pub_build", build_of(pub_seen_through(), [(x0 - 6, y0 - 6), (x1 + 6, y0 - 6), (x1 + 6, y1 + 6), (x0 - 6, y1 + 6)]), places)
+    parts["pub"] = {"pencil": None, "build": "pub_build", "ink": "pub_ink"}
     # where Malakai stands: the plan with its marks and his figure (last, as above)
     side = side_art(places)
     (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side}, indent=1), encoding="utf-8")
