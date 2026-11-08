@@ -203,7 +203,9 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         size(b, NODE, NODE);
         at(b, pos[n.key].x, pos[n.key].y);
         const v = {node: n, button: b};
-        v.icon = image(b, 'icon', n.icon || 'ui/skins/default/icon_check.png', 10, 10, NODE - 20, NODE - 20);
+        // a piece of parchment under the icon: the mod's building icons are dark and do not read on the dark plate
+        v.back = image(b, 'back', WEB_ART + 'node_back.png', 9, 9, NODE - 18, NODE - 18);
+        v.icon = image(b, 'icon', n.icon || 'ui/skins/default/icon_check.png', 11, 11, NODE - 22, NODE - 22);
         v.check = image(b, 'check', 'ui/skins/default/icon_check.png', NODE - 24, 2, 22, 22);
         v.padlock = image(b, 'padlock', 'ui/skins/default/icon_padlock.png', NODE - 24, 2, 22, 22);
         v.hourglass = image(b, 'hourglass', 'ui/skins/default/icon_hourglass.png', 4, NODE - 22, 18, 18);
