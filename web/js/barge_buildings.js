@@ -79,8 +79,23 @@ export function makeBuildings(data, game, parts) {
     };
 
     // Behind the flag ?full=1 until the chain is shown: the mod's rule is that a demolished building closes its options at once (docs/summary.md, «Правило»).
+    // A building may be demolished when it is what stands in its slot (not a level an upgrade has replaced) and no other standing building needs it.
+    M.can_demolish = key => {
+        const row = M.level(key);
+        if (!row || !game.has_building(row.key)) return {ok: false, why: 'Не построено'};
+        if (!game.standing(row.key)) {
+            const chain = M.chain(row.chain);
+            const top = chain && [...chain.levels].reverse().find(l => game.standing(l.key));
+            return {ok: false, why: `Сначала снесите «${top ? top.name : 'верхний уровень'}»: он стоит на этой постройке`};
+        }
+        const needing = Object.values(levels).filter(l => l.requires.includes(row.key) && game.has_building(l.key));
+        if (needing.length) return {ok: false, why: `Сначала снесите «${needing[0].name}»: ей нужна эта постройка`};
+        return {ok: true};
+    };
+
     M.demolish = key => {
         const row = M.level(key);
+        if (!M.can_demolish(key).ok) return {ok: false, why: M.can_demolish(key).why};
         // guess: no gold back (the data has no refund for demolishing). In the game the hull cannot be demolished at all (CanDismantle = false): here it can, to test.
         // GAME: HordeContext.BuildingSlotList.At(n).Dismantle
         if (!game.dismantle(row.key)) return {ok: false};

@@ -95,6 +95,11 @@ export class Viewer {
         if (this.models[name]) this.models[name].visible = true;
     }
 
+    setVisible(name, on) {
+        if (this.models[name]) this.models[name].visible = on;
+        if (on) this.current = name;
+    }
+
     // A detail on or off: its own model, and the nodes of the hull it replaces (the port's plug, the hatch covers) the other way round
     setPart(name, on, hides = []) {
         if (this.models[name]) this.models[name].visible = on;

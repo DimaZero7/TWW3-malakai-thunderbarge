@@ -52,7 +52,7 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     const sx = pad, sy = top;
     const sheet = image(frame, 'scheme', LAYOUTS + blueprint.sheet + '.png', sx, sy, scheme_w, scheme_h);
     view.sheet = sheet;
-    view.sheets = blueprint.sheets ? {sheets: blueprint.sheets, part: blueprint.sheet_part} : null;     // the whole drawing changes with this part's stage
+    view.sheets = blueprint.sheets || null;     // rules: the first whose part is at its stage gives the whole drawing
     view.cards = cards;
     const place = (name) => art.places[name] || data.art.layers[name];
     // a layer of the panel's own art (data/crew_ui_art.json: mount_cannons, mount_bombs) or of tools/web_art.py
@@ -287,7 +287,10 @@ function tooltip(row, status, card) {
 
 function refresh(view, M) {
     view.gold.SetStateText(String(M.game.treasury()));
-    if (view.sheets) view.sheet.SetImagePath(LAYOUTS + view.sheets.sheets[M.stage(view.sheets.part)] + '.png', 0);
+    if (view.sheets) {
+        const rule = view.sheets.find(r => !r.part || M.stage(r.part) === r.stage);
+        view.sheet.SetImagePath(LAYOUTS + rule.sheet + '.png', 0);
+    }
     for (const [part, layers] of Object.entries(view.layers)) {
         const stage = M.stage(part);
         for (const s of ['pencil', 'build', 'ink']) if (layers[s]) layers[s].SetVisible(s === stage);
@@ -363,7 +366,10 @@ function refresh(view, M) {
     view.order.button.SetTooltipText(st.state === 'open' ? `Заказать «${sel.name}»: ${sel.cost} золота, ${turnsText(sel.turns)}` : (st.why || (st.state === 'building' ? 'Уже строится' : 'Уже построено')), true);
     view.cancel.button.SetState(st.state === 'building' ? 'active' : 'inactive');
     view.cancel.button.SetTooltipText(st.state === 'building' ? `Отменить стройку, ${sel.cost} золота вернутся` : 'Нечего отменять', true);
-    view.demolish.button.SetState(st.state === 'built' ? 'active' : 'inactive');
+    const dem = M.can_demolish(sel.key);
+    view.demolish.button.SetState(dem.ok ? 'active' : 'inactive');
+    view.demolish.button.SetTooltipText(dem.ok ? 'Снести постройку. Золото не возвращается: возврата при сносе в данных нет (допущение). В игре корпус снести нельзя, здесь можно для проверки; '
+        + 'снос уровня оставляет уровень ниже (в игре уходит вся постройка)' : dem.why, true);
     view.message.SetStateText(M.message() || '');
 }
 

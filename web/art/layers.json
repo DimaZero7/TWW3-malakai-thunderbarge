@@ -72,6 +72,12 @@
    371.25,
    756.88,
    241.88
+  ],
+  "barge_build": [
+   112.5,
+   36.25,
+   920.62,
+   566.88
   ]
  },
  "parts": {
@@ -98,6 +104,11 @@
   "frame": {
    "pencil": null,
    "build": "frame_build",
+   "ink": null
+  },
+  "barge": {
+   "pencil": null,
+   "build": "barge_build",
    "ink": null
   }
  }

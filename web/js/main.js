@@ -26,7 +26,7 @@ async function main() {
     const stageName = flags.stage || blueprint.stage;
     const stage = blueprint.stages[stageName];
     Object.assign(blueprint, stage, {parts: stage.parts === true ? blueprint.parts : stage.parts || {}});
-    const game = new GameSim(data, stage.built ? {...sim, built: stage.built} : sim);
+    const game = new GameSim(data, {...sim, ...(stage.built ? {built: stage.built} : {}), ...(stage.demolish_mode ? {demolish: stage.demolish_mode} : {})});
     // the cards of the overview (tools/web_export.py, export_overview) by key: every effect of a level with the game's text, the description, the game's name
     const cards = {};
     for (const chain of overview.chains) for (const c of chain.cards) cards[c.key] = c;
@@ -42,7 +42,9 @@ async function main() {
 
     const viewer = new Viewer(document.getElementById('view3d'));
     // the base barge (build/solid_hull_hatches without the shields) and each detail as a model of its own; ?hull=stock shows the stock hull instead
-    const hull = !stage.model ? null : flags.hull === 'stock' ? 'hull_stock' : 'hull_base';
+    // model_when: the base barge is loaded at once but shown only when that part's building stands
+    const hull = !(stage.model || stage.model_when) ? null : flags.hull === 'stock' ? 'hull_stock' : 'hull_base';
+    const hullShown = () => !!hull && (!stage.model_when || M.stage(stage.model_when) === 'ink');
     if (hull) viewer.show(hull);
     const parts = Object.entries(blueprint.parts).filter(([, spec]) => spec.model);     // the frame has a drawing only
     const setParts = () => {
@@ -51,10 +53,13 @@ async function main() {
     const loading = document.getElementById('loading');
     const noShip = document.getElementById('no_ship');
     noShip.textContent = stage.no_ship || '';
-    noShip.style.display = hull ? 'none' : '';
-    for (const b of document.querySelectorAll('#tools3d button')) b.style.display = hull ? '' : 'none';      // no ship, no views of it
+    const showNoShip = () => {
+        noShip.style.display = hullShown() ? 'none' : '';
+        for (const b of document.querySelectorAll('#tools3d button')) b.style.display = hullShown() ? '' : 'none';      // no ship, no views of it
+    };
+    showNoShip();
     Promise.all([hull ? viewer.load(hull, `/build/models/${hull}.gltf`) : null, ...parts.map(([, spec]) => viewer.load(spec.model.part, `/build/models/${spec.model.part}.gltf`))])
-        .then(() => { setParts(); loading.style.display = 'none'; document.body.dataset.ready = '1'; })
+        .then(() => { setParts(); if (hull) viewer.setVisible(hull, hullShown()); loading.style.display = 'none'; document.body.dataset.ready = '1'; })
         .catch(e => { loading.textContent = 'Модель не загрузилась: ' + e.message; console.error(e); });
 
     // the test bar: what the game does around the panel
@@ -65,14 +70,19 @@ async function main() {
         panel.refresh();
         turnEl.textContent = `Ход ${game.turn}`;
         setParts();
-        if (!hull) {        // no ship yet: the timber, or the frame as a scheme (no model of it exists)
-            const frame = stage.frame_scheme && M.stage(stage.sheet_part) === 'ink';
+        if (hull) viewer.setVisible(hull, hullShown());
+        showNoShip();
+        if (hullShown()) {
+            viewer.showFrameScheme(false);
+            if (!viewer.bargeViewSet && stage.model_when) { viewer.bargeViewSet = true; viewer.view('all'); }
+        } else {        // no ship yet: the timber, or the frame as a scheme (no model of it exists); the frame also while the barge is built
+            const frame = stage.frame_scheme && M.stage('frame') === 'ink';
             viewer.showFrameScheme(frame);
             noShip.textContent = frame ? 'Каркас: 3D-модели пока нет, это схема из киля и рёбер' : stage.no_ship || '';
             noShip.classList.toggle('top', frame);
         }
         const built = parts.filter(([key]) => M.stage(key) === 'ink').map(([, spec]) => spec.name);
-        hullEl.textContent = !hull ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ': ' + built.join(', ') : '');
+        hullEl.textContent = !hullShown() ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ': ' + built.join(', ') : '');
     };
     M.on_change(update);
     document.getElementById('end_turn').addEventListener('click', () => { log('конец хода'); game.end_turn(); update(); });

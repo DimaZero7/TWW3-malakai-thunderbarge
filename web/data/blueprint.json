@@ -1,5 +1,5 @@
 {
- "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from. stages: what the page shows at each stage of the ship, ?stage=<name> in the address; stage: the one shown without it. planks: the bare timber of the yard (tools/web_art.py, planks b), no buildings yet, no model; barge: the base barge with the guns' first building and the details. hull1: the hull's first level alone (sheets: the drawing per stage of sheet_part: bare timber, the same with the frame hatched over it, the frame; built: what stands at the start of this stage, overriding web/data/sim.json; demolish: the demolish button shown; frame_scheme: a scheme of keel and frames from three.js primitives in 3D while the frame stands, there is no model of it). tree: the stage's buildings as a tree (nodes: levels without the prefix; links from the data; direction: down, the first buildings on top, or up). tree_demo: the example shown by ?tree=demo; ?dir=up|down overrides the direction.",
+ "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from. stages: what the page shows at each stage of the ship, ?stage=<name> in the address; stage: the one shown without it. planks: the bare timber of the yard (tools/web_art.py, planks b), no buildings yet, no model; barge: the base barge with the guns' first building and the details. hull1: the hull's first level alone (sheets: the drawing per stage of sheet_part: bare timber, the same with the frame hatched over it, the frame; built: what stands at the start of this stage, overriding web/data/sim.json; demolish: the demolish button shown; frame_scheme: a scheme of keel and frames from three.js primitives in 3D while the frame stands, there is no model of it). tree: the stage's buildings as a tree (nodes: levels without the prefix; links from the data; direction: down, the first buildings on top, or up). tree_demo: the example shown by ?tree=demo; ?dir=up|down overrides the direction. sheets: a list of rules, the first whose part is at its stage gives the drawing, the last is the default. model_when: the part whose building shows the base barge in 3D (hull_base, no details); before it the frame's scheme or the text. demolish_mode step_down: demolishing a level leaves the level below standing (the game removes the whole building), and only the top level of a chain may be demolished.",
  "stage": "hull1",
  "stages": {
   "planks": {
@@ -23,12 +23,21 @@
   },
   "hull1": {
    "sheet": "web/blueprint_planks",
-   "sheets": {
-    "pencil": "web/blueprint_planks",
-    "build": "web/blueprint_planks",
-    "ink": "web/blueprint_frame"
-   },
-   "sheet_part": "frame",
+   "sheets": [
+    {
+     "part": "barge",
+     "stage": "ink",
+     "sheet": "web/blueprint_base"
+    },
+    {
+     "part": "frame",
+     "stage": "ink",
+     "sheet": "web/blueprint_frame"
+    },
+    {
+     "sheet": "web/blueprint_planks"
+    }
+   ],
    "chains": [
     "hull"
    ],
@@ -49,18 +58,35 @@
      ],
      "model": null,
      "source": "drawing only: tools/web_art.py frame_items; no model of the game yet"
+    },
+    "barge": {
+     "name": "Базовая барка",
+     "building": "airship_hull_2",
+     "enabled": true,
+     "pencil": null,
+     "build": "barge_build",
+     "ink": null,
+     "turns_at": [
+      500,
+      250
+     ],
+     "model": null,
+     "source": "drawing: tools/web_art.py barge_build; model: build/web/models/hull_base.gltf"
     }
    },
    "model": null,
-   "caption": "Дерево построек корпуса. Первая — заготовка под корабль.",
+   "caption": "Дерево построек корпуса: заготовка под корабль, над ней прочный корпус.",
    "no_ship": "Корабль ещё не построен",
    "frame_scheme": true,
    "tree": {
     "nodes": [
-     "airship_hull_1"
+     "airship_hull_1",
+     "airship_hull_2"
     ],
     "direction": "up"
-   }
+   },
+   "model_when": "barge",
+   "demolish_mode": "step_down"
   }
  },
  "parts": {

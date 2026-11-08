@@ -8,7 +8,8 @@ export class GameSim {
         this.prefix = data.prefix;
         this.turn = sim.turn;
         this.gold = sim.gold;
-        this.income = sim.income;          // the faction's income per turn: not modelled, a number from web/data/sim.json
+        this.income = sim.income;
+        this.demolishMode = sim.demolish || 'chain';     // 'chain': as the game, the whole building goes; 'step_down': the level below comes back          // the faction's income per turn: not modelled, a number from web/data/sim.json
         this.built = new Set(sim.built.map(s => this.prefix + s));
         this.queue = new Map();             // level key -> {turns_left, paid}
         this.listeners = {};
@@ -57,11 +58,20 @@ export class GameSim {
         return true;
     }
 
+    // GAME: the building in a slot: BuildingSlotList.At(n) holds one level of a chain, the higher one once upgraded
+    standing(key) { return this.built.has(key); }
+
     // GAME: BuildingSlotList.At(n).Dismantle; the hull has CanDismantle = false. guess: no gold back (DismantleRefundAmount not read)
     dismantle(key) {
         if (!this.built.has(key)) return false;
         this.built.delete(key);
         const row = this.levels[key];
+        if (this.demolishMode === 'step_down') {       // the page's rule, not the game's: one level down
+            const below = Object.values(this.levels).find(l => l.chain === row.chain && l.level === row.level - 1);
+            if (below) this.built.add(below.key);
+            this.emit('BuildingDemolished', {key});
+            return true;
+        }
         // the chain falls back to nothing: the game removes the whole chain of the slot (docs/summary.md: «Снос уровня цепочки снимает всю цепочку»)
         for (const k of [...this.built]) if (this.levels[k] && this.levels[k].chain === row.chain) this.built.delete(k);
         this.emit('BuildingDemolished', {key});
