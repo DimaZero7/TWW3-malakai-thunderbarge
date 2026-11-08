@@ -100,9 +100,9 @@ export function makePanel(root, M, data, art, blueprint, flags) {
         const chain = M.chain(key);
         view.levels.push(...(blueprint.first_only && !flags.full ? chain.levels.slice(0, 1) : chain.levels));
     }
-    view.selected = view.levels[0].key;
-    const chainName = view.levels[0].name;
-    view.about.SetStateText(blueprint.first_only && !flags.full ? `Первая постройка линейки пушек: «${chainName}».` : 'Линейка пушек: порты, палуба, арсенал, органы.');
+    view.selected = view.levels.length ? view.levels[0].key : null;
+    if (blueprint.caption) view.about.SetStateText(blueprint.caption);
+    else if (view.levels.length) view.about.SetStateText(blueprint.first_only && !flags.full ? `Первая постройка линейки пушек: «${view.levels[0].name}».` : 'Линейка пушек: порты, палуба, арсенал, органы.');
 
     view.root = backdrop;
     view.frame = frame;
@@ -182,8 +182,14 @@ function refresh(view, M) {
         r.button.SetTooltipText(tooltip(row, st), true);
         r.row = row;
     });
-    // details under the rows
-    const sel = M.level(view.selected);
+    // details under the rows; none while the stage has no buildings
+    const sel = view.selected && M.level(view.selected);
+    for (const c of [view.detail, view.lines, view.order.button, view.cancel.button]) c.SetVisible(!!sel);
+    if (!sel) {
+        view.demolish.button.SetVisible(false);
+        view.message.SetStateText(M.message() || '');
+        return;
+    }
     const y = view.detail_top + rowsShown * 96 + 8;
     at(view.detail, 14, y);
     view.detail.SetStateText(sel.text);
@@ -203,6 +209,8 @@ function click(view, M, c) {
     if (id.startsWith(ROW)) {
         const r = view.rows[Number(id.slice(ROW.length)) - 1];
         if (r && r.row) view.selected = r.row.key;
+    } else if (!view.selected) {
+        // nothing to order yet
     } else if (id === ORDER) {
         M.order(view.selected);
     } else if (id === CANCEL) {

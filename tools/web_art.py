@@ -612,6 +612,9 @@ def main():
         "_about": "Made by tools/web_art.py. Places in units of the drawing (data/crew_ui_art.json, size). blueprint_base.png: the panel's drawing without the "
                   "details below, with the drive, steel belt, gunwale and bombs as the base model has them. The port is drawn at its place on the model.",
         "places": places, "parts": parts}, indent=1), encoding="utf-8")
+    # the start of the ship: the bare timber of layout b, a quarter larger round the middle of the ground so the sheet is less empty (last: the drawings above
+    # keep their random hatching)
+    sheet([f'<g transform="translate(560 {GROUND}) scale(1.25) translate(-560 -{GROUND})">' + "".join(planks("b")) + "</g>"]).save(OUT / "blueprint_planks.png", optimize=True)
     for f in sorted(OUT.glob("*.png")):
         print(f.name, f.stat().st_size)
 
