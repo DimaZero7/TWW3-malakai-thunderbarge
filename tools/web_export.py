@@ -46,7 +46,13 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/icon_cross.png", "ui/skins/default/icon_treasury.png", "ui/skins/default/icon_income.png", "ui/skins/default/icon_padlock.png",
            "ui/skins/default/icon_check.png", "ui/skins/default/icon_end_turn.png", "ui/skins/default/icon_hourglass.png",
            "ui/skins/default/icon_stat_ranged_damage.png", "ui/skins/default/icon_stat_reload_time.png",
-           "ui/skins/default/icon_stat_range.png", "ui/skins/default/icon_stat_ammo.png", PORTRAIT]
+           "ui/skins/default/icon_stat_range.png", "ui/skins/default/icon_stat_ammo.png", PORTRAIT,
+           # the building tree's slot (ui/templates/building_frame.twui.xml, square_building_button and its cost and turns banners)
+           "ui/skins/default/building_frame.png", "ui/skins/default/building_frame_plain.png", "ui/skins/default/building_frame_hover.png",
+           "ui/skins/default/building_frame_selected.png", "ui/skins/default/icon_check_green.png", "ui/skins/default/build_frame_cross.png",
+           "ui/skins/default/padlock.png", "ui/skins/default/icon_banner_bg.png", "ui/skins/default/red_text_banner_shadow.png",
+           "ui/skins/default/turns_banner_queued.png", "ui/skins/default/turns_banner.png", "ui/skins/default/1x1_transparent_white.png"]
+GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
 BASE = REPO / "build" / "solid_hull_hatches"

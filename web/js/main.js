@@ -99,6 +99,7 @@ async function main() {
             if (saved.selected && M.level(saved.selected)) panel.view.selected = saved.selected;
         }
     } catch (e) { /* a broken or missing save: start fresh */ }
+    if (flags.gold !== undefined) game.gold = Number(flags.gold);      // ?gold=500: start with this much, to see the short of gold state
     document.getElementById('build_to').addEventListener('click', () => {
         if (panel.view.selected && M.level(panel.view.selected)) { M.debug_build_to(panel.view.selected); log('отладка: построено до выбранной'); }
     });

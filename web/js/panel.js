@@ -231,41 +231,76 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
             line(ax, ay, ax, mid); line(ax, mid, bx, mid); line(bx, mid, bx, by);
         }
     }
+    // A node is the game's own building slot (ui/templates/building_frame.twui.xml, square_building_button): the parchment tile building_frame.png,
+    // the icon over it, a frame for built / selected / hover, the clock-wipe of construction, the turns banner, and under it the cost banner
+    // (building_cost: icon_banner_bg, icon_treasury, and red_text_banner_shadow behind when the gold is short).
+    const D = 'ui/skins/default/';
     view.tree = nodes.map((n, i) => {
-        const b = make(parent, TREE + i, 'button_plate');
-        size(b, NODE, NODE);
-        at(b, pos[n.key].x, pos[n.key].y);
+        const x = pos[n.key].x, y = pos[n.key].y;
+        const b = image(parent, TREE + i, D + 'building_frame.png', x, y, NODE, NODE);
+        b.SetInteractive(true);
         const v = {node: n, button: b};
-        // a piece of parchment under the icon: the mod's building icons are dark and do not read on the dark plate
-        v.back = image(b, 'back', WEB_ART + 'node_back.png', 9, 9, NODE - 18, NODE - 18);
-        v.icon = image(b, 'icon', n.icon || 'ui/skins/default/icon_check.png', 11, 11, NODE - 22, NODE - 22);
-        v.check = image(b, 'check', 'ui/skins/default/icon_check.png', NODE - 24, 2, 22, 22);
-        v.padlock = image(b, 'padlock', 'ui/skins/default/icon_padlock.png', NODE - 24, 2, 22, 22);
-        v.hourglass = image(b, 'hourglass', 'ui/skins/default/icon_hourglass.png', 4, NODE - 22, 18, 18);
-        v.turns = text(b, 'turns', 'text_line', 22, NODE - 23, NODE - 24, 20, '');
+        v.icon = image(b, 'icon', n.icon || D + 'icon_check.png', 0, 0, NODE, NODE);
+        v.plain = image(b, 'plain', D + 'building_frame_plain.png', 0, 0, NODE, NODE);
+        v.frameSelected = image(b, 'selected', D + 'building_frame_selected.png', 0, 0, NODE, NODE);
+        v.constructing = image(b, 'constructing', D + 'constructing_1.png', 6, 6, NODE - 12, NODE - 12);
+        v.constructing.SetImageColour(255, 255, 255, 0x64);
+        v.check = image(b, 'check', D + 'icon_check_green.png', NODE - 28, 2, 26, 23);
+        v.padlock = image(b, 'padlock', D + 'padlock.png', NODE - 24, 2, 20, 25);
+        const hover = image(b, 'hover', D + 'building_frame_hover.png', -NODE * 0.11, -NODE * 0.11, NODE * 1.22, NODE * 1.22);
+        b.SetHoverChild(hover);
+        v.turnsBanner = image(b, 'turns_banner', D + 'turns_banner_queued.png', -6, NODE - 16, NODE + 12, 20);
+        v.turns = text(b, 'turns', 'text_line', 20, NODE - 16, NODE - 14, 20, '');
+        // the cost under the slot
+        v.cost = image(parent, TREE + 'cost_' + i, D + 'icon_banner_bg.png', x - 2, y + NODE + 2, NODE + 4, 18);
+        v.costRed = image(v.cost, 'red', D + 'red_text_banner_shadow.png', 0, 0, NODE + 4, 18);
+        image(v.cost, 'coins', D + 'icon_treasury.png', 4, 1, 16, 16);
+        v.costText = text(v.cost, 'value', 'text_line', 22, -1, NODE - 22, 20, '');
         return v;
     });
+    // the construction's clock-wipe, frame by frame (constructing_1 .. 12), as the game animates it
+    view.wipe = 1;
+    setInterval(() => {
+        view.wipe = view.wipe % 12 + 1;
+        for (const v of view.tree || []) if (v.constructing.Visible()) v.constructing.SetImagePath(D + `constructing_${view.wipe}.png`, 0);
+    }, 120);
     view.selected = nodes.length ? nodes[0].key : null;
-    return height;
+    return height + 20;      // the cost banner under the lowest row
 }
 
 function nodeStatus(M, n) {
     return n.demo ? {state: 'demo'} : M.status(n.key);
 }
 
+// The states of the game's slot (square_building_button) as the page uses them:
+//   built     full colour, building_frame_plain, the green check;
+//   normal    can be ordered, or ordered: colour #FFFFFFB4 (a little see-through); the game also pulses it (glow_pulse_t0), not done here;
+//   greyed    needs an earlier building: greyscale and #FFFFFF80 (half see-through);
+//   short of gold: the slot as normal, the cost banner red (building_cost, state red). Which slot state the horde's tree takes then is to check in the game.
 function refreshTree(view, M) {
     for (const v of view.tree) {
         const st = nodeStatus(M, v.node);
-        const locked = st.state === 'locked' || st.state === 'unknown';
-        // a locked node stays clickable (its details tell why): grey icon and a padlock, not the plate's disabled state
-        v.button.SetState(view.selected === v.node.key ? 'selected' : 'active');
-        grey(v.icon, locked);
-        v.check.SetVisible(st.state === 'built');
-        v.padlock.SetVisible(locked);
-        v.hourglass.SetVisible(st.state === 'building');
-        v.turns.SetVisible(st.state === 'building');
-        v.turns.SetStateText(st.state === 'building' ? String(st.turns) : '');
-        const state = {built: 'построено', building: `строится, ${turnsText(st.turns || 0)}`, open: 'можно заказать', locked: st.why || 'недоступно', demo: 'пример, не из данных'}[st.state] || '';
+        const poor = st.state === 'locked' && st.poor;
+        const greyed = (st.state === 'locked' && !poor) || st.state === 'unknown';
+        const built = st.state === 'built', building = st.state === 'building';
+        if (built) v.button.SetImageColour(255, 255, 255, 255);
+        else if (greyed) v.button.SetImageColour(255, 255, 255, 0x80);
+        else v.button.SetImageColour(255, 255, 255, 0xB4);
+        v.button.ShaderTechniqueSet(greyed ? 'set_greyscale_t0' : 'normal_t0');
+        v.plain.SetVisible(built);
+        v.frameSelected.SetVisible(view.selected === v.node.key);
+        v.check.SetVisible(built);
+        v.padlock.SetVisible(greyed);
+        v.constructing.SetVisible(building);
+        v.turnsBanner.SetVisible(building);
+        v.turns.SetVisible(building);
+        v.turns.SetStateText(building ? String(st.turns) : '');
+        const row = !v.node.demo && M.level(v.node.key);
+        v.cost.SetVisible(!!row && !built && !building);
+        v.costRed.SetVisible(poor);
+        // the game's red state adds a dark shadow behind the number (red_text_banner_shadow.png); the red of the number itself is the page's guess, to check in the game
+        v.costText.SetStateText(row ? (poor ? `[[col:red]]${row.cost}[[/col]]` : String(row.cost)) : '');
+        const state = poor ? `не хватает золота: нужно ${row.cost}` : {built: 'построено', building: `строится, ${turnsText(st.turns || 0)}`, open: 'можно заказать', locked: st.why || 'недоступно', demo: 'пример, не из данных'}[st.state] || '';
         v.button.SetTooltipText(`${v.node.name}\n${state}`, true);
     }
 }
@@ -416,7 +451,8 @@ function refresh(view, M) {
     if (view.selMeta) {
         const s0 = M.status(sel.key);
         const state = {built: 'Построено', building: `Строится: осталось ${turnsText(s0.turns || 0)}`, open: 'Можно заказать', locked: s0.why || 'Недоступно'}[s0.state] || '';
-        view.selMeta.SetStateText(`Цена: ${sel.cost} золота · ${turnsText(sel.turns)} · ${state}`);
+        const price = s0.poor ? `[[col:red]]Цена: ${sel.cost} золота[[/col]]` : `Цена: ${sel.cost} золота`;
+        view.selMeta.SetStateText(`${price} · ${turnsText(sel.turns)} · ${state}`);
     }
     view.detail.SetStateText(firstPart(sel.text || (card && card.text)));
     at(view.lines, 14, y + 46);

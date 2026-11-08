@@ -741,6 +741,9 @@
   },
   "airship_hull_2": {
    "cost": 1500
+  },
+  "airship_hull_1": {
+   "cost": 750
   }
  },
  "building_set": {
