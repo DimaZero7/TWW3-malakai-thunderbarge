@@ -369,6 +369,218 @@ def at_port(items):
     return [f'<g transform="translate({dx:.1f} {dy:.1f})">{"".join(items)}</g>']
 
 
+# ---------------- the hull's first level: «Заготовка под корабль», timber laid out on the ground, no ship yet ----------------
+# As a dwarf yard would have it: the ground, cross-timbers (dunnage) keeping the wood off the earth, a long stack of planks bound with rope, a short stack
+# of boards, the keel beam on top with its frame mortises marked, three curved frames leaning on the short stack, a mallet and a saw. Same pen as the ship.
+GROUND = 610
+RNG_GRAIN = __import__("random").Random(2611)
+
+
+def plank(x0, x1, y, h=8, grain=2):
+    """A plank seen from the side: the body, grain along it, the end grain at both ends."""
+    out = [art.shape(art.poly([(x0, y - h), (x1, y - h), (x1, y), (x0, y)], True), "#fff1dc"), art.path(art.poly([(x0, y - h), (x1, y - h), (x1, y), (x0, y)], True), 1.3)]
+    for k in range(grain):
+        gy = y - h * (k + 1) / (grain + 1)
+        a = x0 + 6 + RNG_GRAIN.uniform(0, 30)
+        while a < x1 - 20:
+            b = min(x1 - 6, a + RNG_GRAIN.uniform(40, 110))
+            out.append(art.path(f"M{a:.1f} {gy + RNG_GRAIN.uniform(-0.6, 0.6):.1f} L{b:.1f} {gy + RNG_GRAIN.uniform(-0.6, 0.6):.1f}", 0.55, art.INK, op=0.7))
+            a = b + RNG_GRAIN.uniform(14, 40)
+    for x in (x0, x1):
+        out.append(art.path(f"M{x:.1f} {y - h + 2:.1f} Q {x + (2 if x == x0 else -2):.1f} {y - h / 2:.1f} {x:.1f} {y - 2:.1f}", 0.6, art.INK, op=0.7))
+    return out
+
+
+def rope_band(x, y0, y1):
+    return [art.path(f"M{x - 2} {y0:.1f} L{x - 2} {y1:.1f} M{x + 2} {y0:.1f} L{x + 2} {y1:.1f}", 1.0)] + \
+        [art.path(f"M{x - 2} {y + 2.5:.1f} L{x + 2} {y:.1f}", 0.7) for y in range(int(y0) + 2, int(y1) - 1, 3)]
+
+
+def planks(layout="a"):
+    """layout a: the long stack with the keel on top, curved frames leaning on the boards; b: the keel on its own blocks on the ground, the planks in
+    two low stacks, the frame timbers still straight in a bundle; c: one tall stack crosswise-stickered, the keel beside it."""
+    RNG_GRAIN.seed(2611)
+    if layout == "b":
+        return planks_b()
+    if layout == "c":
+        return planks_c()
+    out = []
+    # the ground and the earth under it
+    out.append(art.path(f"M236 {GROUND} L884 {GROUND}", 1.8))
+    out.append(art.hatch([(240, GROUND), (880, GROUND), (868, GROUND + 18), (252, GROUND + 18)], 25, 5.5, 0.7, art.INK_SOFT, 0.55))
+    for x in range(262, 870, 37):
+        out.append(art.dot(x + RNG_GRAIN.uniform(-8, 8), GROUND + RNG_GRAIN.uniform(4, 14), RNG_GRAIN.uniform(0.8, 1.8), art.INK_SOFT, 0.7))
+    # cross-timbers under the stacks, seen end on
+    for x in (318, 505, 700, 790):
+        out += [art.shape(art.poly([(x - 8, GROUND - 12), (x + 8, GROUND - 12), (x + 8, GROUND), (x - 8, GROUND)], True), "#e8c692"),
+                art.path(art.poly([(x - 8, GROUND - 12), (x + 8, GROUND - 12), (x + 8, GROUND), (x - 8, GROUND)], True), 1.3),
+                art.circle(x, GROUND - 6, 3.2, 0.6, art.INK, op=0.7), art.circle(x, GROUND - 6, 1.4, 0.5, art.INK, op=0.7)]
+    # the long stack: six planks, a little uneven, two rope bands
+    y = GROUND - 12
+    for i in range(6):
+        out += plank(292 + RNG_GRAIN.uniform(-10, 10), 724 + RNG_GRAIN.uniform(-12, 8), y)
+        y -= 8
+    top_long = y
+    out += rope_band(362, top_long, GROUND - 12) + rope_band(652, top_long, GROUND - 12)
+    out.append(art.hatch([(292, GROUND - 12 - 18), (724, GROUND - 12 - 18), (724, GROUND - 12), (292, GROUND - 12)], 60, 4.5, 0.6, art.INK_SOFT, 0.45))
+    # the keel beam on top
+    out += keel(296, 712, top_long, 13)
+    # the short stack of boards
+    y = GROUND - 12
+    for i in range(4):
+        out += plank(742 + RNG_GRAIN.uniform(-6, 6), 846 + RNG_GRAIN.uniform(-6, 4), y, 7, 1)
+        y -= 7
+    top_short = y
+    # three curved frames leaning against it
+    for i, dx in enumerate((0, 16, 32)):
+        x0 = 744 + dx
+        frame = f"M{x0} {top_short:.1f} C {x0 + 4} {top_short - 40:.1f} {x0 + 24} {top_short - 74:.1f} {x0 + 58} {top_short - 92:.1f}"
+        out += [art.path(frame, 6.2, art.INK), art.path(frame, 3.8, "#e8c692")]
+    # a mallet leaning on the long stack and a saw on the boards
+    out += [art.path(f"M732 {GROUND - 1} L748 {GROUND - 58}", 3.2), art.path(f"M732 {GROUND - 1} L748 {GROUND - 58}", 1.4, "#e8c692"),
+            art.shape(art.poly([(738, GROUND - 70), (760, GROUND - 64), (756, GROUND - 50), (734, GROUND - 56)], True), "#e8c692"),
+            art.path(art.poly([(738, GROUND - 70), (760, GROUND - 64), (756, GROUND - 50), (734, GROUND - 56)], True), 1.4)]
+    sy = top_short
+    saw = [(770, sy), (838, sy - 6), (838, sy - 1), (772, sy + 4)]
+    out += [art.shape(art.poly(saw, True), "#d9d2c4"), art.path(art.poly(saw, True), 1.2)]
+    for x in range(774, 836, 4):
+        out.append(art.path(f"M{x} {sy + 3.6 - (x - 772) * 0.075:.1f} L{x + 2} {sy + 5.6 - (x - 772) * 0.075:.1f}", 0.6))
+    out += [art.shape(art.poly([(838, sy - 8), (852, sy - 10), (852, sy + 1), (838, sy + 1)], True), "#a87240"), art.path(art.poly([(838, sy - 8), (852, sy - 10), (852, sy + 1), (838, sy + 1)], True), 1.2)]
+    return out
+
+
+def ground():
+    out = [art.path(f"M236 {GROUND} L884 {GROUND}", 1.8),
+           art.hatch([(240, GROUND), (880, GROUND), (868, GROUND + 18), (252, GROUND + 18)], 25, 5.5, 0.7, art.INK_SOFT, 0.55)]
+    for x in range(262, 870, 37):
+        out.append(art.dot(x + RNG_GRAIN.uniform(-8, 8), GROUND + RNG_GRAIN.uniform(4, 14), RNG_GRAIN.uniform(0.8, 1.8), art.INK_SOFT, 0.7))
+    return out
+
+
+def block(x, y, w=16, h=12):
+    """A timber seen end on: the square and its year rings."""
+    return [art.shape(art.poly([(x - w / 2, y - h), (x + w / 2, y - h), (x + w / 2, y), (x - w / 2, y)], True), "#e8c692"),
+            art.path(art.poly([(x - w / 2, y - h), (x + w / 2, y - h), (x + w / 2, y), (x - w / 2, y)], True), 1.3),
+            art.circle(x, y - h / 2, min(w, h) * 0.27, 0.6, art.INK, op=0.7), art.circle(x, y - h / 2, min(w, h) * 0.11, 0.5, art.INK, op=0.7)]
+
+
+def keel(k0, k1, y, kh=13):
+    """The keel beam lying flat: heavy, its fore end (to the left, where the drawing's bow is) cut to a point, the mortises of the frames marked along it,
+    runes at its after end."""
+    body = [(k0, y - kh / 2), (k0 + 8, y - kh), (k1, y - kh), (k1, y), (k0 + 8, y)]
+    out = [art.shape(art.poly(body, True), "#e8c692"), art.path(art.poly(body, True), 1.6)]
+    for x in range(int(k0) + 34, int(k1) - 14, 36):
+        out.append(art.path(f"M{x} {y - kh:.1f} L{x} {y - kh + 5:.1f} L{x + 6} {y - kh + 5:.1f} L{x + 6} {y - kh:.1f}", 1.0))
+    r = k1 - 22
+    out.append(art.path(f"M{r} {y - 10:.1f} L{r} {y - 2:.1f} M{r - 3} {y - 7:.1f} L{r + 3} {y - 7:.1f} M{r + 7} {y - 10:.1f} L{r + 10} {y - 4:.1f} L{r + 7} {y - 2:.1f}", 0.9))
+    return out
+
+
+def tools(mx_, sy):
+    """A mallet leaning at mx_ and a saw lying at sy on the short stack."""
+    out = [art.path(f"M{mx_} {GROUND - 1} L{mx_ + 16} {GROUND - 58}", 3.2), art.path(f"M{mx_} {GROUND - 1} L{mx_ + 16} {GROUND - 58}", 1.4, "#e8c692")]
+    head = [(mx_ + 6, GROUND - 70), (mx_ + 28, GROUND - 64), (mx_ + 24, GROUND - 50), (mx_ + 2, GROUND - 56)]
+    out += [art.shape(art.poly(head, True), "#e8c692"), art.path(art.poly(head, True), 1.4)]
+    saw = [(770, sy), (838, sy - 6), (838, sy - 1), (772, sy + 4)]
+    out += [art.shape(art.poly(saw, True), "#d9d2c4"), art.path(art.poly(saw, True), 1.2)]
+    for x in range(774, 836, 4):
+        out.append(art.path(f"M{x} {sy + 3.6 - (x - 772) * 0.075:.1f} L{x + 2} {sy + 5.6 - (x - 772) * 0.075:.1f}", 0.6))
+    grip = [(838, sy - 8), (852, sy - 10), (852, sy + 1), (838, sy + 1)]
+    out += [art.shape(art.poly(grip, True), "#a87240"), art.path(art.poly(grip, True), 1.2)]
+    return out
+
+
+def planks_b():
+    """The keel on its blocks where the ship will stand, the planks in two low stacks beside it, the frame timbers straight in a bundle: the yard ready to lay
+    the frame on the keel."""
+    out = ground()
+    # the keel on three blocks, along the ship's own length (x 290..740)
+    for x in (318, 520, 716):
+        out += block(x, GROUND, 18, 30)
+    out += keel(290, 740, GROUND - 30, 14)
+    # the planks: two low stacks in front, on the ground
+    y = GROUND
+    for i in range(3):
+        out += plank(300 + RNG_GRAIN.uniform(-6, 6), 500 + RNG_GRAIN.uniform(-6, 6), y + 0.0, 7, 1)
+        y -= 7
+    y = GROUND
+    for i in range(3):
+        out += plank(540 + RNG_GRAIN.uniform(-6, 6), 730 + RNG_GRAIN.uniform(-6, 6), y, 7, 1)
+        y -= 7
+    out += rope_band(400, GROUND - 21, GROUND) + rope_band(635, GROUND - 21, GROUND)
+    # the frame timbers: a bundle of straight pieces leaning on two trestles at the stern end
+    for x in (772, 842):
+        out += [art.path(f"M{x - 12} {GROUND} L{x} {GROUND - 40} L{x + 12} {GROUND}", 2.2), art.path(f"M{x - 8} {GROUND - 26} L{x + 8} {GROUND - 26}", 1.2)]
+    for i in range(5):
+        y = GROUND - 42 - i * 6
+        out += plank(752 + i * 2, 864 - i * 2, y, 6, 1)
+    out += rope_band(808, GROUND - 72, GROUND - 42)
+    return out
+
+
+def planks_c():
+    """One tall stack laid with sticks between the layers so the wood dries, the keel on blocks beside it, a short stack of boards and the tools."""
+    out = ground()
+    y = GROUND
+    for layer_ in range(5):
+        for x in (330, 470, 610):
+            out += block(x, y, 10, 6)
+        y -= 6
+        for k in range(2):
+            out += plank(306 + RNG_GRAIN.uniform(-8, 8), 640 + RNG_GRAIN.uniform(-10, 6), y, 8, 1)
+            y -= 8
+    for x in (680, 840):
+        out += block(x, GROUND, 18, 16)
+    out += keel(664, 852, GROUND - 16, 14)
+    y = GROUND - 30
+    for i in range(3):
+        out += plank(700 + RNG_GRAIN.uniform(-5, 5), 830 + RNG_GRAIN.uniform(-5, 5), y, 7, 1)
+        y -= 7
+    out += tools(648, y)
+    return out
+
+
+def ship_items():
+    """Every ink item of the base barge's drawing, for a pencil ghost of it."""
+    hull_pre, hull_post, _, _ = hull_split()
+    rear, _ = rear_split()
+    return art.balloon_placed() + art.rigging() + hull_pre + belt() + trim() + bombs() + hull_post + rear[:gear_start(rear)] + drive() + art.malakai()
+
+
+def ghost_of(items, op=0.42):
+    """The ship as a faint construction drawing: pencil lines only, no fills, no hatching."""
+    import re
+    text = "".join(i for i in items if "clip-path" not in i)
+    text = re.sub(r'stroke="#[0-9a-fA-F]{6}"', f'stroke="{PENCIL}"', text)
+    text = re.sub(r'fill="#[0-9a-fA-F]{6}"', 'fill="none"', text)
+    text = re.sub(r'stroke-width="([0-9.]+)"', lambda m: f'stroke-width="{min(1.0, max(0.5, float(m.group(1)) * 0.55)):.2f}"', text)
+    return [f'<g opacity="{op}">{text}</g>']
+
+
+def hull_outline_area():
+    """The ship's hull and balloon as polygons, for the hatching of the hull while it is built."""
+    balloon = [(x, 26 + 0.92 * (168 - art.balloon_half(x))) for x in range(128, 933, 12)] + [(x, 26 + 0.92 * (168 + art.balloon_half(x))) for x in range(932, 127, -12)]
+    return [art.hull_outline(), balloon]
+
+
+def sheet(drawing_items):
+    """A drawing of the panel: parchment, the faint notes, these items in ink (as crew_ui_art.blueprint())."""
+    import numpy as np
+    from PIL import Image
+    w, h = round(art.DRAW_W * art.SCALE), round(art.DRAW_H * art.SCALE)
+    sketch = art.paint("web_sketch", art.svg_page(art.sketches(), "#ffffff"), w, h)
+    drawing = art.paint("web_drawing", art.svg_page(drawing_items, "#ffffff"), w, h)
+    paper = art.parchment(w, h)
+    ink_a = np.asarray(sketch.convert("RGB"), float) / 255
+    ink_b = np.asarray(drawing.convert("RGB"), float) / 255
+    rng = np.random.default_rng(99)
+    patchy = np.clip(0.90 + 0.09 * art.noise((h, w), 1.3, rng) + 0.05 * art.noise((h, w), 20, rng), 0.55, 1.0)[..., None]
+    out = paper * ink_a
+    white = ink_b >= 0.985
+    out = out * np.where(white, 1.0, 1 - (1 - ink_b) * patchy)
+    return Image.fromarray(out.clip(0, 255).astype("uint8"), "RGB")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     hull_pre, hull_post, shields, porthole = hull_split()
