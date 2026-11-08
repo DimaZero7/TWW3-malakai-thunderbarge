@@ -94,15 +94,16 @@ export class Component {
     CurrentState() { return this.state; }
     ShaderTechniqueSet(name) {      // the game's greyscale shader
         this.greyFilter = name === 'set_greyscale_t0' ? 'grayscale(1)' : '';
-        this.el.style.filter = [this.colourFilter, this.greyFilter].filter(Boolean).join(' ');
+        this.paintFilter();
     }
+    paintFilter() { this.el.style.filter = [this.colourFilter, this.greyFilter, this.hoverFilter].filter(Boolean).join(' '); }
     SetDisabled(on) { this.SetState(on ? 'inactive' : 'active'); }
     // The colour of a state's image (the twui's image colour, RGBA): the RGB darkens it as the game's multiply does, the alpha is its opacity.
     SetImageColour(r, g, b, a) {
         this.el.style.opacity = String(a / 255);
         const k = Math.min(r, g, b) / 255;
         this.colourFilter = k < 1 ? `brightness(${k.toFixed(2)})` : '';
-        this.el.style.filter = [this.colourFilter, this.greyFilter].filter(Boolean).join(' ');
+        this.paintFilter();
     }
     // An image or text that takes the mouse, as an interactive state of the game: a click goes where a button's would (ComponentLClickUp)
     SetInteractive(on) {
@@ -112,7 +113,9 @@ export class Component {
         }
     }
     // A child shown while the mouse is over this component (the hover state's extra picture)
-    SetHoverChild(child) { this.hoverChild = child; child.SetVisible(false); }
+    SetHoverChild(child) { this.hoverChild = child; child.SetVisible(!!this.hovered); }
+    // the hover state's brighten_t0 shader (0.40 on the slot): brightness raised while the mouse is over
+    SetHoverBrighten(k) { this.hoverBrighten = k; }
 
     // ---- inside ----
     makeText(spec) {
@@ -149,13 +152,17 @@ export class Component {
     }
     onEnter(e) {
         if (this.skin && ON_ENTER[this.state]) this.SetState(ON_ENTER[this.state]);
+        this.hovered = true;
         if (this.hoverChild) this.hoverChild.SetVisible(true);
+        if (this.hoverBrighten) { this.hoverFilter = `brightness(${1 + this.hoverBrighten})`; this.paintFilter(); }
         if (this.tooltip) { tooltipOwner = this; showTooltip(this.tooltip, e); }
     }
     onMove(e) { if (tooltipOwner === this) moveTooltip(e); }
     onLeave() {
         if (this.skin && ON_LEAVE[this.state]) this.SetState(ON_LEAVE[this.state]);
+        this.hovered = false;
         if (this.hoverChild) this.hoverChild.SetVisible(false);
+        if (this.hoverBrighten) { this.hoverFilter = ''; this.paintFilter(); }
         if (tooltipOwner === this) { tooltipOwner = null; hideTooltip(); }
     }
 }

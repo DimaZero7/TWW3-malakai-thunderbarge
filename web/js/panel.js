@@ -247,8 +247,13 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         v.constructing.SetImageColour(255, 255, 255, 0x64);
         v.check = image(b, 'check', D + 'icon_check_green.png', NODE - 28, 2, 26, 23);
         v.padlock = image(b, 'padlock', D + 'padlock.png', NODE - 24, 2, 20, 25);
-        const hover = image(b, 'hover', D + 'building_frame_hover.png', -NODE * 0.11, -NODE * 0.11, NODE * 1.22, NODE * 1.22);
-        b.SetHoverChild(hover);
+        // hover as the template: an unselected slot gets building_frame_hover (the default skin's, red; the dwarfs have no skin of their own for it)
+        // over it, 90 px against the slot's 74, and brighten 0.40; the selected slot gets building_frame_selected_hover instead (refreshTree swaps them)
+        v.hover = image(b, 'hover', D + 'building_frame_hover.png', -NODE * 8 / 74, -NODE * 8 / 74, NODE * 90 / 74, NODE * 90 / 74);
+        v.hoverSelected = image(b, 'hover_selected', D + 'building_frame_selected_hover.png', 0, 0, NODE, NODE);
+        v.hoverSelected.SetVisible(false);
+        b.SetHoverChild(v.hover);
+        b.SetHoverBrighten(0.4);
         v.turnsBanner = image(b, 'turns_banner', D + 'turns_banner_queued.png', -6, NODE - 16, NODE + 12, 20);
         v.turns = text(b, 'turns', 'text_line', 20, NODE - 16, NODE - 14, 20, '');
         // the cost under the slot
@@ -287,8 +292,13 @@ function refreshTree(view, M) {
         else if (greyed) v.button.SetImageColour(255, 255, 255, 0x80);
         else v.button.SetImageColour(255, 255, 255, 0xB4);
         v.button.ShaderTechniqueSet(greyed ? 'set_greyscale_t0' : 'normal_t0');
-        v.plain.SetVisible(built);
-        v.frameSelected.SetVisible(view.selected === v.node.key);
+        // selected: building_frame_selected (orange) in place of the built frame, as the template's selected state; the green check is kept here
+        // (the template's selected state has none: in the game's horde tree nothing stays selected, a click orders)
+        const selected = view.selected === v.node.key;
+        v.frameSelected.SetVisible(selected);
+        v.plain.SetVisible(built && !selected);
+        v.hover.SetVisible(false); v.hoverSelected.SetVisible(false);
+        v.button.SetHoverChild(selected ? v.hoverSelected : v.hover);
         v.check.SetVisible(built);
         v.padlock.SetVisible(greyed);
         v.constructing.SetVisible(building);

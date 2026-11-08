@@ -49,7 +49,7 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/icon_stat_range.png", "ui/skins/default/icon_stat_ammo.png", PORTRAIT,
            # the building tree's slot (ui/templates/building_frame.twui.xml, square_building_button and its cost and turns banners)
            "ui/skins/default/building_frame.png", "ui/skins/default/building_frame_plain.png", "ui/skins/default/building_frame_hover.png",
-           "ui/skins/default/building_frame_selected.png", "ui/skins/default/icon_check_green.png", "ui/skins/default/build_frame_cross.png",
+           "ui/skins/default/building_frame_selected.png", "ui/skins/default/building_frame_selected_hover.png", "ui/skins/default/icon_check_green.png", "ui/skins/default/build_frame_cross.png",
            "ui/skins/default/padlock.png", "ui/skins/default/icon_banner_bg.png", "ui/skins/default/red_text_banner_shadow.png",
            "ui/skins/default/turns_banner_queued.png", "ui/skins/default/turns_banner.png", "ui/skins/default/1x1_transparent_white.png"]
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
