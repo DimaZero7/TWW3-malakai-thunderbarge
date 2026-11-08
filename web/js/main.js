@@ -19,12 +19,17 @@ async function json(url) {
 }
 
 async function main() {
-    const [data, sim, art, blueprint] = await Promise.all([json('/build/data.json'), json('/data/sim.json'), json('/art/layers.json'), json('/data/blueprint.json')]);
-    const game = new GameSim(data, sim);
-    // ?stage=barge (or another name of blueprint.json, stages): what is shown; the stage's own fields over the common ones. A stage without parts has none of them.
+    const [data, sim, art, blueprint, overview] = await Promise.all([json('/build/data.json'), json('/data/sim.json'), json('/art/layers.json'), json('/data/blueprint.json'),
+                                                                     json('/build/overview.json').catch(() => ({chains: []}))]);
+    // ?stage=barge (or another name of blueprint.json, stages): what is shown; the stage's own fields over the common ones. parts: true the common ones,
+    // false none, an object its own. built: what stands at the start of the stage, over web/data/sim.json.
     const stageName = flags.stage || blueprint.stage;
     const stage = blueprint.stages[stageName];
-    Object.assign(blueprint, stage, {parts: stage.parts ? blueprint.parts : {}});
+    Object.assign(blueprint, stage, {parts: stage.parts === true ? blueprint.parts : stage.parts || {}});
+    const game = new GameSim(data, stage.built ? {...sim, built: stage.built} : sim);
+    // the cards of the overview (tools/web_export.py, export_overview) by key: every effect of a level with the game's text, the description, the game's name
+    const cards = {};
+    for (const chain of overview.chains) for (const c of chain.cards) cards[c.key] = c;
     const M = makeBuildings(data, game, blueprint.parts);
     flags.all_parts = flags.parts === 'all';
     M.all_parts = flags.all_parts;
@@ -32,14 +37,14 @@ async function main() {
     const host = document.getElementById('screen');
     const root = makeRoot(host);
     setTooltipRoot(root);
-    const panel = makePanel(root, M, data, art, blueprint, flags);
+    const panel = makePanel(root, M, data, art, blueprint, flags, cards);
     onClick(c => panel.click(c));
 
     const viewer = new Viewer(document.getElementById('view3d'));
     // the base barge (build/solid_hull_hatches without the shields) and each detail as a model of its own; ?hull=stock shows the stock hull instead
     const hull = !stage.model ? null : flags.hull === 'stock' ? 'hull_stock' : 'hull_base';
     if (hull) viewer.show(hull);
-    const parts = Object.entries(blueprint.parts);
+    const parts = Object.entries(blueprint.parts).filter(([, spec]) => spec.model);     // the frame has a drawing only
     const setParts = () => {
         for (const [key, spec] of parts) viewer.setPart(spec.model.part, hull === 'hull_base' && M.stage(key) === 'ink', spec.model.hides);
     };
@@ -60,6 +65,12 @@ async function main() {
         panel.refresh();
         turnEl.textContent = `Ход ${game.turn}`;
         setParts();
+        if (!hull) {        // no ship yet: the timber, or the frame as a scheme (no model of it exists)
+            const frame = stage.frame_scheme && M.stage(stage.sheet_part) === 'ink';
+            viewer.showFrameScheme(frame);
+            noShip.textContent = frame ? 'Каркас: 3D-модели пока нет, это схема из киля и рёбер' : stage.no_ship || '';
+            noShip.classList.toggle('top', frame);
+        }
         const built = parts.filter(([key]) => M.stage(key) === 'ink').map(([, spec]) => spec.name);
         hullEl.textContent = !hull ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ': ' + built.join(', ') : '');
     };

@@ -17,7 +17,7 @@ function image(parent, id, path, x, y, w, h) { const c = make(parent, id, 'image
 function text(parent, id, layout, x, y, w, h, value) { const c = make(parent, id, layout); size(c, w, h); at(c, x, y); c.SetStateText(value || ''); return c; }
 function grey(c, on) { c.ShaderTechniqueSet(on ? 'set_greyscale_t0' : 'normal_t0', true); }
 
-export function makePanel(root, M, data, art, blueprint, flags) {
+export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     const view = {rows: [], layers: {}, selected: null};
     const W = root.Width(), H = root.Height();
     const panel_w = Math.min(W - 40, 1560), panel_h = Math.min(H - 30, 870);
@@ -49,6 +49,9 @@ export function makePanel(root, M, data, art, blueprint, flags) {
     // the drawing and its layers: pencil, hatching, ink per part, all created, one visible (SetVisible), as the panel's mount_ and occ_ layers
     const sx = pad, sy = top;
     const sheet = image(frame, 'scheme', LAYOUTS + blueprint.sheet + '.png', sx, sy, scheme_w, scheme_h);
+    view.sheet = sheet;
+    view.sheets = blueprint.sheets ? {sheets: blueprint.sheets, part: blueprint.sheet_part} : null;     // the whole drawing changes with this part's stage
+    view.cards = cards;
     const place = (name) => art.places[name] || data.art.layers[name];
     // a layer of the panel's own art (data/crew_ui_art.json: mount_cannons, mount_bombs) or of tools/web_art.py
     const layerPath = (name) => (data.art.layers[name] ? LAYOUTS : WEB_ART) + name + '.png';
@@ -89,7 +92,8 @@ export function makePanel(root, M, data, art, blueprint, flags) {
     view.order = makeButton(column, ORDER, 14, buttons_y, button_w, button_h, 'Заказать');
     view.cancel = makeButton(column, CANCEL, 14 + button_w + 10, buttons_y, button_w, button_h, 'Отменить');
     view.demolish = makeButton(column, DEMOLISH, 14, buttons_y - button_h - 8, button_w, button_h, 'Снести');
-    view.demolish.button.SetVisible(!!flags.full);
+    view.demolish.button.SetVisible(!!(flags.full || blueprint.demolish));
+    view.demolish.button.SetTooltipText('Снести постройку. Золото не возвращается: возврата при сносе в данных нет (допущение). В игре корпус снести нельзя, здесь можно для проверки', true);
     view.message = text(column, 'message', 'text_copper', 14, scheme_h - foot_h - 26, column_w - 28, 22, '');
     text(column, 'foot', 'text_note', 14, scheme_h - foot_h + 2, column_w - 28, foot_h - 6,
         'Постройка идёт через очередь игры: цена списывается при заказе, отмена в том же ходу возвращает всё. Готовая часть встаёт на модель и на чертёж в начале хода.');
@@ -141,21 +145,31 @@ function makeRow(parent, i, x, y, w, h) {
     return view;
 }
 
-function tooltip(row, status) {
+// The green lines of a level: every effect with the game's text (the overview's card) when there is one, the mod's own lines otherwise.
+function effectLines(row, card) {
+    if (!card) return row.lines;
+    return card.effects.filter(e => !e.hidden).map(e => (e.text || `${e.effect} = ${e.value}`) + (e.off ? ' (выключено модом)' : ''));
+}
+
+function tooltip(row, status, card) {
     const lines = [`[[col:yellow]]${row.name}[[/col]]`];
-    if (row.text) lines.push(row.text);
+    if (card && card.game_name && card.game_name !== row.name) lines.push(`В игре: «${card.game_name}». Название — мода`);
+    const text = row.text || (card && card.text);
+    if (text) lines.push(text);
     lines.push(`Цена: ${row.cost} золота, срок: ${turnsText(row.turns)}`);
-    for (const l of row.lines) lines.push(`[[col:green]]${l}[[/col]]`);
+    for (const l of effectLines(row, card)) lines.push(`[[col:green]]${l}[[/col]]`);
     if (status.why) lines.push(status.why);
     return lines.join('\n');
 }
 
 function refresh(view, M) {
     view.gold.SetStateText(String(M.game.treasury()));
+    if (view.sheets) view.sheet.SetImagePath(LAYOUTS + view.sheets.sheets[M.stage(view.sheets.part)] + '.png', 0);
     for (const [part, layers] of Object.entries(view.layers)) {
         const stage = M.stage(part);
         for (const s of ['pencil', 'build', 'ink']) if (layers[s]) layers[s].SetVisible(s === stage);
         const st = stage === 'build' ? M.status(M.prefix + M.parts[part].building) : {};
+        if (stage === 'build' && !layers.build) layers.turns.SetVisible(false);
         layers.turns.SetVisible(stage === 'build');
         layers.turns.SetStateText(st.state === 'building' ? turnsText(st.turns) : '');
     }
@@ -179,7 +193,7 @@ function refresh(view, M) {
         const note = st.state === 'built' ? 'Построено' : st.state === 'building' ? `Строится: осталось ${turnsText(st.turns)}` : st.state === 'open' ? 'Можно заказать' : '';
         r.note.SetVisible(!locked); r.note_grey.SetVisible(locked);
         r.note.SetStateText(note); r.note_grey.SetStateText(st.why || '');
-        r.button.SetTooltipText(tooltip(row, st), true);
+        r.button.SetTooltipText(tooltip(row, st, view.cards[row.key]), true);
         r.row = row;
     });
     // details under the rows; none while the stage has no buildings
@@ -192,9 +206,10 @@ function refresh(view, M) {
     }
     const y = view.detail_top + rowsShown * 96 + 8;
     at(view.detail, 14, y);
-    view.detail.SetStateText(sel.text);
+    const card = view.cards[sel.key];
+    view.detail.SetStateText(sel.text || (card && card.text) || '');
     at(view.lines, 14, y + 46);
-    view.lines.SetStateText(sel.lines.join('\n'));
+    view.lines.SetStateText(effectLines(sel, card).join('\n'));
     const st = M.status(sel.key);
     view.order.button.SetState(st.state === 'open' ? 'active' : 'inactive');
     view.order.button.SetTooltipText(st.state === 'open' ? `Заказать «${sel.name}»: ${sel.cost} золота, ${turnsText(sel.turns)}` : (st.why || (st.state === 'building' ? 'Уже строится' : 'Уже построено')), true);

@@ -136,6 +136,7 @@ def export_data():
         short = row["level_name"].removeprefix(prefix)
         icon = crew_buildings.icon_of(short, drawn)
         return {"key": row["level_name"], "short": short, "chain": row["chain"], "level": row["level"], "name": name_of(row["level_name"]),
+                "game_name": names.get(f"building_culture_variants_name_{row['level_name']}"),      # the game's own name, when the mod renames it
                 "text": loc.get(f"building_short_description_texts_short_description_{row['level_name']}", ""),
                 "cost": row["create_cost"], "turns": row["create_time"], "dev": row["development_point_cost"],
                 "tier": row["primary_slot_building_building_level_requirement"] + 1,
@@ -526,6 +527,7 @@ def export_overview():
             need = list(required.get(key, []))
             below = next((x for x in levels if x["level"] == r["level"] - 1), None)
             card = {"key": key, "short": key.removeprefix(prefix), "level": r["level"], "name": name_of(key), "icon": icon_url,
+                    "game_name": names.get(f"building_culture_variants_name_{key}"),
                     "text": loc.get(f"building_short_description_texts_short_description_{key}") or descriptions.get(f"building_short_description_texts_short_description_{v.get('short_description', key)}"),
                     "tier": r["primary_slot_building_building_level_requirement"] + 1 if chain != hull_chain else r["level"] + 1,
                     "hull_needed": hull_names.get(r["primary_slot_building_building_level_requirement"] + 1) if chain != hull_chain else None,

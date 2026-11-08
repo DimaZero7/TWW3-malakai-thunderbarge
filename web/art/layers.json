@@ -66,6 +66,12 @@
    311.25,
    94.38,
    318.12
+  ],
+  "frame_build": [
+   239.38,
+   371.25,
+   756.88,
+   241.88
   ]
  },
  "parts": {
@@ -88,6 +94,11 @@
    "pencil": "stern_armour_pencil",
    "build": "stern_armour_build",
    "ink": "stern_armour_ink"
+  },
+  "frame": {
+   "pencil": null,
+   "build": "frame_build",
+   "ink": null
   }
  }
 }

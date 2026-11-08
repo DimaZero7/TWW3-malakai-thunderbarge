@@ -540,6 +540,103 @@ def planks_c():
     return out
 
 
+# ---------------- the hull's first level built: the frame on the slip ----------------
+# The timber of layout b goes up: the keel lies on its blocks along the ship's whole length, the stem and stern posts stand at its ends, the frames (ribs)
+# stand on it across the hull, a batten runs along their heads, the lowest strakes of planking close the bottom; what is left of the planks lies in a stack
+# on the ground and on the trestles. No balloon, no machinery. Drawn in the ship's own places (hull_top/hull_bottom of tools/crew_ui_art.py), raised so that
+# the keel lies on blocks above the ground, so that the barge later rises out of the same lines.
+FRAME_DY = -18          # the keel's bottom from the drawn ship's 598 to 580, on blocks standing on the ground at 610
+
+
+def ftop(x):
+    return art.hull_top(x) + FRAME_DY
+
+
+def fbottom(x):
+    return art.hull_bottom(x) + FRAME_DY
+
+
+def frame_outline():
+    return [(x, y + FRAME_DY) for x, y in art.hull_outline()]
+
+
+def frame_items(variant="a"):
+    out = []
+    # blocks under the keel, from the ground up to the hull's bottom
+    for x in (330, 450, 580, 710, 800):
+        h = GROUND - fbottom(x)
+        out += block(x, GROUND, 18, h)
+    xs = list(range(262, 852, 6))
+    # the lowest strakes: planking from the keel up a third of the side, seams along it, shaded
+    k = 0.30
+    strake_top = [(x, fbottom(x) - (fbottom(x) - ftop(x)) * k) for x in xs]
+    bottom = [(x, fbottom(x)) for x in xs]
+    out += [art.shape(art.poly(strake_top + bottom[::-1], True), "#fff1dc"), art.path(art.poly(strake_top + bottom[::-1], True), 1.4)]
+    for f in (1 / 3, 2 / 3):
+        seam = [(x, fbottom(x) - (fbottom(x) - ftop(x)) * k * f) for x in xs[::3]]
+        out.append(art.path(art.smooth(seam), 0.8, art.INK, op=0.8))
+    out.append(art.hatch(strake_top[::4] + bottom[::-4], 52, 5.2, 0.8, art.INK_SOFT, 0.55))
+    # the frames: one every 26 across the hull, from the strakes up to the sheer; heavier every third
+    step = 26
+    for i, x in enumerate(range(272, 852, step)):
+        y0 = fbottom(x) - (fbottom(x) - ftop(x)) * k
+        y1 = ftop(x)
+        w = 4.5 if i % 3 == 0 else 3.2
+        if variant == "b":       # a frame is a U across the ship: seen from the side, its near arm, bowed a little outward at the turn of the bilge
+            d = f"M{x:.1f} {y0:.1f} Q {x - 4:.1f} {(y0 + y1) / 2:.1f} {x:.1f} {y1:.1f}"
+        else:
+            d = f"M{x:.1f} {y0:.1f} L{x:.1f} {y1:.1f}"
+        out += [art.path(d, w + 2.2, art.INK), art.path(d, w, "#e8c692")]
+    # the batten along the frames' heads, and a second one halfway down
+    for f in (0.0, 0.5):
+        line = [(x, ftop(x) + (fbottom(x) - ftop(x)) * f * 0.7) for x in xs[::3]]
+        out += [art.path(art.smooth(line), 4.2, art.INK), art.path(art.smooth(line), 2.2, "#e8c692")]
+    # the stem post at the bow and the stern post, along the outline's ends
+    # both run along the hull's own ends: from the keel round the bottom's curve and up to the sheer
+    stem = [(x, fbottom(x)) for x in range(330, 252, -10)] + [(247, 470 + FRAME_DY), (246, 440 + FRAME_DY), (250, 414 + FRAME_DY)]
+    stern = [(x, fbottom(x)) for x in range(790, 862, 10)] + [(866, 470 + FRAME_DY), (866, 430 + FRAME_DY), (866, 398 + FRAME_DY)]
+    for post in (stem, stern):
+        out += [art.path(art.smooth(post), 9, art.INK), art.path(art.smooth(post), 6, "#e8c692")]
+    # the keel along the bottom
+    keel_line = [(x, fbottom(x) - 2) for x in range(300, 816, 8)]
+    out += [art.path(art.smooth(keel_line), 9, art.INK), art.path(art.smooth(keel_line), 6, "#e8c692")]
+    if variant == "b":           # scaffold poles and a walkway plank along the side
+        for x in (300, 520, 760):
+            out += [art.path(f"M{x} {GROUND} L{x} {ftop(x) - 30:.1f}", 3.4, art.INK), art.path(f"M{x} {GROUND} L{x} {ftop(x) - 30:.1f}", 1.6, "#e8c692")]
+        walk = 520
+        out += plank(290, 770, walk, 6, 1)
+    # what is left of the timber: a low stack between the blocks and the boards on the trestles past the stern
+    y = GROUND
+    for i in range(2):
+        out += plank(470 + RNG_GRAIN.uniform(-4, 4), 560 + RNG_GRAIN.uniform(-4, 4), y, 6, 1)
+        y -= 6
+    for x in (902, 972):
+        out += [art.path(f"M{x - 12} {GROUND} L{x} {GROUND - 40} L{x + 12} {GROUND}", 2.2), art.path(f"M{x - 8} {GROUND - 26} L{x + 8} {GROUND - 26}", 1.2)]
+    for i in range(3):
+        out += plank(884 + i * 2, 994 - i * 2, GROUND - 42 - i * 6, 6, 1)
+    return out
+
+
+def frame_sheet_items(variant="a"):
+    RNG_GRAIN.seed(2612)
+    return ground_wide() + frame_items(variant)
+
+
+def ground_wide():
+    out = [art.path(f"M180 {GROUND} L1010 {GROUND}", 1.8),
+           art.hatch([(184, GROUND), (1006, GROUND), (994, GROUND + 18), (196, GROUND + 18)], 25, 5.5, 0.7, art.INK_SOFT, 0.55)]
+    for x in range(200, 1000, 37):
+        out.append(art.dot(x + RNG_GRAIN.uniform(-8, 8), GROUND + RNG_GRAIN.uniform(4, 14), RNG_GRAIN.uniform(0.8, 1.8), art.INK_SOFT, 0.7))
+    return out
+
+
+def frame_build(variant="a"):
+    """Being built, over the bare timber: the frame pale with red hatching over the hull's place, its pencil lines over it."""
+    RNG_GRAIN.seed(2612)
+    items = frame_items(variant)
+    return ink_pale(items, 0.35) + [art.hatch(frame_outline(), 45, 4.2, 1.1, CHALK, 0.6)] + pencil_of(items)
+
+
 def ship_items():
     """Every ink item of the base barge's drawing, for a pencil ghost of it."""
     hull_pre, hull_post, _, _ = hull_split()
@@ -615,6 +712,11 @@ def main():
     # the start of the ship: the bare timber of layout b, a quarter larger round the middle of the ground so the sheet is less empty (last: the drawings above
     # keep their random hatching)
     sheet([f'<g transform="translate(560 {GROUND}) scale(1.25) translate(-560 -{GROUND})">' + "".join(planks("b")) + "</g>"]).save(OUT / "blueprint_planks.png", optimize=True)
+    # the hull's first level built: the frame on the slip (variant a of build/web/shots/frame_variants.png), and its stage of being built over the timber
+    sheet(frame_sheet_items("a")).save(OUT / "blueprint_frame.png", optimize=True)
+    layer("frame_build", frame_build("a"), places)
+    parts["frame"] = {"pencil": None, "build": "frame_build", "ink": None}
+    (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts}, indent=1), encoding="utf-8")
     for f in sorted(OUT.glob("*.png")):
         print(f.name, f.stat().st_size)
 

@@ -106,6 +106,55 @@ export class Viewer {
         }
     }
 
+    // The frame on its slip as a scheme of primitives (a keel, the stem and stern posts, U-shaped frames, a few planks on the ground): there is no model of it.
+    showFrameScheme(on) {
+        if (on && !this.frameScheme) {
+            const g = new THREE.Group();
+            const wood = new THREE.MeshStandardMaterial({color: 0xb07a45, roughness: 0.9});
+            const keel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.4, 16), wood);
+            keel.position.set(0, 0.6, -0.4);
+            g.add(keel);
+            for (let z = -7.5; z <= 7.01; z += 1.0) {
+                const t = z / 8.6;
+                const r = 2.6 * Math.sqrt(Math.max(0.15, 1 - t * t));
+                const rib = new THREE.Mesh(new THREE.TorusGeometry(r, 0.09, 6, 28, Math.PI), wood);
+                rib.rotation.z = Math.PI;          // the arc's open side up: a U across the ship
+                rib.position.set(0, 0.8 + r, z);
+                g.add(rib);
+            }
+            for (const [z, h] of [[8.0, 4.2], [-8.6, 4.3]]) {
+                const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, h, 0.3), wood);
+                post.position.set(0, 0.8 + h / 2, z);
+                g.add(post);
+            }
+            for (const z of [-5, 0, 5]) {
+                const blockM = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), wood);
+                blockM.position.set(0, 0.2, z);
+                g.add(blockM);
+            }
+            for (let i = 0; i < 3; i++) {
+                const plank = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 4.5), wood);
+                plank.position.set(4.2, 0.04 + i * 0.09, -1 + i * 0.1);
+                g.add(plank);
+            }
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({color: 0x6b5a44, roughness: 1}));
+            ground.rotation.x = -Math.PI / 2;
+            g.add(ground);
+            this.scene.add(g);
+            this.frameScheme = g;
+        }
+        if (this.frameScheme) this.frameScheme.visible = on;
+        if (on && !this.frameViewSet) {
+            this.frameViewSet = true;
+            // the whole frame (a ball of radius 10 round it) in view whatever the shape of the window, from the left side and a little above
+            const target = new THREE.Vector3(0, 2, 0), dir = new THREE.Vector3(16, 7, 6).normalize();
+            const vfov = THREE.MathUtils.degToRad(this.camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
+            this.controls.target.copy(target);
+            this.camera.position.copy(target).addScaledVector(dir, 10 / Math.sin(Math.min(vfov, hfov) / 2));
+            this.controls.update();
+        }
+    }
+
     hiddenNodes() {
         const out = [];
         const hull = this.models[this.current];

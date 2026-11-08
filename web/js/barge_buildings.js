@@ -18,7 +18,9 @@ export function makeBuildings(data, game, parts) {
     const fire = () => changed.forEach(fn => fn());
 
     M.level = key => levels[key] || levels[prefix + key];
-    M.chain = key => data.chains.find(c => c.key === key);
+    // 'hull' or the hull's chain key: the levels of the hull (data.hull); otherwise one of the chains of data.chains
+    const hullChain = {key: 'hull', levels: data.hull};
+    M.chain = key => (key === 'hull' || (data.hull[0] && key === data.hull[0].chain) ? hullChain : data.chains.find(c => c.key === key));
     M.hull_tier = () => {
         let tier = 0;
         for (const row of data.hull) if (game.has_building(row.key)) tier = Math.max(tier, row.level + 1);
@@ -32,7 +34,8 @@ export function makeBuildings(data, game, parts) {
         if (game.has_building(row.key)) return {state: 'built'};
         const turns = game.under_construction(row.key);
         if (turns !== null) return {state: 'building', turns};
-        if (row.tier > M.hull_tier()) return {state: 'locked', why: `Нужен корпус «${hullByTier[row.tier].name}»`};
+        // the hull's own levels need only the level below them (checked next); a side chain needs the hull's tier
+        if (row.chain !== hullChain.levels[0].chain && row.tier > M.hull_tier()) return {state: 'locked', why: `Нужен корпус «${hullByTier[row.tier].name}»`};
         const chain = M.chain(row.chain);
         if (chain) {
             const below = chain.levels.find(l => l.level === row.level - 1);
@@ -78,6 +81,7 @@ export function makeBuildings(data, game, parts) {
     // Behind the flag ?full=1 until the chain is shown: the mod's rule is that a demolished building closes its options at once (docs/summary.md, «Правило»).
     M.demolish = key => {
         const row = M.level(key);
+        // guess: no gold back (the data has no refund for demolishing). In the game the hull cannot be demolished at all (CanDismantle = false): here it can, to test.
         // GAME: HordeContext.BuildingSlotList.At(n).Dismantle
         if (!game.dismantle(row.key)) return {ok: false};
         message = `Снесено: «${row.name}».`;
