@@ -100,12 +100,14 @@
      "ui": {
       "name": "Мстители-пираты",
       "card": "wh3_dlc25_dwf_inf_slayer_pirates",
-      "about": "Пистоли: быстро, близко, запас мал."
+      "about": "Пистоли: быстро, близко, запас мал.",
+      "hidden": true
      },
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_inf_slayer_pirates",
       "count": 12
-     }
+     },
+     "_note": "No building opens it since 08.11.2026 (user): the rifles start empty, airship_hull_2 gives no crew. Kept hidden for the test commands; data stays."
     },
     "quarrellers": {
      "variant_file": "dwf_quarrellers",
@@ -578,12 +580,6 @@
  "own_hull": true,
  "buildings_prefix": "wh3_dlc25_dwarf_spirit_of_grungni_",
  "buildings": {
-  "airship_hull_2": [
-   [
-    "rifles",
-    "pirates"
-   ]
-  ],
   "crew_weapons_1": [
    [
     "rifles",
@@ -742,6 +738,9 @@
   },
   "barracks_3": {
    "tier": 4
+  },
+  "airship_hull_2": {
+   "cost": 1500
   }
  },
  "building_set": {
@@ -900,7 +899,7 @@
  },
  "building_lines": {
   "airship_hull_2": [
-   "Открывает доступ к кораблю и экипажу"
+   "Открывает доступ к кораблю"
   ],
   "crew_weapons_1": [
    "Меткость стрелков: +5 %"
@@ -968,6 +967,12 @@
     "scope": "force_to_general_own",
     "value": 15
    }
+  ]
+ },
+ "hidden_effects": {
+  "_about": "Effects of the game kept but not shown in the game's lists: their effects row gets priority 0 and no icon, as the game's own hidden effects have (wh3_dlc25_effect_*_sphere_hidden, wh3_dlc25_effect_building_army_xp_gain). The summon stays switched off in ordinary battles (tools/build.py) and works in legendary battles; the user asked to hide its line (08.11.2026). Applies everywhere the effect is listed, the legendary battles' bundles too.",
+  "effects": [
+   "wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1"
   ]
  },
  "abilities": {

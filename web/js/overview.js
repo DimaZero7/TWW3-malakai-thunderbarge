@@ -38,7 +38,9 @@ function card(c) {
     for (const r of c.requires) req.push(`«${esc(r.name || r.key)}»`);
     const parts = c.parts.map(p => `<span class="part ${p.enabled ? 'on' : ''}" title="Деталь модели: ${p.enabled ? 'подключена на странице' : 'данные готовы, на странице не подключена'}">⚙ ${esc(p.name)}${p.enabled ? '' : ' · не подключена'}</span>`).join('');
     const sections = [];
-    if (c.effects.length) sections.push(`<div class="sec">Эффекты</div><ul>${c.effects.map(effectLine).join('')}</ul>`);
+    // effects the mod switches off (rows set to 0) are left out, as on the panel
+    const shown = c.effects.filter(e => !e.off);
+    if (shown.length) sections.push(`<div class="sec">Эффекты</div><ul>${shown.map(effectLine).join('')}</ul>`);
     if (c.opens.length) sections.push(`<div class="sec">Открывает экипаж</div><ul>${c.opens.map(openLine).join('')}</ul>`);
     if (c.abilities.length) sections.push(`<div class="sec">Способности</div><ul>${c.abilities.map(a => `<li><b>${esc(a.name)}</b>: ${esc(a.about)}</li>`).join('')}</ul>`);
     if (c.units && c.units.length) sections.push(`<div class="sec">Найм отрядов</div><div class="units">${c.units.map(esc).join(', ')}</div>`);
@@ -50,7 +52,7 @@ function card(c) {
       </div>
       ${parts ? `<div class="parts">${parts}</div>` : ''}
       ${req.length ? `<div class="req">Нужно: ${req.join(', ')}</div>` : ''}
-      ${c.text ? `<div class="text">${esc(c.text)}</div>` : ''}
+      ${c.text ? `<div class="text">${esc(c.text.split('\n\n')[0])}</div>` : ''}
       ${sections.join('')}
       <div class="key">${esc(c.short)}${c.ours ? ' · новая в моде' : ''}${c.visible ? '' : ' · скрыта в игре'}</div>
     </div>`;
@@ -64,7 +66,7 @@ export async function makeOverview(host) {
     const incomplete = data.chains.filter(c => c.missing.length);
     let html = `<h2>Все цепочки построек барки</h2>
       <p class="ov-intro">${data.chains.length} цепочек, ${total} построек. Порядок: корпус, затем цепочки экипажа (пушки, стрелки, купола, люки, гарпун, паб), затем остальные по тиру.
-      Зелёным — строки мода, зачёркнуто — эффект игры, выключенный модом. ⚙ — деталь модели, которую приносит постройка.
+      Зелёным — строки мода; эффекты игры, которые мод выключает, не показаны. ⚙ — деталь модели, которую приносит постройка.
       ${incomplete.length ? `Неполные данные: ${incomplete.map(c => `«${esc(c.title)}» (${c.missing.map(m => MISSING[m] || m).join(', ')})`).join('; ')}.` : 'Все данные полные.'}
       ${data.units_from_schema ? '' : ' Найм отрядов не показан: нет схемы таблиц.'}</p>`;
     for (const chain of data.chains) {

@@ -36,6 +36,7 @@ const TEXT = {
 const SKIN = {
     button_row: {base: 'row', margin: 24, scale: 2},
     button_plate: {base: 'plate', margin: 24, scale: 2},
+    button_mark: {base: 'web/mark', margin: 0, scale: 1},      // the marks of Malakai's side: tools/web_art.py, side_art
 };
 const STATE_IMAGE = {active: 'normal', hover: 'hover', down: 'selected', down_off: 'hover', selected: 'selected', selected_hover: 'selected', inactive: 'locked', invalid: 'hover'};
 // the game's own state changes on the mouse (transitions of button_layout)

@@ -85,7 +85,27 @@ async function main() {
         hullEl.textContent = !hullShown() ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ': ' + built.join(', ') : '');
     };
     M.on_change(update);
-    document.getElementById('end_turn').addEventListener('click', () => { log('конец хода'); game.end_turn(); update(); });
+    // The page's state lives through a reload: localStorage, one key per stage; the buttons of the bar: build up to the selected building, forget all.
+    const saveKey = 'mtb_web_state_' + stageName;
+    const save = () => { try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), selected: panel.view.selected})); } catch (e) { /* no storage: the page still works */ } };
+    M.on_change(save);
+    panel.view.onSelect = save;
+    try {
+        const saved = JSON.parse(localStorage.getItem(saveKey) || 'null');
+        if (saved && !flags.steps) {
+            game.restore(saved);
+            if (saved.side) M.set_side_silently(saved.side);
+            if (saved.selected && M.level(saved.selected)) panel.view.selected = saved.selected;
+        }
+    } catch (e) { /* a broken or missing save: start fresh */ }
+    document.getElementById('build_to').addEventListener('click', () => {
+        if (panel.view.selected && M.level(panel.view.selected)) { M.debug_build_to(panel.view.selected); log('отладка: построено до выбранной'); }
+    });
+    document.getElementById('reset_all').addEventListener('click', () => {
+        try { localStorage.removeItem(saveKey); } catch (e) { /* nothing saved */ }
+        location.reload();
+    });
+    document.getElementById('end_turn').addEventListener('click', () => { log('конец хода'); game.end_turn(); update(); save(); });
     for (const which of ['port', 'all', 'left', 'right', 'below']) document.getElementById('view_' + which).addEventListener('click', () => viewer.view(which));
 
     const fit = () => {

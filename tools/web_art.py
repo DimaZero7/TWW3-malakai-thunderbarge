@@ -678,6 +678,92 @@ def sheet(drawing_items):
     return Image.fromarray(out.clip(0, 255).astype("uint8"), "RGB")
 
 
+def barge_build():
+    """The hull's second level being built, over the frame: the base barge pale with red hatching over its hull and balloon, its pencil lines over it.
+    Moved by FRAME_DY onto the frame, so it rises out of the frame's own lines (the built barge sheet stands at the drawing's own height)."""
+    items = ship_items()
+    hull, balloon = hull_outline_area()
+    body = ink_pale(items, 0.3) + [art.hatch(hull, 45, 4.2, 1.1, CHALK, 0.55), art.hatch(balloon, 45, 4.2, 1.1, CHALK, 0.45)] + pencil_of(items)
+    return [f'<g transform="translate(0 {FRAME_DY})">' + "".join(body) + "</g>"]
+
+
+# ---------------- where Malakai stands: a small plan of the ship from above with a mark on each side, and his figure on the drawing ----------------
+# The user's decision (docs/design/barge-upgrades-ideas.md, «Место Малакая»): a deckhand takes the wheel, Malakai stands as a shooter on one side, the
+# player picks which. The plan sits in the drawing's lower left corner, bow up, the port side on the left as seen from above; the marks are buttons of
+# their own (web/js/panel.js). The drawing shows the ship's port side (bow to the left), so Malakai on the port side is drawn in ink at a rifle place,
+# on the starboard side the same figure in pencil: he stands behind the near side, out of sight of a true side view.
+PLAN = (40, 560, 80, 150)        # x, y, w, h of the plan in units of the drawing
+MARK = 22                        # a mark's size in units of the drawing
+MALAKAI_AT = (492, 456)          # a rifle place of the waist (crew_ui_art.RIFLE_PLACES), on the rail
+
+
+def plan_items():
+    x0, y0, w, h = PLAN
+    cx = x0 + w / 2
+    bow, stern = y0 + 8, y0 + h - 10
+    half = 22
+    outline = [(cx, bow), (cx + half * 0.55, bow + 22), (cx + half, bow + 52), (cx + half, stern - 26), (cx + half * 0.8, stern - 6), (cx, stern),
+               (cx - half * 0.8, stern - 6), (cx - half, stern - 26), (cx - half, bow + 52), (cx - half * 0.55, bow + 22)]
+    out = [art.shape(art.smooth(outline, True), art.PAPER), art.path(art.smooth(outline, True), 1.8)]
+    inner = [(cx + (px - cx) * 0.8, bow + 8 + (py - bow) * 0.9) for px, py in outline]
+    out.append(art.path(art.smooth(inner, True), 0.9, art.INK, op=0.8))
+    for dx in (-8, 0, 8):
+        out.append(art.path(f"M{cx + dx} {bow + 30} L{cx + dx} {stern - 16}", 0.6, art.INK, op=0.6))
+    # the boiler tower and the wheel at the stern, the bow's figure
+    out += [art.shape(art.poly([(cx - 9, stern - 34), (cx + 9, stern - 34), (cx + 9, stern - 20), (cx - 9, stern - 20)], True), "#e8c692"),
+            art.path(art.poly([(cx - 9, stern - 34), (cx + 9, stern - 34), (cx + 9, stern - 20), (cx - 9, stern - 20)], True), 1.2),
+            art.circle(cx, stern - 44, 4, 1.0), art.path(f"M{cx} {bow} L{cx} {bow - 6}", 1.6)]
+    out.append(art.hatch(outline[2:5] + [(cx, stern), (cx, bow + 52)], 50, 4, 0.6, art.INK_SOFT, 0.45))
+    return out
+
+
+def mark_items(kind):
+    """A mark on a side of the plan, drawn in a box of MARK x MARK: empty ring, ring lit by the mouse, Malakai seen from above (a head with the slayer's
+    crest)."""
+    c = MARK / 2
+    if kind == "selected":
+        return [art.circle(c, c, c - 1.5, 1.6, art.INK, "#e8c692"), art.circle(c, c + 1, 5.5, 1.0, art.INK, "#dcae74"),
+                art.shape(f"M{c - 2} {c - 7} L{c + 2} {c - 7} L{c + 1.4} {c + 6} L{c - 1.4} {c + 6} Z", "#c8501a"), art.path(f"M{c} {c - 7} L{c} {c + 6}", 0.6)]
+    fill = "#f3d9a4" if kind == "hover" else "#fff1dc"
+    return [art.circle(c, c, c - 1.5, 1.6 if kind == "hover" else 1.2, art.INK, fill), art.circle(c, c, c - 6, 0.7, art.INK, op=0.6)]
+
+
+def malakai_figure():
+    """Malakai as a shooter at the rail: the dwarf of the crew layers in his colours, with the slayer's crest."""
+    x, y = MALAKAI_AT
+    out = art.dwarf(x, y, 1.05, -1, True, helm="#c8501a", beard="#c8501a")
+    out.append(art.shape(f"M{x - 2} {y - 26} L{x + 2} {y - 26} L{x + 1} {y - 38} L{x - 1} {y - 38} Z", "#c8501a"))
+    out.append(art.path(f"M{x - 2} {y - 26} L{x} {y - 39} L{x + 2} {y - 26}", 0.9))
+    return out
+
+
+def side_art(places):
+    """The plan, its three marks, Malakai near and far."""
+    from PIL import Image
+    layer("plan_ship", plan_items(), places)
+    for kind in ("normal", "hover", "selected"):
+        s = 4
+        im = art.paint(f"web_mark_{kind}", art.svg_page(mark_items(kind), w=MARK, h=MARK, scale=s, filtered=False), MARK * s, MARK * s)
+        im.save(OUT / f"mark_{kind}.png", optimize=True)
+    figure = malakai_figure()
+    layer("malakai_near", figure, places)
+    layer("malakai_far", pencil_of(figure), places)
+    return {"plan": PLAN, "mark": MARK, "marks": {"left": [PLAN[0] + 4, PLAN[1] + 62], "right": [PLAN[0] + PLAN[2] - 4 - MARK, PLAN[1] + 62]}}
+
+
+def tree_line():
+    """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
+    from PIL import Image
+    Image.new("RGBA", (4, 4), (197, 139, 74, 255)).save(OUT / "tree_line.png")
+
+
+def node_back():
+    """The parchment under a node's icon in the tree of buildings: a clean piece of the drawing's own paper (blueprint_planks.png, above the timber)."""
+    from PIL import Image
+    S = art.SCALE
+    Image.open(OUT / "blueprint_planks.png").crop((round(470 * S), round(200 * S), round(530 * S), round(260 * S))).resize((96, 96)).save(OUT / "node_back.png", optimize=True)
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     hull_pre, hull_post, shields, porthole = hull_split()
@@ -717,6 +803,14 @@ def main():
     layer("frame_build", frame_build("a"), places)
     parts["frame"] = {"pencil": None, "build": "frame_build", "ink": None}
     (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts}, indent=1), encoding="utf-8")
+    tree_line()
+    node_back()
+    # the hull's second level being built over the frame (last: the drawings above keep their random hatching)
+    layer("barge_build", barge_build(), places)
+    parts["barge"] = {"pencil": None, "build": "barge_build", "ink": None}
+    # where Malakai stands: the plan with its marks and his figure (last, as above)
+    side = side_art(places)
+    (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side}, indent=1), encoding="utf-8")
     for f in sorted(OUT.glob("*.png")):
         print(f.name, f.stat().st_size)
 

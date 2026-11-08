@@ -8,6 +8,7 @@ const LAYOUTS = 'ui/tww3_mtb/';
 const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they would be ui/tww3_mtb/<name>.png like the others
 const ROW = 'mtb_ship_row_', ORDER = 'mtb_ship_order', CANCEL = 'mtb_ship_cancel', DEMOLISH = 'mtb_ship_demolish';
 const MAX_ROWS = 6;
+const SIDE = 'mtb_side_';
 let view_flags = {};
 
 // helpers as in the Lua
@@ -69,6 +70,22 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         // the turns left, live text on the drawing while it is built (TurnsToCompletion in the game)
         layers.turns = text(sheet, `${part}_turns`, 'text_ink', spec.turns_at[0] * scale, spec.turns_at[1] * scale, 80, 22, '');
         view.layers[part] = layers;
+    }
+    // Malakai's side: the ship's plan in the drawing's lower left corner, a mark on each side, his figure on the drawing (near side ink, far side pencil)
+    const ms = art.malakai_side;
+    if (blueprint.malakai_side && ms) {
+        const p = place('plan_ship');
+        view.side = {show_when: blueprint.malakai_side.show_when, plan: image(sheet, 'plan_ship', WEB_ART + 'plan_ship.png', p[0] * scale, p[1] * scale, p[2] * scale, p[3] * scale), marks: {}};
+        for (const s of ['left', 'right']) {
+            const b = make(sheet, SIDE + s, 'button_mark');
+            size(b, ms.mark * scale, ms.mark * scale);
+            at(b, ms.marks[s][0] * scale, ms.marks[s][1] * scale);
+            view.side.marks[s] = b;
+        }
+        for (const n of ['near', 'far']) {
+            const q = place('malakai_' + n);
+            view.side[n] = image(sheet, 'malakai_' + n, WEB_ART + 'malakai_' + n + '.png', q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale);
+        }
     }
     const sheet_frame = make(frame, 'scheme_frame', 'frame_edge');
     size(sheet_frame, scheme_w + 8, scheme_h + 8);
@@ -269,15 +286,19 @@ function makeRow(parent, i, x, y, w, h) {
 }
 
 // The green lines of a level: every effect with the game's text (the overview's card) when there is one, the mod's own lines otherwise.
+// The mod's descriptions hold Russian, an empty line, then English: the panel shows the first part.
+function firstPart(text) { return (text || '').split('\n\n')[0]; }
+
 function effectLines(row, card) {
     if (!card) return row.lines;
-    return card.effects.filter(e => !e.hidden).map(e => (e.text || `${e.effect} = ${e.value}`) + (e.off ? ' (выключено модом)' : ''));
+    // an effect the mod switches off (its row set to 0) is not shown: the mod cannot take a row of the game out of its table
+    return card.effects.filter(e => !e.hidden && !e.off).map(e => e.text || `${e.effect} = ${e.value}`);
 }
 
 function tooltip(row, status, card) {
     const lines = [`[[col:yellow]]${row.name}[[/col]]`];
     if (card && card.game_name && card.game_name !== row.name) lines.push(`В игре: «${card.game_name}». Название — мода`);
-    const text = row.text || (card && card.text);
+    const text = firstPart(row.text || (card && card.text));
     if (text) lines.push(text);
     lines.push(`Цена: ${row.cost} золота, срок: ${turnsText(row.turns)}`);
     for (const l of effectLines(row, card)) lines.push(`[[col:green]]${l}[[/col]]`);
@@ -300,6 +321,20 @@ function refresh(view, M) {
         layers.turns.SetStateText(st.state === 'building' ? turnsText(st.turns) : '');
     }
     if (view.tree) refreshTree(view, M);
+    if (view.side) {
+        const shown = !view.side.show_when || M.stage(view.side.show_when) === 'ink';
+        const side = M.malakai_side();
+        view.side.plan.SetVisible(shown);
+        for (const [s, b] of Object.entries(view.side.marks)) {
+            b.SetVisible(shown);
+            b.SetState(s === side ? 'selected' : 'active');
+            const name = s === 'left' ? 'левом' : 'правом';
+            b.SetTooltipText(s === side ? `Малакай на ${name} борту: стреляет стрелком` : `Поставить Малакая на ${s === 'left' ? 'левый' : 'правый'} борт`, true);
+        }
+        // the drawing shows the left side (bow to the left): there he is in ink; on the right side he stands behind it, in pencil
+        view.side.near.SetVisible(shown && side === 'left');
+        view.side.far.SetVisible(shown && side === 'right');
+    }
     let rowsShown = 0;
     view.rows.forEach((r, i) => {
         const row = view.levels[i];
@@ -358,7 +393,7 @@ function refresh(view, M) {
         const state = {built: 'Построено', building: `Строится: осталось ${turnsText(s0.turns || 0)}`, open: 'Можно заказать', locked: s0.why || 'Недоступно'}[s0.state] || '';
         view.selMeta.SetStateText(`Цена: ${sel.cost} золота · ${turnsText(sel.turns)} · ${state}`);
     }
-    view.detail.SetStateText(sel.text || (card && card.text) || '');
+    view.detail.SetStateText(firstPart(sel.text || (card && card.text)));
     at(view.lines, 14, y + 46);
     view.lines.SetStateText(effectLines(sel, card).join('\n'));
     const st = M.status(sel.key);
@@ -375,9 +410,12 @@ function refresh(view, M) {
 
 function click(view, M, c) {
     const id = c.Id();
-    if (id.startsWith(TREE)) {
+    if (id.startsWith(SIDE)) {
+        M.set_malakai_side(id.slice(SIDE.length));
+    } else if (id.startsWith(TREE)) {
         const v = view.tree[Number(id.slice(TREE.length))];
         if (v) view.selected = v.node.key;
+        if (view.onSelect) view.onSelect();
     } else if (id.startsWith(ROW)) {
         const r = view.rows[Number(id.slice(ROW.length)) - 1];
         if (r && r.row) view.selected = r.row.key;

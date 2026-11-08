@@ -117,6 +117,40 @@ export function makeBuildings(data, game, parts) {
 
     M.message = () => message;
 
+    // Every level a building needs, all the way down (the level below in its chain, the buildings it requires), the deepest first. For the debug button.
+    M.needs_all = key => {
+        const out = [], seen = new Set();
+        const walk = k => {
+            const row = M.level(k);
+            if (!row || seen.has(row.key)) return;
+            seen.add(row.key);
+            const chain = M.chain(row.chain);
+            const below = chain && chain.levels.find(l => l.level === row.level - 1);
+            if (below) walk(below.key);
+            for (const r of row.requires) walk(r);
+            out.push(row.key);
+        };
+        walk(key);
+        return out;
+    };
+    M.debug_build_to = key => {
+        for (const k of M.needs_all(key)) game.debug_complete(k);
+        message = `Отладка: построено до «${M.level(key).name}» без ходов и золота.`;
+        fire();
+    };
+    M.set_side_silently = s => { side = s; };
+
+    let side = 'left';
+    // Malakai's side: he stands as a shooter on the left or the right side (docs/design/barge-upgrades-ideas.md, «Место Малакая»).
+    // GAME: cm:set_saved_value('mtb_malakai_side', side); src/tww3_mtb_crew.lua would put him on a rifle seat of that side before a battle.
+    M.malakai_side = () => side;
+    M.set_malakai_side = s => {
+        if (s === side) return;
+        side = s;
+        message = `Малакай встанет на ${s === 'left' ? 'левый' : 'правый'} борт.`;
+        fire();
+    };
+
     // The game's events, as the mod listens to them (core:add_listener)
     game.on('MilitaryForceBuildingCompleteEvent', ctx => {
         // GAME: here the mod's own on_building also runs (src/tww3_mtb_crew.lua): the bay appears, the hull's mount row changes

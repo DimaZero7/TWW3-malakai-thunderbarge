@@ -78,6 +78,25 @@ export class GameSim {
         return true;
     }
 
+    // Debug only (not the game): the building stands at once, no turn, no gold; the same event as a completion.
+    debug_complete(key) {
+        const row = this.levels[key];
+        if (!row || this.has_building(key)) return false;
+        this.queue.delete(key);
+        for (const k of [...this.built]) if (this.levels[k] && this.levels[k].chain === row.chain && this.levels[k].level < row.level) this.built.delete(k);
+        this.built.add(key);
+        this.emit('MilitaryForceBuildingCompleteEvent', {building: key});
+        return true;
+    }
+
+    // The page's own saving (not the game's save): plain data and back.
+    snapshot() { return {turn: this.turn, gold: this.gold, built: [...this.built], queue: [...this.queue]}; }
+    restore(s) {
+        this.turn = s.turn; this.gold = s.gold;
+        this.built = new Set(s.built.filter(k => this.levels[k]));
+        this.queue = new Map(s.queue.filter(([k]) => this.levels[k]));
+    }
+
     // GAME: the player's own end turn button. At the start of the next turn the game finishes what is due and fires MilitaryForceBuildingCompleteEvent,
     // which the mod already follows (src/tww3_mtb_crew.lua, on_building).
     end_turn() {

@@ -118,6 +118,9 @@ def add_rows(t, g):
         for e in effects:
             t["building_effects_junction"].append({"building": PREFIX + short, "effect": e["effect"], "effect_scope": e["scope"], "value": float(e["value"]),
                                                    "value_damaged": float(e["value"]), "value_ruined": 0.0, "context_requirement": ""})
+    # effects of the game hidden from its lists: priority 0 and no icon, as the game's own hidden effects (data/crew_options.json, hidden_effects)
+    for key in CONFIG.get("hidden_effects", {}).get("effects", []):
+        t["effects"].append(dict(one(g["effects"], effect=key), priority=0, icon=None, icon_negative=None))
     # abilities: an enabling effect on our unit set, as the barge's own upgrades
     like_effect = one(g["effects"], effect=ENABLE_LIKE)
     for number, (key, spec) in enumerate(k for k in CONFIG["abilities"].items() if not k[0].startswith("_")):

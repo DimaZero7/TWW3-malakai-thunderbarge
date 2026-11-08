@@ -98,6 +98,11 @@ def source_file(path, root=None):
 
 
 # ---------------- data: the same functions as the mod's build ----------------
+def campaign_text():
+    """The mod's own texts (data/campaign_text.json): tools/build.py writes them into the pack's .loc, over the game's."""
+    return json.loads((REPO / "data" / "campaign_text.json").read_text(encoding="utf-8"))
+
+
 def export_data():
     """The barge's building levels as tools/build.py makes them: build.derive + build.derive_campaign (crew_buildings.add_rows), the green lines of crew_ui.building_lines,
     the hire and upkeep of crew_ui. Nothing is copied by hand from data/crew_options.json, so a change there shows on the page after this export."""
@@ -137,7 +142,7 @@ def export_data():
         icon = crew_buildings.icon_of(short, drawn)
         return {"key": row["level_name"], "short": short, "chain": row["chain"], "level": row["level"], "name": name_of(row["level_name"]),
                 "game_name": names.get(f"building_culture_variants_name_{row['level_name']}"),      # the game's own name, when the mod renames it
-                "text": loc.get(f"building_short_description_texts_short_description_{row['level_name']}", ""),
+                "text": loc.get(f"building_short_description_texts_short_description_{row['level_name']}") or campaign_text().get(f"building_short_description_texts_short_description_{row['level_name']}", ""),
                 "cost": row["create_cost"], "turns": row["create_time"], "dev": row["development_point_cost"],
                 "tier": row["primary_slot_building_building_level_requirement"] + 1,
                 "requires": required.get(row["level_name"], []),
@@ -444,8 +449,9 @@ def export_overview():
     bindings, _, _ = crew_options.building_bindings(t, stock)
     lines = crew_ui.building_lines(config, t, stock, bindings)     # adds our effect rows to t too
     names = crew_ui.game_text("building_culture_variants_name_")
-    descriptions = crew_ui.game_text("building_short_description_texts_short_description_")
-    effect_texts = crew_ui.game_text("effects_description_")
+    # the game's texts, then the mod's own (data/campaign_text.json, into the pack's .loc by tools/build.py) over them, as the game shows them
+    descriptions = crew_ui.game_text("building_short_description_texts_short_description_") | campaign_text()
+    effect_texts = crew_ui.game_text("effects_description_") | {k: v for k, v in campaign_text().items() if k.startswith("effects_description_")}
     unit_names = crew_ui.game_text("land_units_onscreen_name_")
     texts = effect_texts | {k: v for k, v in (loc | lines).items() if k.startswith("effects_description_")}
     rows = {r["level_name"]: r for r in stock["building_levels"]} | {r["level_name"]: r for r in t["building_levels"]}
@@ -463,6 +469,7 @@ def export_overview():
         if key in effects:
             changed.add(key)
         effects[key] = r
+    priority = {r["effect"]: r["priority"] for r in stock["effects"]} | {r["effect"]: r["priority"] for r in t["effects"]}
     required = {}
     for r in stock["building_level_required_buildings"] + t["building_level_required_buildings"]:
         if r["building_level"].startswith(prefix):
@@ -515,7 +522,8 @@ def export_overview():
                 template = texts.get(f"effects_description_{e}")
                 effs.append({"effect": e, "scope": scope, "value": row["value"], "text": effect_text(template, row["value"]) if template else None,
                              "ours": e.startswith("mtb_"), "changed": (b, e, scope) in changed, "off": (b, e, scope) in changed and not row["value"],
-                             "hidden": "(HIDDEN" in (template or "")})
+                             # hidden in the game's lists: priority 0, as the game's own hidden effects (the mod's hidden_effects too)
+                             "hidden": "(HIDDEN" in (template or "") or priority.get(e) == 0})
             opens = []
             for b in bindings.get(key, []):
                 g, o = groups[b["group"]], groups[b["group"]]["options"][b["option"]]

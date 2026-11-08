@@ -394,6 +394,8 @@ def building_bindings(t, stock):
                 raise SystemExit(f"crew_options.json: {short}: no option {group} / {option}")
         bindings[key] = [{"group": group, "option": option} for group, option in pairs]
     followed = set(bindings) | {prefix + s for s in CONFIG["ammo_mod"]}
+    # the building that makes the barge (src/tww3_mtb_crew.lua, has_barge) is followed even when it unlocks no crew option
+    followed.add(prefix + CONFIG["auto_active"][0])
     for group in CONFIG["groups"].values():
         followed |= {prefix + s for s in group.get("boost", {}).get("buildings", [])}
         if group.get("requires"):
