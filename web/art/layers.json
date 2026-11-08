@@ -96,6 +96,18 @@
    415.0,
    38.12,
    42.5
+  ],
+  "malakai_near_build": [
+   466.25,
+   396.88,
+   38.12,
+   42.5
+  ],
+  "malakai_far_build": [
+   466.25,
+   397.5,
+   38.12,
+   41.88
   ]
  },
  "parts": {
@@ -137,16 +149,18 @@
    80,
    150
   ],
-  "mark": 22,
+  "mark": 34,
   "marks": {
    "left": [
-    44,
-    622
+    41.0,
+    612
    ],
    "right": [
-    94,
-    622
+    85.0,
+    612
    ]
-  }
+  },
+  "portrait": "ui/portraits/round/mtb_malakai.png",
+  "portrait_inset": 4
  }
 }

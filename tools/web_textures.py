@@ -1,6 +1,6 @@
 """DDS of the game into PNG for the web page: py -3.10 tools/web_textures.py build/web/raw/jobs.json
 
-Called by tools/web_export.py. Python 3.10 because Pillow is installed there (it decodes BC1 and BC3). A job: [dds, png, kind].
+Called by tools/web_export.py. A job [png, png, "round", box] cuts a square of a portrait round. Python 3.10 because Pillow is installed there (it decodes BC1 and BC3). A job: [dds, png, kind].
 kind "normal": the game's packed normal map (x in alpha, y in green, red full, blue empty) becomes an ordinary RGB normal map with z rebuilt;
 a map that is not packed that way is kept as it is. Writes only the PNG files named in the jobs (build/web/tex/).
 """
@@ -52,9 +52,25 @@ def convert(src, dst, kind):
     print(f"{dst}: {im.size[0]}x{im.size[1]} {im.mode} {note}", flush=True)
 
 
+def round_face(src, dst, box):
+    """A square of a portrait cut round, the outside transparent: the face for a round mark."""
+    from PIL import ImageDraw
+    im = Image.open(src).convert("RGBA").crop(tuple(box)).resize((160, 160), Image.LANCZOS)
+    mask = Image.new("L", (640, 640), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, 639, 639), fill=255)
+    back = Image.new("RGBA", (160, 160), (43, 33, 24, 255))      # dark behind the portrait's own transparent parts
+    back.alpha_composite(im)
+    back.putalpha(mask.resize((160, 160), Image.LANCZOS))
+    back.save(dst)
+    print(f"{dst}: round face {box}", flush=True)
+
+
 def main():
-    for src, dst, kind in json.loads(open(sys.argv[1], encoding="utf-8").read()):
-        convert(src, dst, kind)
+    for job in json.loads(open(sys.argv[1], encoding="utf-8").read()):
+        if job[2] == "round":
+            round_face(*job[:2], job[3])
+        else:
+            convert(*job)
 
 
 if __name__ == "__main__":

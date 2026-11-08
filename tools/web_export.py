@@ -36,13 +36,17 @@ OUT = REPO / "build" / "web"
 THREE = "0.170.0"
 THREE_FILES = ["build/three.module.js", "build/three.core.js", "examples/jsm/controls/OrbitControls.js", "examples/jsm/loaders/GLTFLoader.js",
                "examples/jsm/utils/BufferGeometryUtils.js", "LICENSE"]
+# Malakai's portrait of the game (character portholes), and the round copy of its face the side marks show (tools/web_textures.py, round)
+PORTRAIT = "ui/portraits/portholes/no_culture/dwf_malakai_makaisson_0.png"
+PORTRAIT_ROUND = "ui/portraits/round/mtb_malakai.png"
+PORTRAIT_FACE = [92, 0, 222, 130]       # the face's square in the 300 x 164 portrait
 # The game's UI pictures of the panel (src/tww3_mtb_crew_ui.lua, tools/crew_ui.py).
 GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_back_tile.png", "ui/skins/default/panel_back_inner_frame.png",
            "ui/skins/default/panel_back_tile_stone.png", "ui/skins/default/panel_back_frame.png", "ui/skins/wh_main_dwf_dwarfs/panel_title_large.png",
            "ui/skins/default/icon_cross.png", "ui/skins/default/icon_treasury.png", "ui/skins/default/icon_income.png", "ui/skins/default/icon_padlock.png",
            "ui/skins/default/icon_check.png", "ui/skins/default/icon_end_turn.png", "ui/skins/default/icon_hourglass.png",
            "ui/skins/default/icon_stat_ranged_damage.png", "ui/skins/default/icon_stat_reload_time.png",
-           "ui/skins/default/icon_stat_range.png", "ui/skins/default/icon_stat_ammo.png"]
+           "ui/skins/default/icon_stat_range.png", "ui/skins/default/icon_stat_ammo.png", PORTRAIT]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
 BASE = REPO / "build" / "solid_hull_hatches"
@@ -583,6 +587,12 @@ def export_game_ui():
     missing = sorted(set(GAME_UI) - set(got))
     print(f"game UI pictures: {len(got)}" + (f", not in the packs: {missing}" if missing else ""))
     (OUT / "game" / "index.json").write_text(json.dumps(sorted(got), indent=1), encoding="utf-8")
+    if PORTRAIT in got:
+        jobs = OUT / "raw" / "round_jobs.json"
+        jobs.parent.mkdir(parents=True, exist_ok=True)
+        jobs.write_text(json.dumps([[str(OUT / "game" / PORTRAIT), str(OUT / "game" / PORTRAIT_ROUND), "round", PORTRAIT_FACE]]), encoding="utf-8")
+        (OUT / "game" / PORTRAIT_ROUND).parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["py", "-3.10", str(REPO / "tools" / "web_textures.py"), str(jobs)], check=True)
 
 
 def export_vendor():

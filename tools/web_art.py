@@ -101,7 +101,7 @@ def blueprint_base(hull_items, rear_items):
     from PIL import Image
     w, h = round(art.DRAW_W * art.SCALE), round(art.DRAW_H * art.SCALE)
     sketch = art.paint("web_sketch", art.svg_page(art.sketches(), "#ffffff"), w, h)
-    drawing = art.paint("web_drawing", art.svg_page(art.balloon_placed() + art.rigging() + hull_items + rear_items + art.malakai(), "#ffffff"), w, h)
+    drawing = art.paint("web_drawing", art.svg_page(art.balloon_placed() + art.rigging() + hull_items + rear_items + helmsman(), "#ffffff"), w, h)
     paper = art.parchment(w, h)
     ink_a = np.asarray(sketch.convert("RGB"), float) / 255
     ink_b = np.asarray(drawing.convert("RGB"), float) / 255
@@ -111,6 +111,24 @@ def blueprint_base(hull_items, rear_items):
     white = ink_b >= 0.985
     out = out * np.where(white, 1.0, 1 - (1 - ink_b) * patchy)
     return Image.fromarray(out.clip(0, 255).astype("uint8"), "RGB")
+
+
+def helmsman():
+    """A dwarf of the crew at the wheel (the user's decision: Malakai stands as a shooter at a side). crew_ui_art.malakai()'s wheel and pose, a plain
+    coat, an iron helmet instead of the slayer's crest, a brown beard."""
+    out = []
+    x, y = 684, 372
+    out.append(art.circle(x - 16, y + 8, 12, 1.6))
+    for a_ in range(0, 360, 60):
+        ca, sa = math.cos(math.radians(a_)), math.sin(math.radians(a_))
+        out.append(art.path(f"M{x - 16:.1f} {y + 8:.1f} L{x - 16 + 12 * ca:.1f} {y + 8 + 12 * sa:.1f}", 1.0))
+    out.append(art.shape(f"M{x - 5} {y + 28} L{x + 8} {y - 6} L{x + 19} {y + 28} Z", "#8a5428", 0.9))
+    out.append(art.path(f"M{x - 5} {y + 28} L{x + 8} {y - 6} L{x + 19} {y + 28}", 1.4))
+    out.append(art.circle(x + 8, y - 12, 6, 1.2, art.INK, "#f1d5a8"))
+    out.append(art.path(f"M{x + 1.5} {y - 13} A 6.5 6.5 0 0 1 {x + 14.5} {y - 13} Z", 1.1, art.INK, "#6d6a62"))
+    out.append(art.path(f"M{x + 8} {y - 19.5} L{x + 8} {y - 22}", 1.2))
+    out.append(art.shape(f"M{x + 3} {y - 9} Q {x + 5} {y + 7} {x + 8} {y + 9} Q {x + 11} {y + 7} {x + 13} {y - 9} Z", "#9c4f20"))
+    return out
 
 
 def pencil_of(items):
@@ -641,7 +659,7 @@ def ship_items():
     """Every ink item of the base barge's drawing, for a pencil ghost of it."""
     hull_pre, hull_post, _, _ = hull_split()
     rear, _ = rear_split()
-    return art.balloon_placed() + art.rigging() + hull_pre + belt() + trim() + bombs() + hull_post + rear[:gear_start(rear)] + drive() + art.malakai()
+    return art.balloon_placed() + art.rigging() + hull_pre + belt() + trim() + bombs() + hull_post + rear[:gear_start(rear)] + drive() + helmsman()
 
 
 def ghost_of(items, op=0.42):
@@ -693,7 +711,7 @@ def barge_build():
 # their own (web/js/panel.js). The drawing shows the ship's port side (bow to the left), so Malakai on the port side is drawn in ink at a rifle place,
 # on the starboard side the same figure in pencil: he stands behind the near side, out of sight of a true side view.
 PLAN = (40, 560, 80, 150)        # x, y, w, h of the plan in units of the drawing
-MARK = 22                        # a mark's size in units of the drawing
+MARK = 34                        # a mark's size in units of the drawing: the portrait's face must read
 MALAKAI_AT = (492, 456)          # a rifle place of the waist (crew_ui_art.RIFLE_PLACES), on the rail
 
 
@@ -718,14 +736,14 @@ def plan_items():
 
 
 def mark_items(kind):
-    """A mark on a side of the plan, drawn in a box of MARK x MARK: empty ring, ring lit by the mouse, Malakai seen from above (a head with the slayer's
-    crest)."""
+    """A mark on a side of the plan, a ring of MARK x MARK: empty, lit by the mouse, or the copper ring round Malakai's portrait (the portrait is the
+    game's own picture, laid in by the panel)."""
     c = MARK / 2
     if kind == "selected":
-        return [art.circle(c, c, c - 1.5, 1.6, art.INK, "#e8c692"), art.circle(c, c + 1, 5.5, 1.0, art.INK, "#dcae74"),
-                art.shape(f"M{c - 2} {c - 7} L{c + 2} {c - 7} L{c + 1.4} {c + 6} L{c - 1.4} {c + 6} Z", "#c8501a"), art.path(f"M{c} {c - 7} L{c} {c + 6}", 0.6)]
+        return [art.circle(c, c, c - 1.5, 3.0, "#b5692e", "#2b2118"), art.circle(c, c, c - 1.5, 1.2, art.INK)]
     fill = "#f3d9a4" if kind == "hover" else "#fff1dc"
-    return [art.circle(c, c, c - 1.5, 1.6 if kind == "hover" else 1.2, art.INK, fill), art.circle(c, c, c - 6, 0.7, art.INK, op=0.6)]
+    return [art.circle(c, c, c - 1.5, 1.8 if kind == "hover" else 1.3, art.INK, fill), art.circle(c, c, c - 7, 0.7, art.INK, op=0.5),
+            art.path(f"M{c - 4} {c} L{c + 4} {c} M{c} {c - 4} L{c} {c + 4}", 0.8, art.INK, op=0.5)]
 
 
 def malakai_figure():
@@ -748,7 +766,12 @@ def side_art(places):
     figure = malakai_figure()
     layer("malakai_near", figure, places)
     layer("malakai_far", pencil_of(figure), places)
-    return {"plan": PLAN, "mark": MARK, "marks": {"left": [PLAN[0] + 4, PLAN[1] + 62], "right": [PLAN[0] + PLAN[2] - 4 - MARK, PLAN[1] + 62]}}
+    # Malakai on the barge being built: over the hatched barge (moved by FRAME_DY as it is), near side pale ink under pencil, far side pencil only
+    layer("malakai_near_build", [f'<g transform="translate(0 {FRAME_DY})">' + "".join(ink_pale(figure, 0.45) + pencil_of(figure)) + "</g>"], places)
+    layer("malakai_far_build", [f'<g transform="translate(0 {FRAME_DY})" opacity="0.7">' + "".join(pencil_of(figure)) + "</g>"], places)
+    cx, half, y = PLAN[0] + PLAN[2] / 2, 22, PLAN[1] + 52
+    return {"plan": PLAN, "mark": MARK, "marks": {"left": [cx - half - MARK / 2, y], "right": [cx + half - MARK / 2, y]},
+            "portrait": "ui/portraits/round/mtb_malakai.png", "portrait_inset": 4}
 
 
 def tree_line():

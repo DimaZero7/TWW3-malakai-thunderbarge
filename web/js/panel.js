@@ -76,13 +76,17 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     if (blueprint.malakai_side && ms) {
         const p = place('plan_ship');
         view.side = {show_when: blueprint.malakai_side.show_when, plan: image(sheet, 'plan_ship', WEB_ART + 'plan_ship.png', p[0] * scale, p[1] * scale, p[2] * scale, p[3] * scale), marks: {}};
+        view.side.portraits = {};
         for (const s of ['left', 'right']) {
             const b = make(sheet, SIDE + s, 'button_mark');
             size(b, ms.mark * scale, ms.mark * scale);
             at(b, ms.marks[s][0] * scale, ms.marks[s][1] * scale);
             view.side.marks[s] = b;
+            // Malakai's portrait of the game, round, inside the selected ring
+            const inset = ms.portrait_inset * scale;
+            view.side.portraits[s] = image(b, 'portrait', ms.portrait, inset, inset, ms.mark * scale - 2 * inset, ms.mark * scale - 2 * inset);
         }
-        for (const n of ['near', 'far']) {
+        for (const n of ['near', 'far', 'near_build', 'far_build']) {
             const q = place('malakai_' + n);
             view.side[n] = image(sheet, 'malakai_' + n, WEB_ART + 'malakai_' + n + '.png', q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale);
         }
@@ -322,18 +326,23 @@ function refresh(view, M) {
     }
     if (view.tree) refreshTree(view, M);
     if (view.side) {
-        const shown = !view.side.show_when || M.stage(view.side.show_when) === 'ink';
+        // the plan from the order of the barge on (the side can be chosen before it stands), the figure on the drawing as the barge is: hatched or inked
+        const bargeStage = view.side.show_when ? M.stage(view.side.show_when) : 'ink';
+        const shown = bargeStage === 'ink' || bargeStage === 'build';
         const side = M.malakai_side();
         view.side.plan.SetVisible(shown);
         for (const [s, b] of Object.entries(view.side.marks)) {
             b.SetVisible(shown);
             b.SetState(s === side ? 'selected' : 'active');
             const name = s === 'left' ? 'левом' : 'правом';
-            b.SetTooltipText(s === side ? `Малакай на ${name} борту: стреляет стрелком` : `Поставить Малакая на ${s === 'left' ? 'левый' : 'правый'} борт`, true);
+            b.SetTooltipText(s === side ? `Малакай на ${name} борту: стреляет стрелком` : `Пустой борт. Щёлкните, чтобы поставить Малакая на ${s === 'left' ? 'левый' : 'правый'} борт`, true);
         }
         // the drawing shows the left side (bow to the left): there he is in ink; on the right side he stands behind it, in pencil
-        view.side.near.SetVisible(shown && side === 'left');
-        view.side.far.SetVisible(shown && side === 'right');
+        for (const s of ['left', 'right']) view.side.portraits[s].SetVisible(shown && s === side);
+        view.side.near.SetVisible(bargeStage === 'ink' && side === 'left');
+        view.side.far.SetVisible(bargeStage === 'ink' && side === 'right');
+        view.side.near_build.SetVisible(bargeStage === 'build' && side === 'left');
+        view.side.far_build.SetVisible(bargeStage === 'build' && side === 'right');
     }
     let rowsShown = 0;
     view.rows.forEach((r, i) => {
