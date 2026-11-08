@@ -1,5 +1,5 @@
 {
- "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from. stages: what the page shows at each stage of the ship, ?stage=<name> in the address; stage: the one shown without it. planks: the bare timber of the yard (tools/web_art.py, planks b), no buildings yet, no model; barge: the base barge with the guns' first building and the details. hull1: the hull's first level alone (sheets: the drawing per stage of sheet_part: bare timber, the same with the frame hatched over it, the frame; built: what stands at the start of this stage, overriding web/data/sim.json; demolish: the demolish button shown; frame_scheme: a scheme of keel and frames from three.js primitives in 3D while the frame stands, there is no model of it).",
+ "_about": "The ship tab of the airship screen. sheet: the drawing under the layers (pack path; web/art/blueprint_base.png is the base barge of tools/web_art.py). parts: the details that buildings bring, each its own layer on the drawing and its own model in 3D. building: the level without the prefix that brings it, null while the mod has no such building yet; enabled: connected on the page now (false: only the data is ready, the step to come is to set it true). Drawing layers: pencil, build, ink in web/art/layers.json or data/crew_ui_art.json (null: not drawn yet); turns_at: where the turns left are written while it is built, in units of the drawing (1040 x 760). model.part: build/web/models/<part>.gltf (tools/web_export.py); model.hides: nodes of the base hull it replaces; source: where the model comes from. stages: what the page shows at each stage of the ship, ?stage=<name> in the address; stage: the one shown without it. planks: the bare timber of the yard (tools/web_art.py, planks b), no buildings yet, no model; barge: the base barge with the guns' first building and the details. hull1: the hull's first level alone (sheets: the drawing per stage of sheet_part: bare timber, the same with the frame hatched over it, the frame; built: what stands at the start of this stage, overriding web/data/sim.json; demolish: the demolish button shown; frame_scheme: a scheme of keel and frames from three.js primitives in 3D while the frame stands, there is no model of it). tree: the stage's buildings as a tree (nodes: levels without the prefix; links from the data; direction: down, the first buildings on top, or up). tree_demo: the example shown by ?tree=demo; ?dir=up|down overrides the direction.",
  "stage": "hull1",
  "stages": {
   "planks": {
@@ -54,7 +54,13 @@
    "model": null,
    "caption": "Дерево построек корпуса. Первая — заготовка под корабль.",
    "no_ship": "Корабль ещё не построен",
-   "frame_scheme": true
+   "frame_scheme": true,
+   "tree": {
+    "nodes": [
+     "airship_hull_1"
+    ],
+    "direction": "down"
+   }
   }
  },
  "parts": {
@@ -187,5 +193,48 @@
    },
    "source": "cut by boxes from build/solid_hull_hatches (tools/web_export.py, SHIELDS)"
   }
+ },
+ "tree_demo": {
+  "_about": "?tree=demo: an example of the tree's shape after the user's sketch (two on top, joining below, one at the bottom). Names and links are made up, the icons are the mod's.",
+  "nodes": [
+   {
+    "key": "demo_a",
+    "name": "Пример A",
+    "icon": "ui/buildings/icons/tww3_mtb_crew_weapons_1.png",
+    "needs": []
+   },
+   {
+    "key": "demo_b",
+    "name": "Пример B",
+    "icon": "ui/buildings/icons/tww3_mtb_engines_1.png",
+    "needs": []
+   },
+   {
+    "key": "demo_c",
+    "name": "Пример C (нужны A и B)",
+    "icon": "ui/buildings/icons/tww3_mtb_cargo_hold_1.png",
+    "needs": [
+     "demo_a",
+     "demo_b"
+    ]
+   },
+   {
+    "key": "demo_d",
+    "name": "Пример D (нужна B)",
+    "icon": "ui/buildings/icons/tww3_mtb_support_radius_1.png",
+    "needs": [
+     "demo_b"
+    ]
+   },
+   {
+    "key": "demo_e",
+    "name": "Пример E (нужны C и D)",
+    "icon": "ui/buildings/icons/tww3_mtb_airship_hull_2.png",
+    "needs": [
+     "demo_c",
+     "demo_d"
+    ]
+   }
+  ]
  }
 }

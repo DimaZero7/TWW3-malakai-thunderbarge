@@ -8,6 +8,7 @@ const LAYOUTS = 'ui/tww3_mtb/';
 const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they would be ui/tww3_mtb/<name>.png like the others
 const ROW = 'mtb_ship_row_', ORDER = 'mtb_ship_order', CANCEL = 'mtb_ship_cancel', DEMOLISH = 'mtb_ship_demolish';
 const MAX_ROWS = 6;
+let view_flags = {};
 
 // helpers as in the Lua
 function make(parent, id, layout) { return parent.CreateComponent(id, layout); }
@@ -18,6 +19,7 @@ function text(parent, id, layout, x, y, w, h, value) { const c = make(parent, id
 function grey(c, on) { c.ShaderTechniqueSet(on ? 'set_greyscale_t0' : 'normal_t0', true); }
 
 export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
+    view_flags = flags;
     const view = {rows: [], layers: {}, selected: null};
     const W = root.Width(), H = root.Height();
     const panel_w = Math.min(W - 40, 1560), panel_h = Math.min(H - 30, 870);
@@ -81,9 +83,17 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view.about = text(column, 'about', 'text_body', 14, 32, column_w - 28, 40, '');
     const rows_top = 80, row_gap = 4, foot_h = 82;
     const row_h = Math.min(92, Math.floor((scheme_h - rows_top - foot_h - row_gap * (MAX_ROWS - 1) - 8) / MAX_ROWS));
-    for (let i = 0; i < MAX_ROWS; i++) view.rows.push(makeRow(column, i + 1, 8, rows_top + i * (row_h + row_gap), column_w - 16, row_h));
-    // details of the selected level: the game's short description and its green lines
+    // a stage with a tree of buildings (blueprint.json, tree; ?tree=demo the example) shows it instead of rows
+    const treeMode = !!(blueprint.tree || (flags.tree === 'demo' && blueprint.tree_demo));
     view.detail_top = rows_top;
+    if (treeMode) {
+        view.detail_top = rows_top + 6 + makeTree(column, view, M, blueprint, flags, 14, rows_top + 6, column_w - 28) + 16;
+        view.selName = text(column, 'sel_name', 'text_head', 14, 0, column_w - 28, 26, '');
+        view.selMeta = text(column, 'sel_meta', 'text_line', 14, 0, column_w - 28, 20, '');
+    } else {
+        for (let i = 0; i < MAX_ROWS; i++) view.rows.push(makeRow(column, i + 1, 8, rows_top + i * (row_h + row_gap), column_w - 16, row_h));
+    }
+    // details of the selected level: the game's short description and its green lines
     view.detail = text(column, 'detail', 'text_body', 14, 0, column_w - 28, 44, '');
     view.lines = text(column, 'lines', 'text_green', 14, 0, column_w - 28, 80, '');
     // commands
@@ -92,6 +102,7 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view.order = makeButton(column, ORDER, 14, buttons_y, button_w, button_h, 'Заказать');
     view.cancel = makeButton(column, CANCEL, 14 + button_w + 10, buttons_y, button_w, button_h, 'Отменить');
     view.demolish = makeButton(column, DEMOLISH, 14, buttons_y - button_h - 8, button_w, button_h, 'Снести');
+    view.demolishShown = !!blueprint.demolish;
     view.demolish.button.SetVisible(!!(flags.full || blueprint.demolish));
     view.demolish.button.SetTooltipText('Снести постройку. Золото не возвращается: возврата при сносе в данных нет (допущение). В игре корпус снести нельзя, здесь можно для проверки', true);
     view.message = text(column, 'message', 'text_copper', 14, scheme_h - foot_h - 26, column_w - 28, 22, '');
@@ -104,14 +115,124 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         const chain = M.chain(key);
         view.levels.push(...(blueprint.first_only && !flags.full ? chain.levels.slice(0, 1) : chain.levels));
     }
-    view.selected = view.levels.length ? view.levels[0].key : null;
-    if (blueprint.caption) view.about.SetStateText(blueprint.caption);
+    if (!view.tree) view.selected = view.levels.length ? view.levels[0].key : null;
+    if (view.tree && flags.tree === 'demo') view.about.SetStateText('Пример дерева (?tree=demo): узлы и связи придуманы, не из данных.');
+    else if (blueprint.caption) view.about.SetStateText(blueprint.caption);
     else if (view.levels.length) view.about.SetStateText(blueprint.first_only && !flags.full ? `Первая постройка линейки пушек: «${view.levels[0].name}».` : 'Линейка пушек: порты, палуба, арсенал, органы.');
 
     view.root = backdrop;
     view.frame = frame;
     view.scale = scale;
     return {view, refresh: () => refresh(view, M), click: (c) => click(view, M, c)};
+}
+
+// ---------------- the tree of buildings: square nodes joined by brass lines, laid out from the requirements ----------------
+// Tiers by depth (the longest way from a node with no requirement), the order inside a tier by the mean place of the nodes it needs (one pass, enough
+// for a small tree), every tier spread evenly across the width. direction "down": the first buildings on top, what needs them below; "up": the other way.
+// Lines run square: from a node to halfway, across, on to the other node; lines that meet share their halfway.
+const NODE = 68, TIER_GAP = 104, LINE = 3;
+const TREE = 'mtb_tree_node_';
+
+export function treeLayout(nodes) {
+    const byKey = Object.fromEntries(nodes.map(n => [n.key, n]));
+    const tier = {};
+    const depth = k => {
+        if (tier[k] !== undefined) return tier[k];
+        const needs = byKey[k].needs.filter(p => byKey[p]);
+        tier[k] = needs.length ? 1 + Math.max(...needs.map(depth)) : 0;
+        return tier[k];
+    };
+    nodes.forEach(n => depth(n.key));
+    const tiers = [];
+    for (const n of nodes) (tiers[tier[n.key]] ||= []).push(n.key);
+    const place = {};
+    tiers.forEach((keys, t) => {
+        if (t > 0) {
+            const mean = k => { const ps = byKey[k].needs.filter(p => place[p] !== undefined); return ps.length ? ps.reduce((a, p) => a + place[p], 0) / ps.length : 0.5; };
+            keys.sort((a, b) => mean(a) - mean(b));
+        }
+        keys.forEach((k, i) => { place[k] = (i + 0.5) / keys.length; });
+    });
+    return {tier, tiers, place};
+}
+
+function treeNodes(blueprint, M, flags) {
+    // ?tree=demo: the example of blueprint.json (tree_demo), its own nodes and links; otherwise the stage's buildings, links from the data:
+    // the level below in the same chain and the buildings each level requires, when they are in the tree too
+    if (flags.tree === 'demo' && blueprint.tree_demo) return blueprint.tree_demo.nodes.map(n => ({...n, demo: true}));
+    const keys = (blueprint.tree ? blueprint.tree.nodes : []).map(k => M.prefix + k);
+    return keys.map(key => {
+        const row = M.level(key);
+        const chain = M.chain(row.chain);
+        const below = chain && chain.levels.find(l => l.level === row.level - 1);
+        const needs = [...(below ? [below.key] : []), ...row.requires].filter(k => keys.includes(k));
+        return {key, name: row.name, icon: row.icon ? 'ui/buildings/icons/tww3_mtb_' + row.icon : null, needs};
+    });
+}
+
+function makeTree(parent, view, M, blueprint, flags, x, y, w) {
+    const nodes = treeNodes(blueprint, M, flags);
+    const direction = flags.dir || (blueprint.tree && blueprint.tree.direction) || 'down';
+    const {tier, tiers, place} = treeLayout(nodes);
+    const height = tiers.length ? (tiers.length - 1) * TIER_GAP + NODE : 0;
+    const pos = {};
+    for (const n of nodes) {
+        const t = direction === 'up' ? tiers.length - 1 - tier[n.key] : tier[n.key];
+        pos[n.key] = {x: x + place[n.key] * w - NODE / 2, y: y + t * TIER_GAP};
+    }
+    // the lines first, under the nodes
+    let seg = 0;
+    const line = (x0, y0, x1, y1) => {
+        const c = image(parent, `tree_line_${seg++}`, WEB_ART + 'tree_line.png', Math.min(x0, x1) - LINE / 2, Math.min(y0, y1) - LINE / 2,
+                        Math.abs(x1 - x0) + LINE, Math.abs(y1 - y0) + LINE);
+        return c;
+    };
+    for (const n of nodes) {
+        for (const p of n.needs) {
+            if (!pos[p]) continue;
+            const a = pos[p], b = pos[n.key];
+            const ax = a.x + NODE / 2, bx = b.x + NODE / 2;
+            const down = b.y > a.y;
+            const ay = down ? a.y + NODE : a.y, by = down ? b.y : b.y + NODE;
+            const mid = (ay + by) / 2;
+            line(ax, ay, ax, mid); line(ax, mid, bx, mid); line(bx, mid, bx, by);
+        }
+    }
+    view.tree = nodes.map((n, i) => {
+        const b = make(parent, TREE + i, 'button_plate');
+        size(b, NODE, NODE);
+        at(b, pos[n.key].x, pos[n.key].y);
+        const v = {node: n, button: b};
+        v.icon = image(b, 'icon', n.icon || 'ui/skins/default/icon_check.png', 10, 10, NODE - 20, NODE - 20);
+        v.check = image(b, 'check', 'ui/skins/default/icon_check.png', NODE - 24, 2, 22, 22);
+        v.padlock = image(b, 'padlock', 'ui/skins/default/icon_padlock.png', NODE - 24, 2, 22, 22);
+        v.hourglass = image(b, 'hourglass', 'ui/skins/default/icon_hourglass.png', 4, NODE - 22, 18, 18);
+        v.turns = text(b, 'turns', 'text_line', 22, NODE - 23, NODE - 24, 20, '');
+        return v;
+    });
+    view.selected = nodes.length ? nodes[0].key : null;
+    return height;
+}
+
+function nodeStatus(M, n) {
+    return n.demo ? {state: 'demo'} : M.status(n.key);
+}
+
+function refreshTree(view, M) {
+    for (const v of view.tree) {
+        const st = nodeStatus(M, v.node);
+        const locked = st.state === 'locked' || st.state === 'unknown';
+        // a locked node stays clickable (its details tell why): grey icon and a padlock, not the plate's disabled state
+        v.button.SetState(view.selected === v.node.key ? 'selected' : 'active');
+        grey(v.icon, locked);
+        v.check.SetVisible(st.state === 'built');
+        v.padlock.SetVisible(locked);
+        v.hourglass.SetVisible(st.state === 'building');
+        v.turns.SetVisible(st.state === 'building');
+        v.turns.SetStateText(st.state === 'building' ? String(st.turns) : '');
+        const state = {built: 'построено', building: `строится, ${turnsText(st.turns || 0)}`, open: 'можно заказать', locked: st.why || 'недоступно', demo: 'пример, не из данных'}[st.state] || '';
+        v.button.SetTooltipText(`${v.node.name}\n${state}`, true);
+    }
 }
 
 function makeButton(parent, id, x, y, w, h, label) {
@@ -173,6 +294,7 @@ function refresh(view, M) {
         layers.turns.SetVisible(stage === 'build');
         layers.turns.SetStateText(st.state === 'building' ? turnsText(st.turns) : '');
     }
+    if (view.tree) refreshTree(view, M);
     let rowsShown = 0;
     view.rows.forEach((r, i) => {
         const row = view.levels[i];
@@ -196,7 +318,26 @@ function refresh(view, M) {
         r.button.SetTooltipText(tooltip(row, st, view.cards[row.key]), true);
         r.row = row;
     });
-    // details under the rows; none while the stage has no buildings
+    // details under the rows or the tree; none while the stage has no buildings
+    const demo = view.tree && view.tree.find(v => v.node.key === view.selected && v.node.demo);
+    if (view.selName) {
+        const node = view.tree && view.tree.find(v => v.node.key === view.selected);
+        view.selName.SetVisible(!!node);
+        view.selMeta.SetVisible(!!node);
+        if (node) {
+            at(view.selName, 14, view.detail_top);
+            at(view.selMeta, 14, view.detail_top + 28);
+            view.selName.SetStateText(node.node.name);
+        }
+    }
+    if (demo) {
+        for (const c of [view.lines, view.order.button, view.cancel.button, view.demolish.button]) c.SetVisible(false);
+        view.selMeta.SetStateText('Пример: узел не из данных, заказать нельзя');
+        view.detail.SetVisible(false);
+        view.message.SetStateText(M.message() || '');
+        return;
+    }
+    if (view.tree) view.demolish.button.SetVisible(!!(view_flags.full || view.demolishShown));
     const sel = view.selected && M.level(view.selected);
     for (const c of [view.detail, view.lines, view.order.button, view.cancel.button]) c.SetVisible(!!sel);
     if (!sel) {
@@ -204,9 +345,14 @@ function refresh(view, M) {
         view.message.SetStateText(M.message() || '');
         return;
     }
-    const y = view.detail_top + rowsShown * 96 + 8;
+    const y = view.tree ? view.detail_top + 52 : view.detail_top + rowsShown * 96 + 8;
     at(view.detail, 14, y);
     const card = view.cards[sel.key];
+    if (view.selMeta) {
+        const s0 = M.status(sel.key);
+        const state = {built: 'Построено', building: `Строится: осталось ${turnsText(s0.turns || 0)}`, open: 'Можно заказать', locked: s0.why || 'Недоступно'}[s0.state] || '';
+        view.selMeta.SetStateText(`Цена: ${sel.cost} золота · ${turnsText(sel.turns)} · ${state}`);
+    }
     view.detail.SetStateText(sel.text || (card && card.text) || '');
     at(view.lines, 14, y + 46);
     view.lines.SetStateText(effectLines(sel, card).join('\n'));
@@ -221,7 +367,10 @@ function refresh(view, M) {
 
 function click(view, M, c) {
     const id = c.Id();
-    if (id.startsWith(ROW)) {
+    if (id.startsWith(TREE)) {
+        const v = view.tree[Number(id.slice(TREE.length))];
+        if (v) view.selected = v.node.key;
+    } else if (id.startsWith(ROW)) {
         const r = view.rows[Number(id.slice(ROW.length)) - 1];
         if (r && r.row) view.selected = r.row.key;
     } else if (!view.selected) {
