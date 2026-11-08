@@ -15,6 +15,14 @@
   <span id="turn">Ход 1</span>
   <button id="end_turn" title="Кнопка игры: конец хода. Постройки идут на ход вперёд">Конец хода</button>
   <button id="build_to" class="debug" title="Отладка: сразу построить выбранную постройку и всё, что ей нужно, без ходов и золота">Построить до выбранной</button>
+  <span class="debug-gold" title="Отладка: задать золото фракции">Золото:
+    <input id="gold_value" type="number" min="0" step="100">
+    <button id="gold_set" class="debug">Задать</button>
+    <button class="debug gold_quick" data-gold="0">0</button>
+    <button class="debug gold_quick" data-gold="500">500</button>
+    <button class="debug gold_quick" data-gold="1000">1000</button>
+    <button class="debug gold_quick" data-gold="6000">6000</button>
+  </span>
   <button id="reset_all" class="debug" title="Отладка: забыть сохранённое состояние страницы и начать заново">Сбросить всё</button>
   <ul id="log"></ul>
 </header>

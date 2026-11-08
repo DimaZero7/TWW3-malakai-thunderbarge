@@ -759,9 +759,9 @@ def side_art(places):
     """The plan, its three marks, Malakai near and far."""
     from PIL import Image
     layer("plan_ship", plan_items(), places)
-    for kind in ("normal", "hover", "selected"):
+    for kind in ("normal", "hover", "selected", "locked"):      # locked: the empty ring; the panel dims it while the barge is only ordered
         s = 4
-        im = art.paint(f"web_mark_{kind}", art.svg_page(mark_items(kind), w=MARK, h=MARK, scale=s, filtered=False), MARK * s, MARK * s)
+        im = art.paint(f"web_mark_{kind}", art.svg_page(mark_items("normal" if kind == "locked" else kind), w=MARK, h=MARK, scale=s, filtered=False), MARK * s, MARK * s)
         im.save(OUT / f"mark_{kind}.png", optimize=True)
     figure = malakai_figure()
     layer("malakai_near", figure, places)

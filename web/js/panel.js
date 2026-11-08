@@ -373,27 +373,33 @@ function refresh(view, M) {
     }
     if (view.tree) refreshTree(view, M);
     if (view.side) {
-        // the plan from the order of the barge on (the side can be chosen before it stands), the figure on the drawing as the barge is: hatched or inked
+        // the plan shows from the order of the barge on; while the barge is only ordered it has no sides yet: the whole plan dim as the game's greyed slot
+        // (greyscale, #FFFFFF80), the marks take no click, no glow, no figure on the hatched barge. Once it stands: the plan as usual.
         const bargeStage = view.side.show_when ? M.stage(view.side.show_when) : 'ink';
         const shown = bargeStage === 'ink' || bargeStage === 'build';
+        const ready = bargeStage === 'ink';
+        view.side.ready = ready;
         const side = M.malakai_side();
+        const dim = c => { c.SetImageColour(255, 255, 255, ready ? 255 : 0x80); c.ShaderTechniqueSet(ready ? 'normal_t0' : 'set_greyscale_t0'); };
         view.side.plan.SetVisible(shown);
+        dim(view.side.plan);
         for (const [s, b] of Object.entries(view.side.marks)) {
             b.SetVisible(shown);
-            b.SetState(s === side ? 'selected' : 'active');
+            b.SetState(!ready ? 'inactive' : s === side ? 'selected' : 'active');
+            dim(b);
             const name = s === 'left' ? 'левом' : 'правом';
-            b.SetTooltipText(M.side_hint() ? 'Выберите борт для Малакая'
+            b.SetTooltipText(!ready ? 'Борт можно выбрать, когда корабль будет построен' : M.side_hint() ? 'Выберите борт для Малакая'
                 : s === side ? `Малакай на ${name} борту: стреляет стрелком` : `Пустой борт. Щёлкните, чтобы поставить Малакая на ${s === 'left' ? 'левый' : 'правый'} борт`, true);
         }
         // the drawing shows the left side (bow to the left): there he is in ink; on the right side he stands behind it, in pencil
         for (const s of ['left', 'right']) view.side.portraits[s].SetVisible(shown && s === side);
-        const hint = shown && M.side_hint();
+        const hint = ready && M.side_hint();
         // only the empty side glows: the place Malakai can be moved to
         for (const [s, g] of Object.entries(view.side.glows)) g.SetVisible(hint && s !== side);
-        view.side.near.SetVisible(bargeStage === 'ink' && side === 'left');
-        view.side.far.SetVisible(bargeStage === 'ink' && side === 'right');
-        view.side.near_build.SetVisible(bargeStage === 'build' && side === 'left');
-        view.side.far_build.SetVisible(bargeStage === 'build' && side === 'right');
+        view.side.near.SetVisible(ready && side === 'left');
+        view.side.far.SetVisible(ready && side === 'right');
+        view.side.near_build.SetVisible(false);
+        view.side.far_build.SetVisible(false);
     }
     let rowsShown = 0;
     view.rows.forEach((r, i) => {
@@ -472,7 +478,7 @@ function refresh(view, M) {
 function click(view, M, c) {
     const id = c.Id();
     if (id.startsWith(SIDE)) {
-        M.set_malakai_side(id.slice(SIDE.length));
+        if (view.side && view.side.ready) M.set_malakai_side(id.slice(SIDE.length));      // no sides while the barge is only ordered
     } else if (id.startsWith(TREE)) {
         const v = view.tree[Number(id.slice(TREE.length))];
         if (v) view.selected = v.node.key;

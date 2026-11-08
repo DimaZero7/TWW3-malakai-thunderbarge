@@ -100,6 +100,20 @@ async function main() {
         }
     } catch (e) { /* a broken or missing save: start fresh */ }
     if (flags.gold !== undefined) game.gold = Number(flags.gold);      // ?gold=500: start with this much, to see the short of gold state
+    // Debug: the faction's gold set by hand; saved with the state, the tree and its prices redrawn at once
+    const goldInput = document.getElementById('gold_value');
+    const setGold = v => {
+        if (!Number.isFinite(v) || v < 0) return;
+        game.gold = Math.round(v);
+        log(`отладка: золото ${game.gold}`);
+        update(); save();
+        goldInput.value = game.treasury();
+    };
+    document.getElementById('gold_set').addEventListener('click', () => setGold(Number(goldInput.value)));
+    goldInput.addEventListener('keydown', e => { if (e.key === 'Enter') setGold(Number(goldInput.value)); });
+    for (const b of document.querySelectorAll('.gold_quick')) b.addEventListener('click', () => setGold(Number(b.dataset.gold)));
+    const showGold = () => { if (document.activeElement !== goldInput) goldInput.value = game.treasury(); };
+    M.on_change(showGold);
     document.getElementById('build_to').addEventListener('click', () => {
         if (panel.view.selected && M.level(panel.view.selected)) { M.debug_build_to(panel.view.selected); log('отладка: построено до выбранной'); }
     });
@@ -125,6 +139,7 @@ async function main() {
     new ResizeObserver(fit).observe(document.getElementById('left'));
     fit();
     update();
+    goldInput.value = game.treasury();
     // for checks from the browser's console: the state as text
     window.mtb = {game, M, panel, viewer, describe: () => ({turn: game.turn, gold: game.treasury(), hull: viewer.current,
         levels: panel.view.levels.map(l => ({name: l.name, ...M.status(l.key)})), stage: stageName, port: blueprint.parts.port ? M.stage('port') : null, message: M.message(),
