@@ -46,6 +46,9 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .col_yellow { color: #ffd65a; }
 .col_green { color: #9bd36a; }
 .col_red { color: #ff5a4a; }
+.c.movie { background: #15110c; overflow: hidden; }
+.movie_placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; color: #c9b88f;
+                     font: italic 14px "Palatino Linotype", Georgia, serif; border: 1px dashed #6b4a26; box-sizing: border-box; }
 .tooltip { position: absolute; z-index: 10; max-width: 380px; padding: 8px 11px; background: #15110c; border: 2px solid #8a5a2c; color: #fff8d7;
            font: 13px/1.35 "Palatino Linotype", Georgia, serif; pointer-events: none; }
 

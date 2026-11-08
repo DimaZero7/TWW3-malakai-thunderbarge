@@ -769,25 +769,35 @@ def side_art(places):
     # Malakai on the barge being built: over the hatched barge (moved by FRAME_DY as it is), near side pale ink under pencil, far side pencil only
     layer("malakai_near_build", [f'<g transform="translate(0 {FRAME_DY})">' + "".join(ink_pale(figure, 0.45) + pencil_of(figure)) + "</g>"], places)
     layer("malakai_far_build", [f'<g transform="translate(0 {FRAME_DY})" opacity="0.7">' + "".join(pencil_of(figure)) + "</g>"], places)
+    phases = side_glow(GLOW_VARIANT)
     cx, half, y = PLAN[0] + PLAN[2] / 2, 22, PLAN[1] + 52
     return {"plan": PLAN, "mark": MARK, "marks": {"left": [cx - half - MARK / 2, y], "right": [cx + half - MARK / 2, y]},
-            "portrait": "ui/portraits/round/mtb_malakai.png", "portrait_inset": 4}
+            "portrait": "ui/portraits/round/mtb_malakai.png", "portrait_inset": 4, "glow": {"phases": phases, "size": GLOW_SIZE, "step_ms": 110}}
 
 
-def side_glow():
-    """The orange halo under a side mark while the player has not chosen a side yet: two phases, the panel switches them by a timer, as the game blinks
-    the buttons of its tutorials. A soft ring, transparent in the middle and outside."""
+def side_glow(variant="a", out_prefix="glow"):
+    """The warm ring round an empty side mark while the player has not chosen a side yet: a thin ring hugging the mark's edge, its phases switched by
+    the panel's timer (as the game blinks a tutorial's button). The picture is GLOW_SIZE times the mark; the mark's ring edge is at 0.73 of its half.
+    a: 8 phases, a narrow ring right on the edge, alpha 0.45..0.85; b: 6 phases, a little wider and softer, alpha 0.35..0.65, more golden."""
     import numpy as np
     from PIL import Image
     n = 128
     yy, xx = np.mgrid[0:n, 0:n]
     r = np.hypot(xx - n / 2 + 0.5, yy - n / 2 + 0.5) / (n / 2)
-    for name, strength in (("glow_a", 1.0), ("glow_b", 0.55)):
-        a = np.clip(np.exp(-((r - 0.70) / 0.17) ** 2) * 255 * strength, 0, 255)
+    centre, width, phases, lo, hi, rgb = {"a": (0.78, 0.035, 8, 0.45, 0.85, (255, 160, 60)),
+                                          "b": (0.80, 0.05, 6, 0.35, 0.65, (255, 196, 90))}[variant]
+    ring = np.exp(-((r - centre) / width) ** 2)
+    for i in range(phases):
+        k = lo + (hi - lo) * (0.5 - 0.5 * math.cos(2 * math.pi * i / phases))
         rgba = np.zeros((n, n, 4), np.uint8)
-        rgba[..., 0], rgba[..., 1], rgba[..., 2], rgba[..., 3] = 255, 150, 30, a.astype(np.uint8)
-        Image.fromarray(rgba, "RGBA").save(OUT / f"{name}.png", optimize=True)
+        rgba[..., 0], rgba[..., 1], rgba[..., 2] = rgb
+        rgba[..., 3] = np.clip(ring * 255 * k, 0, 255).astype(np.uint8)
+        Image.fromarray(rgba, "RGBA").save(OUT / f"{out_prefix}_{i}.png", optimize=True)
+    return phases
 
+
+GLOW_SIZE = 1.3
+GLOW_VARIANT = "a"
 
 def tree_line():
     """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
@@ -843,7 +853,6 @@ def main():
     (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts}, indent=1), encoding="utf-8")
     tree_line()
     node_back()
-    side_glow()
     # the hull's second level being built over the frame (last: the drawings above keep their random hatching)
     layer("barge_build", barge_build(), places)
     parts["barge"] = {"pencil": None, "build": "barge_build", "ink": None}

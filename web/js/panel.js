@@ -79,16 +79,17 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         view.side.portraits = {};
         // the halo under each mark while the side was never chosen: two pictures switched by a timer, as the game blinks a tutorial's button
         view.side.glows = {};
+        const glow = ms.glow;
         for (const s of ['left', 'right']) {
-            const g = ms.mark * 0.75;
-            view.side.glows[s] = image(sheet, 'side_glow_' + s, WEB_ART + 'glow_a.png', (ms.marks[s][0] - g / 2) * scale, (ms.marks[s][1] - g / 2) * scale,
-                                       (ms.mark + g) * scale, (ms.mark + g) * scale);
+            const size = ms.mark * glow.size, off = (size - ms.mark) / 2;
+            view.side.glows[s] = image(sheet, 'side_glow_' + s, WEB_ART + 'glow_0.png', (ms.marks[s][0] - off) * scale, (ms.marks[s][1] - off) * scale, size * scale, size * scale);
+            view.side.glows[s].SetPassive();
         }
         view.side.phase = 0;
-        setInterval(() => {         // GAME: core:get_tm():repeat_real_callback(..., 450, 'mtb_side_hint')
-            view.side.phase = 1 - view.side.phase;
-            for (const g of Object.values(view.side.glows)) g.SetImagePath(WEB_ART + (view.side.phase ? 'glow_b.png' : 'glow_a.png'), 0);
-        }, 450);
+        setInterval(() => {         // GAME: core:get_tm():repeat_real_callback(..., step, 'mtb_side_hint'), SetImagePath per phase
+            view.side.phase = (view.side.phase + 1) % glow.phases;
+            for (const g of Object.values(view.side.glows)) if (g.Visible()) g.SetImagePath(WEB_ART + `glow_${view.side.phase}.png`, 0);
+        }, glow.step_ms);
         for (const s of ['left', 'right']) {
             const b = make(sheet, SIDE + s, 'button_mark');
             size(b, ms.mark * scale, ms.mark * scale);
@@ -98,6 +99,24 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             const inset = ms.portrait_inset * scale;
             view.side.portraits[s] = image(b, 'portrait', ms.portrait, inset, inset, ms.mark * scale - 2 * inset, ms.mark * scale - 2 * inset);
         }
+        // the demo window: shown on hover of the plan or a mark until the side is first changed (as the hint's glow), then the plain short tooltips.
+        // In the game: a frame layout with a movie component (the spell browser's MoviePlayer callback, its loop property), see the report.
+        // a dark backing (the panel's backdrop picture), the video, a brass head and light text with even margins, the panel's frame edge over it all
+        const tw = 300, pad = 14, vw = tw - 2 * pad, vh = Math.round(vw * 9 / 16), th = pad + vh + 12 + 24 + 44 + pad;
+        const tx = (ms.plan[0] + ms.plan[2] + 12) * scale, ty = (ms.plan[1] + ms.plan[3]) * scale - th;
+        const tip = image(sheet, 'side_demo_tip', LAYOUTS + 'backdrop.png', tx, ty, tw, th);
+        view.side.tip = tip;
+        view.side.video = make(tip, 'video', 'movie');
+        size(view.side.video, vw, vh);
+        at(view.side.video, pad, pad);
+        view.side.video.SetMovie(['side_demo.webm', 'side_demo.mp4'].map(f => '/art/' + f), 'Здесь будет видео из игры');
+        text(tip, 'tip_head', 'text_head', pad, pad + vh + 10, vw, 24, 'Борт Малакая');
+        text(tip, 'tip_text', 'text_body', pad, pad + vh + 36, vw, 44,
+             'Выберите, с какого борта Малакай ведёт огонь. Сменить борт можно позже, между боями.');
+        const edge = make(tip, 'tip_edge', 'frame_edge');
+        size(edge, tw, th);
+        at(edge, 0, 0);
+        tip.SetVisible(false);
         for (const n of ['near', 'far', 'near_build', 'far_build']) {
             const q = place('malakai_' + n);
             view.side[n] = image(sheet, 'malakai_' + n, WEB_ART + 'malakai_' + n + '.png', q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale);
@@ -404,6 +423,14 @@ function refresh(view, M) {
         // the drawing shows the left side (bow to the left): there he is in ink; on the right side he stands behind it, in pencil
         for (const s of ['left', 'right']) view.side.portraits[s].SetVisible(shown && s === side);
         const hint = ready && M.side_hint();
+        // the demo window opens on hover of the plan or a mark while the hint is on; the marks' own tooltips stay quiet then
+        const demo = hint ? view.side.tip : null;
+        view.side.plan.SetHoverChild(demo);
+        for (const b of Object.values(view.side.marks)) {
+            b.SetHoverChild(demo);
+            if (demo) b.SetTooltipText('', true);
+        }
+        if (!demo) view.side.tip.SetVisible(false);
         // only the empty side glows: the place Malakai can be moved to
         for (const [s, g] of Object.entries(view.side.glows)) g.SetVisible(hint && s !== side);
         view.side.near.SetVisible(ready && side === 'left');

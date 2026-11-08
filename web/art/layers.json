@@ -161,6 +161,11 @@
    ]
   },
   "portrait": "ui/portraits/round/mtb_malakai.png",
-  "portrait_inset": 4
+  "portrait_inset": 4,
+  "glow": {
+   "phases": 8,
+   "size": 1.3,
+   "step_ms": 110
+  }
  }
 }

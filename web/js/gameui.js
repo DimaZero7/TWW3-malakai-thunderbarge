@@ -69,6 +69,7 @@ export class Component {
         if (parent) { parent.el.appendChild(this.el); parent.children.push(this); }
         if (TEXT[layout]) this.makeText(TEXT[layout]);
         if (SKIN[layout]) this.makeButton(SKIN[layout]);
+        if (layout === 'movie') this.el.classList.add('movie');
         if (layout === 'image') { this.img = document.createElement('img'); this.img.draggable = false; this.el.appendChild(this.img); }
         this.el.addEventListener('mouseenter', e => this.onEnter(e));
         this.el.addEventListener('mousemove', e => this.onMove(e));
@@ -112,8 +113,35 @@ export class Component {
             this.el.addEventListener('mouseup', e => { if (e.button === 0) clickHandler(this); });
         }
     }
+    // An image that does not take the mouse (a state without interactive="true"): the mouse goes to what lies under it
+    SetPassive() { this.el.style.pointerEvents = 'none'; }
     // A child shown while the mouse is over this component (the hover state's extra picture)
-    SetHoverChild(child) { this.hoverChild = child; child.SetVisible(!!this.hovered); }
+    SetHoverChild(child) {
+        if (this.hoverChild && this.hoverChild !== child) this.hoverChild.SetVisible(false);
+        this.hoverChild = child;
+        if (child) child.SetVisible(!!this.hovered);
+    }
+    // A movie component (the game's MoviePlayer): the first of the files that exists plays looped and silent; none: a placeholder text
+    async SetMovie(urls, placeholder) {
+        this.el.innerHTML = '';
+        for (const u of urls) {
+            try {
+                const r = await fetch(u, {method: 'HEAD'});
+                if (!r.ok) continue;
+            } catch (e) { continue; }
+            const v = document.createElement('video');
+            Object.assign(v, {src: u, loop: true, muted: true, autoplay: true, playsInline: true});
+            v.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+            this.el.appendChild(v);
+            this.movie = u;
+            return;
+        }
+        this.movie = null;
+        const p = document.createElement('div');
+        p.className = 'movie_placeholder';
+        p.textContent = placeholder;
+        this.el.appendChild(p);
+    }
     // the hover state's brighten_t0 shader (0.40 on the slot): brightness raised while the mouse is over
     SetHoverBrighten(k) { this.hoverBrighten = k; }
 
