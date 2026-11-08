@@ -8,6 +8,7 @@ import {GameSim} from './game_sim.js';
 import {makeBuildings, turnsText} from './barge_buildings.js';
 import {makePanel} from './panel.js';
 import {Viewer} from './viewer3d.js';
+import {makeOverview} from './overview.js';
 
 const flags = Object.fromEntries(new URLSearchParams(location.search));
 
@@ -62,11 +63,13 @@ async function main() {
         const area = document.getElementById('left');
         // ?k=1: the game's own pixels, scrolled (for close looks); otherwise the whole root fits the left side
         const k = flags.k ? Number(flags.k) : Math.min(area.clientWidth / root.Width(), area.clientHeight / root.Height());
-        area.style.overflow = flags.k ? 'auto' : 'hidden';
+        area.style.overflowX = flags.k ? 'auto' : 'hidden';
+        area.style.overflowY = 'auto';      // the overview of the chains goes on under the screen
         root.el.style.transform = `scale(${k})`;
         host.style.width = root.Width() * k + 'px';
         host.style.height = root.Height() * k + 'px';
     };
+    makeOverview(document.getElementById('overview')).catch(e => console.error(e));
     new ResizeObserver(fit).observe(document.getElementById('left'));
     fit();
     update();

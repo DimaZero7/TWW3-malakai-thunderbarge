@@ -9,7 +9,7 @@ html, body { margin: 0; height: 100%; background: #1b1915; color: #e8dcc0; font:
 #log { list-style: none; margin: 0; padding: 0; display: flex; gap: 16px; overflow: hidden; white-space: nowrap; color: #c9b88f; flex: 1; }
 #log li:not(:first-child) { color: #7f7765; }
 main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: flex; }
-#left { flex: 0 0 62%; position: relative; overflow: hidden; }
+#left { flex: 0 0 62%; position: relative; overflow-x: hidden; overflow-y: auto; }
 #right { flex: 1; position: relative; border-left: 1px solid #3c362c; }
 #screen { position: relative; overflow: hidden; }
 #view3d { position: absolute; inset: 0; }
@@ -40,3 +40,40 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .col_green { color: #9bd36a; }
 .tooltip { position: absolute; z-index: 10; max-width: 380px; padding: 8px 11px; background: #15110c; border: 2px solid #8a5a2c; color: #fff8d7;
            font: 13px/1.35 "Palatino Linotype", Georgia, serif; pointer-events: none; }
+
+/* ---- the overview of the chains under the screen (not the game's UI: ordinary layout) ---- */
+#overview { padding: 18px 18px 40px; color: #eadcbc; font: 14px/1.4 "Segoe UI", sans-serif; }
+#overview h2 { margin: 0 0 6px; font: bold 22px "Palatino Linotype", Georgia, serif; color: #ebbd7c; }
+#overview .ov-intro { margin: 0 0 14px; color: #c9b88f; max-width: 1100px; }
+.ov-chain { margin: 0 0 18px; padding: 10px 12px 12px; background: #24201a; border: 1px solid #4a3b26; border-radius: 4px; }
+.ov-chain h3 { margin: 0 0 10px; font: bold 18px "Palatino Linotype", Georgia, serif; color: #f3d9a4; }
+.ov-chain h3 .sub { font: 14px "Segoe UI", sans-serif; color: #a8977a; }
+.ov-chain .bad { color: #e8836a; }
+.ov-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
+.ov-row .arrow { align-self: center; font-size: 24px; color: #b5692e; }
+.ov-card { width: 252px; box-sizing: border-box; padding: 10px; background: linear-gradient(#e2c48e, #d1ad74); color: #2c1a0c; border: 2px solid #8a5a2c;
+           border-radius: 3px; box-shadow: inset 0 0 18px rgba(90, 50, 10, 0.35); }
+.ov-card.ours { border-color: #4f7d2c; }
+.ov-card.invisible { opacity: 0.6; }
+.ov-card .head { display: flex; gap: 9px; align-items: center; }
+.ov-card .head img, .ov-card .noicon { width: 52px; height: 52px; flex: none; background: #2b2118; border: 1px solid #6b4a26; }
+.ov-card .noicon { display: flex; align-items: center; justify-content: center; color: #e8836a; font-size: 26px; }
+.ov-card .name { font: bold 16px "Palatino Linotype", Georgia, serif; }
+.ov-card .meta { font-size: 13px; color: #5a3a1c; }
+.ov-card .req { margin-top: 6px; font-size: 13px; color: #6b2a12; }
+.ov-card .text { margin-top: 6px; font-size: 13px; font-style: italic; color: #4a3220; }
+.ov-card .sec { margin-top: 7px; font-weight: bold; font-size: 13px; color: #6b4320; text-transform: uppercase; letter-spacing: 0.4px; }
+.ov-card ul { margin: 2px 0 0; padding-left: 17px; }
+.ov-card li { margin: 1px 0; }
+.ov-card li.ours { color: #2f5a14; font-weight: 600; }
+.ov-card li.off { text-decoration: line-through; color: #7a5a40; }
+.ov-card li.hidden { color: #7a6a58; }
+.ov-card .note { font-size: 12px; color: #7a5a40; font-weight: normal; }
+.ov-card .money { color: #6b4320; white-space: nowrap; }
+.ov-card .units { font-size: 13px; }
+.ov-card code { font-size: 12px; }
+.ov-card .parts { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.ov-card .part { padding: 1px 6px; border-radius: 9px; background: #5a4a3a; color: #f3e3c0; font-size: 12px; }
+.ov-card .part.on { background: #3f6a24; }
+.ov-card .key { margin-top: 7px; font-size: 12px; color: #7a5a40; }
+.ov-error { color: #e8836a; }

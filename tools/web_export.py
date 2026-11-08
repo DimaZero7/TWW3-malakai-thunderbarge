@@ -5,6 +5,7 @@ Everything goes to build/web/ (outside git): the game's models, textures and UI 
   build/web/models/*.gltf   the base barge (build/solid_hull_hatches without the shields) and each removed detail as a model of its own, LOD 0,
                             game axes mirrored to three.js (export_models)
   build/web/tex/*.png       their textures, DDS turned into PNG by tools/web_textures.py (py -3.10, Pillow)
+  build/web/overview.json   every chain of the barge with its levels, effects, crew options, units, model details (export_overview)
   build/web/game/...        the game's own UI pictures the panel uses (frames, icons), at their pack paths
   build/web/vendor/three/   three.js, a pinned version from the npm registry
 No option: all of it. Reads the game's packs (py -3.14 for zstd), writes nothing outside build/web.
@@ -26,6 +27,7 @@ import build  # noqa: E402
 import crew_buildings  # noqa: E402
 import crew_options  # noqa: E402
 import crew_ui  # noqa: E402
+import dbtable  # noqa: E402
 import gamepack  # noqa: E402
 import hull_parts  # noqa: E402
 import rmv2  # noqa: E402
@@ -394,6 +396,174 @@ def export_models(stock_too=False):
     (OUT / "models" / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
 
 
+# ---------------- the overview of all the barge's chains, for planning (web/js/overview.js) ----------------
+_replacements = {}
+
+
+def effect_text(template, value):
+    """The game's text of an effect with its value put in: %+n signed, %n plain; {{tr:key}} from the game's text replacements; picture and colour tags out."""
+    if not _replacements:
+        _replacements.update(crew_ui.game_text("ui_text_replacements_localised_text_"))
+    v = int(value) if float(value).is_integer() else round(value, 2)
+    text = template.replace("%+n", f"{v:+}" if isinstance(v, int) else f"{v:+g}").replace("%n", f"{v}")
+    for _ in range(3):
+        text = re.sub(r"\{\{tr:([^}]+)\}\}", lambda m: _replacements.get("ui_text_replacements_localised_text_" + m.group(1), m.group(1)), text)
+    text = re.sub(r"\[\[img:[^\]]*\]\]\[\[/img\]\]", "", text)
+    return re.sub(r"\[\[/?col[^\]]*\]\]", "", text).replace("||", " ").replace("\\n", " ").strip()
+
+
+def units_allowed(stock_prefix):
+    """building_units_allowed rows of the barge's buildings. The table is not in data/db_layouts.json: its columns come from the RPFM schema the way
+    tools/refresh_layouts.py reads them (TWW3-batle-ai, read only). None when that schema is not there."""
+    try:
+        import refresh_layouts
+        ron = (refresh_layouts.NEIGHBOUR / "build" / "rpfm" / "schema_wh3.ron").read_text(encoding="utf-8")
+    except Exception as e:      # noqa: BLE001  the neighbour project or its schema is missing: the overview goes without recruitment
+        print("units allowed: no schema,", e)
+        return None
+    sep = chr(92)
+    for name, blob in gamepack.entries(gamepack.DATA / "db.pack", lambda n: n.count(sep) == 2 and n.split(sep)[1] == "building_units_allowed_tables"):
+        fields = refresh_layouts.fields(ron, "building_units_allowed", dbtable.header(blob)[1])
+        rows = dbtable.decode(blob, [tuple(f) for f in fields])
+        return [r for r in rows if r["building"].startswith(stock_prefix)]
+    return None
+
+
+def export_overview():
+    """build/web/overview.json: every chain of the barge (the hull and the side chains, the game's and this mod's) with each level as the mod's build makes it:
+    name, icon, tier, price, turns, development points, what must stand first, every effect row with the game's text and value, the crew options it opens
+    (with hire and upkeep), the units it allows, the abilities it enables, the detail of the model it brings (web/data/blueprint.json)."""
+    stock = build.game_tables()
+    t = build.derive(stock, "rider")
+    t = build.derive_campaign(stock, {k: [dict(r) for r in v] for k, v in t.items()})
+    loc = t.pop("__building_loc__")
+    t.pop("__building_files__")
+    config = crew_options.CONFIG
+    prefix = config["buildings_prefix"]
+    bindings, _, _ = crew_options.building_bindings(t, stock)
+    lines = crew_ui.building_lines(config, t, stock, bindings)     # adds our effect rows to t too
+    names = crew_ui.game_text("building_culture_variants_name_")
+    descriptions = crew_ui.game_text("building_short_description_texts_short_description_")
+    effect_texts = crew_ui.game_text("effects_description_")
+    unit_names = crew_ui.game_text("land_units_onscreen_name_")
+    texts = effect_texts | {k: v for k, v in (loc | lines).items() if k.startswith("effects_description_")}
+    rows = {r["level_name"]: r for r in stock["building_levels"]} | {r["level_name"]: r for r in t["building_levels"]}
+    rows = {k: r for k, r in rows.items() if k.startswith(prefix)}
+    variants = {r["building"]: r for r in stock["building_culture_variants"] if r["building"].startswith(prefix)}
+    variants |= {r["building"]: r for r in t["building_culture_variants"]}
+    chains_info = {r["key"]: r for r in stock["building_chains"]} | {r["key"]: r for r in t["building_chains"]}
+    # effect rows: ours (the !tww3_mtb table) override the game's rows of the same building, effect and scope, as in the game
+    effects, changed = {}, set()
+    for r in stock["building_effects_junction"]:
+        if r["building"].startswith(prefix):
+            effects[(r["building"], r["effect"], r["effect_scope"])] = r
+    for r in t["building_effects_junction"]:
+        key = (r["building"], r["effect"], r["effect_scope"])
+        if key in effects:
+            changed.add(key)
+        effects[key] = r
+    required = {}
+    for r in stock["building_level_required_buildings"] + t["building_level_required_buildings"]:
+        if r["building_level"].startswith(prefix):
+            required.setdefault(r["building_level"], []).append(r["required"])
+    allowed = units_allowed(prefix)
+    unit_land = {r["unit"]: r["land_unit"] for r in stock["main_units"]}
+    abilities = {}
+    for key, spec in config["abilities"].items():
+        if not key.startswith("_"):
+            for short in spec["enabled_by"]:
+                abilities.setdefault(prefix + short, []).append({"key": key, "name": spec["name"], "about": spec["about"]})
+    blueprint = json.loads((REPO / "web" / "data" / "blueprint.json").read_text(encoding="utf-8"))
+    parts_of = {}
+    for part, spec in blueprint["parts"].items():
+        if spec.get("building"):
+            parts_of.setdefault(prefix + spec["building"], []).append({"key": part, "name": spec["name"], "enabled": spec["enabled"]})
+    groups = config["groups"]
+    hull_chain = rows[prefix + "airship_hull_2"]["chain"]
+    hull_names = {r["level"] + 1: names.get(f"building_culture_variants_name_{k}", k) for k, r in rows.items() if r["chain"] == hull_chain}
+    renamed = {prefix + s: n for s, n in config.get("building_names", {}).items()} | {prefix + l["key"]: l["name"] for c in config["new_chains"] for l in c["levels"]}
+
+    def name_of(key):
+        return renamed.get(key) or names.get(f"building_culture_variants_name_{key}") or None
+
+    icons = []
+    chains = {}
+    for key, r in rows.items():
+        chains.setdefault(r["chain"], []).append(r)
+    out = []
+    for chain, levels in chains.items():
+        levels.sort(key=lambda r: r["level"])
+        if not any(r["visible_in_ui"] for r in levels):
+            continue            # the game's own hidden chains (the summon, the ones marked to be deleted)
+        cards, missing = [], set()
+        for r in levels:
+            key = r["level_name"]
+            v = variants.get(key, {})
+            icon = v.get("icon")
+            if icon and icon.startswith("tww3_mtb_"):
+                icon_url = "/mod/ui/buildings/" + icon.removeprefix("tww3_mtb_") + ".png"
+            elif icon:
+                icon_url = "/build/game/ui/buildings/icons/" + icon + ".png"
+                icons.append("ui/buildings/icons/" + icon + ".png")
+            else:
+                icon_url = None
+            effs = []
+            for (b, e, scope), row in effects.items():
+                if b != key:
+                    continue
+                template = texts.get(f"effects_description_{e}")
+                effs.append({"effect": e, "scope": scope, "value": row["value"], "text": effect_text(template, row["value"]) if template else None,
+                             "ours": e.startswith("mtb_"), "changed": (b, e, scope) in changed, "off": (b, e, scope) in changed and not row["value"],
+                             "hidden": "(HIDDEN" in (template or "")})
+            opens = []
+            for b in bindings.get(key, []):
+                g, o = groups[b["group"]], groups[b["group"]]["options"][b["option"]]
+                opens.append({"group": b["group"], "group_name": g["ui"]["name"], "option": b["option"], "name": (o.get("ui") or {}).get("name", b["option"]),
+                              "mount": g.get("mount") == b["option"], "mount_name": g.get("mount_name"),
+                              "hire": crew_ui.hire(o, stock), "upkeep": crew_ui.upkeep(o, stock), "auto": key.removeprefix(prefix) in config["auto_active"],
+                              "requires": prefix + g["requires"]["building"] if g.get("requires") else None})
+            units = sorted({unit_names.get(f"land_units_onscreen_name_{unit_land.get(u['unit'], u['unit'])}", u["unit"]) for u in allowed if u["building"] == key}) if allowed else None
+            need = list(required.get(key, []))
+            below = next((x for x in levels if x["level"] == r["level"] - 1), None)
+            card = {"key": key, "short": key.removeprefix(prefix), "level": r["level"], "name": name_of(key), "icon": icon_url,
+                    "text": loc.get(f"building_short_description_texts_short_description_{key}") or descriptions.get(f"building_short_description_texts_short_description_{v.get('short_description', key)}"),
+                    "tier": r["primary_slot_building_building_level_requirement"] + 1 if chain != hull_chain else r["level"] + 1,
+                    "hull_needed": hull_names.get(r["primary_slot_building_building_level_requirement"] + 1) if chain != hull_chain else None,
+                    "cost": r["create_cost"], "turns": r["create_time"], "dev": r["development_point_cost"], "visible": r["visible_in_ui"],
+                    "after": name_of(below["level_name"]) if below else None,
+                    "requires": [{"key": n, "name": name_of(n)} for n in need],
+                    "effects": effs, "opens": opens, "units": units, "abilities": abilities.get(key, []), "parts": parts_of.get(key, []),
+                    "ours": key.removeprefix(prefix).startswith("mtb_")}
+            for field, bad in (("name", card["name"] is None), ("icon", icon_url is None), ("cost", not card["cost"] and r["level"] > 0),
+                               ("effect text", any(e["text"] is None for e in effs)), ("description", not card["text"]),
+                               ("effect text not in Russian", any(e["text"] and not re.search("[а-яА-Я]", e["text"]) for e in effs))):
+                if bad:
+                    missing.add(field)
+            cards.append(card)
+        crew = sorted({o["group_name"] for c in cards for o in c["opens"]})
+        out.append({"chain": chain, "category": chains_info.get(chain, {}).get("chain_category"), "hull": chain == hull_chain,
+                    "ours": all(c["ours"] for c in cards), "crew": crew, "title": cards[0]["name"] or chain, "cards": cards, "missing": sorted(missing)})
+    order = ["cannons", "rifles", "cupolas", "bombs", "harpoon", "pub", "deck"]
+    group_names = [groups[g]["ui"]["name"] for g in order if g in groups]
+
+    def rank(c):
+        if c["hull"]:
+            return (0, 0)
+        if c["crew"]:
+            return (1, min(group_names.index(n) if n in group_names else 99 for n in c["crew"]), min(x["tier"] for x in c["cards"]))
+        return (2, min(x["tier"] for x in c["cards"]), c["title"])
+    out.sort(key=rank)
+    got = game_files(icons)
+    for path, blob in got.items():
+        target = OUT / "game" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(blob)
+    data = {"_about": "Made by tools/web_export.py, export_overview: the mod's build functions over data/crew_options.json and the game's tables. Do not edit.",
+            "units_from_schema": allowed is not None, "chains": out}
+    (OUT / "overview.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    print("overview:", len(out), "chains,", sum(len(c["cards"]) for c in out), "levels; incomplete:", {c["title"]: c["missing"] for c in out if c["missing"]})
+
+
 def export_game_ui():
     got = game_files(GAME_UI)
     for path, blob in got.items():
@@ -431,10 +601,13 @@ def main():
     ap.add_argument("--ui", action="store_true")
     ap.add_argument("--vendor", action="store_true")
     ap.add_argument("--stock", action="store_true", help="also the stock hull, for ?hull=stock")
+    ap.add_argument("--overview", action="store_true", help="only build/web/overview.json and its icons")
     a = ap.parse_args()
-    everything = not (a.data or a.models or a.ui or a.vendor)
+    everything = not (a.data or a.models or a.ui or a.vendor or a.overview)
     if everything or a.data:
         export_data()
+    if everything or a.overview:
+        export_overview()
     if everything or a.ui:
         export_game_ui()
     if everything or a.vendor:
