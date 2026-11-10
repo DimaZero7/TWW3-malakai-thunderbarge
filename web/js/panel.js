@@ -207,8 +207,12 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             slot.padlock = image(card, 'padlock', 'ui/skins/default/padlock.png', (UNIT_W - 26) / 2, 46, 26, 33);
             // the game's mark of a unit being recruited (land_unit_card.twui.xml, campaign > Turns: 70 x 34 at -5, 48, the banner with the hourglass,
             // the turns left from 25 across)
-            slot.turnsBanner = image(card, 'Turns', 'ui/skins/default/turns_banner_queued.png', -5, 48, 70, 34);
-            slot.turns = text(slot.turnsBanner, 'turns', 'text_card_number', 25, 0, 30, 34, '1');
+            // (state queued_local: turns_banner_queued.png drawn 70 x 34 with margins 30 and 40, so the hourglass keeps its shape and only the green
+            // stretches; the number body_12 from 25 across, centred down). The component is 5 wider than the card on each side.
+            slot.turnsBanner = make(card, 'Turns', 'turns_banner');
+            size(slot.turnsBanner, 70, 34);
+            at(slot.turnsBanner, -5, 48);
+            slot.turns = text(slot.turnsBanner, 'turns', 'text_card_turns', 25, 1, 30, 34, '1');
             slot.name = text(hit, 'name', 'text_caption', 2, UNIT_H + 4, slot_w - 4, 40, '');
             for (const c of [card, slot.name]) c.SetPassive();
             if (!o.empty) {
@@ -298,12 +302,19 @@ function unitCard(parent, id, x, y, uc, colour) {
     const card = image(parent, id, uc.picture, x, y, UNIT_W, UNIT_H);
     card.frame = image(card, 'frame', `ui/skins/tww3_mtb/unit_card_frame_plain_${colour}.png`, 0, 0, UNIT_W, UNIT_H);
     // the army panel's marks of a unit one has: the plate with the number of men over the green bar (health_frame at 4, 3)
-    card.army = [image(card, 'health_back', D + 'unit_card_back.png', 4, 3, 52, 11), image(card, 'health_fill', D + 'bar_white.png', 4, 11, 52, 3),
-                 text(card, 'unit_strength_number', 'text_card_number', 4, 1, 52, 12, String(uc.men))];
-    card.army[1].SetImageColour(60, 190, 40, 255);
-    // the recruitment's mark of a unit one can hire: the cost on its plate (recruitment_cost_background: frame_text.png 38 x 16 at 11, 3; body_10)
-    card.costPlate = image(card, 'recruitment_cost_background', D + 'frame_text.png', 11, 3, 38, 16);
-    card.cost = text(card.costPlate, 'RecruitmentCost', 'text_card_number', 0, 0, 38, 16, '');
+    // health_frame 52 x 14 at 4, 3: health_back (unit_card_back.png 52 x 12), in it the bar 52 x 6 one down (bar_clip), and over the bar the number
+    // of men (unit_strength_number 33 x 14 at 9, -1 of the frame; body_10)
+    card.army = [image(card, 'health_back', D + 'unit_card_back.png', 4, 3, 52, 12), image(card, 'health_fill', D + 'bar_white.png', 4, 4, 52, 6),
+                 text(card, 'unit_strength_number', 'text_card_number', 13, 2, 33, 14, String(uc.men))];
+    card.army[1].SetImageColour(44, 140, 30, 255);
+    // The recruitment's mark of a unit one can hire: the cost on its plate, in the place of the health frame. The game: recruitment_cost_background,
+    // frame_text.png 38 x 16 at 11, 3 with margins 4, the number alone (RecruitmentCost, body_10, 2 down). Here, by the user's wish, the treasury's
+    // coins stand before the number (icon_treasury.png, the icon the game puts before every price), so the plate is as wide as the health frame, 52.
+    card.costPlate = make(card, 'recruitment_cost_background', 'cost_plate');
+    size(card.costPlate, 52, 16);
+    at(card.costPlate, 4, 3);
+    image(card.costPlate, 'icon_treasury', D + 'icon_treasury.png', 3, 0, 16, 16);
+    card.cost = text(card.costPlate, 'RecruitmentCost', 'text_card_cost', 21, 1, 30, 16, '');
     const rest = [image(card, 'unit_cat_frame', D + 'unit_card_semicircle.png', 3, 95, 55, 35), image(card, 'unit_category_icon', uc.category, 19, 106, 22, 22)];
     for (const c of [card.frame, ...card.army, card.costPlate, ...rest]) c.SetPassive();
     return card;
@@ -991,7 +1002,8 @@ function refresh(view, M) {
                 for (const part of slot.card.army) part.SetVisible(o.key === now);
                 slot.card.frame.SetImageColour(255, 255, 255, queued ? 0x64 : 255);
             }
-            slot.card.img.style.opacity = queued ? String(0x64 / 255) : '';
+            slot.card.img.style.opacity = queued ? String(0x64 / 255) : '';      // the card's queued state: the picture and the frame at 100 of 255
+            if (slot.card.dim) slot.card.dim.SetVisible(false);
             slot.hit.SetTooltipText(o.empty ? will.text : '', true);       // the empty card has no panel: the small tooltip says what a click does
             if (slot.info) {
                 slot.info.set({...unitDyn(M, view.data, c.group, o.key, o), ...(will.bad ? {reason: will.text} : will.kind === 'cancelled' ? {state: will.text} : {})});

@@ -66,6 +66,13 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .col_game_red { color: #E22828; }
 /* a place of the drawing that takes a click: the hand over all of it, the gaps between its figures and its tag too */
 .hit_area { cursor: pointer; }
+/* the marks of the game's unit card (ui/common ui/land_unit_card.twui.xml), stretched as the game stretches them: the plate of a recruitment cost
+   (frame_text.png, margins 4), the banner of the turns of a recruitment (turns_banner_queued.png, 146 x 34: the hourglass in its left 30, the right 40
+   kept, the green between stretched) */
+.cost_plate { border: 4px solid transparent; border-image: url(/build/game/ui/skins/default/frame_text.png) 4 fill stretch; pointer-events: none; }
+.cost_plate > .c { margin: -4px 0 0 -4px; }
+.turns_banner { border-style: solid; border-color: transparent; border-width: 0 40px 0 30px; border-image: url(/build/game/ui/skins/default/turns_banner_queued.png) 0 40 0 30 fill stretch; pointer-events: none; }
+.turns_banner > .c { margin: 0 0 0 -30px; }
 .col_grey { color: #8e8a80; }
 .col_yellow { color: #ffd65a; }
 .col_green { color: #9bd36a; }

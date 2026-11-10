@@ -21,7 +21,10 @@ const TEXT = {
     text_name: {size: 14, colour: '#FFF8D7', nowrap: true, font: 'header'},
     // a button's label, centred: a layout the mod does not have yet (tools/crew_ui.py: text_layout(..., "Center", "Never split"))
     // the number of men on a unit card (land_unit_card, unit_strength_number): small, centred
-    text_card_number: {size: 11, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true},
+    // the numbers on a unit card (land_unit_card.twui.xml): the men and the cost body_10, the turns of a recruitment body_12; on the screen 13 and 16 px
+    text_card_number: {size: 13, colour: '#FFF8D7', align: 'center', nowrap: true},
+    text_card_cost: {size: 13, colour: '#FFF8D7', nowrap: true},
+    text_card_turns: {size: 16, colour: '#FFF8D7', nowrap: true},
     // the game's building information window (ui/campaign ui/building_information.twui.xml): the title header_14 centred, the chain's name and the
     // description body_12 centred (the description italic), the entries body_12. Colours as the game draws them (docs/feedback/01-building-tooltip.png):
     // the title #FFF8D7, the chain's name and the description dimmer, effects green, a reason red.
