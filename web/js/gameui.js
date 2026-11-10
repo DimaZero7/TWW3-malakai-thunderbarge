@@ -45,6 +45,7 @@ const TEXT = {
     text_note: {size: 12, colour: '#8E8A80', valign: 'top'},
     // the green of a building's effect lines in the game's list of effects (EffectList); the shade is a guess, the game's own is not read
     // ink on the parchment, for the turns written on the drawing: a layout the mod does not have yet (tools/crew_ui.py would get it)
+    text_ink_big: {size: 22, colour: '#8E1A08', bold: true, nowrap: true, font: 'header'},      // a note on the drawing in the red of what is being built, read at the page's real scale
     text_ink: {size: 15, colour: '#3B2110', bold: true, nowrap: true, font: 'header'},
     text_green: {size: 12, colour: '#9BD36A', valign: 'top'},
 };

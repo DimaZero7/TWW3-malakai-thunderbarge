@@ -166,15 +166,23 @@ export function makeBuildings(data, game, parts) {
     };
 
     // ---- The crew: what stands in a group of seats (the riflemen), chosen by the player among what the buildings have opened. ----
-    // The rules are the mod's (src/tww3_mtb_crew.lua): a building only opens an option; the hire is taken once, at the choice; what stood is not paid
-    // back when it is replaced, and going back to it is paid again; empty is free; the upkeep is taken at the faction's turn start for what stands; a
-    // building that goes takes its option with it, the group falls back to its start (empty), nothing is returned.
-    // One difference, the page's: the choice stands at once. In the mod the panel orders and the turn carries out, one change of a group a turn.
-    // GAME: tww3_mtb_crew.order(group, option) / .get() / .unlocked(); the treasury through cm:treasury_mod.
-    const crew = {};
+    // The rules are the mod's, line for line (src/tww3_mtb_crew.lua: M.choose, drop_order, M.carry_out, M.pay_upkeep, lose_building):
+    //   the panel orders, the turn carries out: what stands now stays for the whole turn, the order goes in at the faction's turn start;
+    //   the hire is taken at once when it is ordered and kept beside the order; taking the order back returns all of it;
+    //   one order of a group a turn: picking what stands now takes this turn's order back, and that was the turn's change (no other order till the next);
+    //   what stood is not paid back when it is replaced, and going back to it is paid again; empty is free;
+    //   the upkeep is taken at the faction's turn start, after the orders went in, for what stands then;
+    //   a building that goes locks its option at once: an order for it comes back with its gold, a crew of it leaves (the group falls to its start),
+    //   nothing returned for that.
+    // GAME: tww3_mtb_crew.choose(group, option) / .get() / .orders() / .changed(group) / .unlocked(); the treasury through cm:treasury_mod.
+    const crew = {};            // group -> option that stands
+    const orders = {};          // group -> {option, paid}: what goes in at the next turn start
+    const orderTurn = {};       // group -> the turn of its last order
     const openedBy = {};        // group -> option -> the building level that opens it
     for (const row of Object.values(levels)) for (const u of row.unlocks || []) (openedBy[u.group] ||= {})[u.option] = row;
     M.crew = group => crew[group] || data.groups[group].start;
+    M.crew_order = group => (orders[group] ? orders[group].option : null);
+    M.crew_changed = group => orderTurn[group] === game.turn;
     M.crew_options = group => {
         const g = data.groups[group];
         const rank = k => { const b = (openedBy[group] || {})[k]; return b ? b.tier * 100000 + b.cost : 0; };
@@ -183,17 +191,39 @@ export function makeBuildings(data, game, parts) {
                                     unlocked: key === g.start || game.has_building((openedBy[group] || {})[key].key)}))
             .sort((a, b) => (a.empty ? -1 : b.empty ? 1 : rank(a.key) - rank(b.key) || a.i - b.i));
     };
-    M.crew_upkeep = () => Object.keys(data.groups).reduce((sum, g) => sum + ((data.groups[g].options[M.crew(g)] || {}).upkeep || 0), 0);
+    const upkeepOf = (g, o) => (data.groups[g].options[o] || {}).upkeep || 0;
+    // gold per turn now, and with the orders of this turn (M.upkeep of the mod)
+    M.crew_upkeep = () => Object.keys(data.groups).reduce((sum, g) => sum + upkeepOf(g, M.crew(g)), 0);
+    M.crew_upkeep_next = () => Object.keys(data.groups).reduce((sum, g) => sum + upkeepOf(g, M.crew_order(g) || M.crew(g)), 0);
+    const dropOrder = (group, giveBack) => {
+        const o = orders[group];
+        if (!o) return 0;
+        delete orders[group];
+        if (giveBack) game.gold += o.paid;      // GAME: cm:treasury_mod(faction, +paid)
+        return giveBack ? o.paid : 0;
+    };
     M.set_crew = (group, option) => {
         const o = M.crew_options(group).find(x => x.key === option);
         if (!o) return {ok: false};
-        if (option === M.crew(group)) return {ok: true, same: true};
-        if (!o.unlocked) { message = `«${o.name}» откроет постройка «${o.building.name}».`; fire(); return {ok: false, why: message}; }
-        if (game.treasury() < o.hire) { message = `Не хватает золота на «${o.name}»: найм ${o.hire}.`; fire(); return {ok: false, why: message}; }
+        const say = text => { message = text; fire(); return {ok: false, why: text}; };
+        if (!o.unlocked) return say(`«${o.name}» откроет постройка «${o.building.name}».`);
+        const current = M.crew(group), order = orders[group];
+        if (M.crew_changed(group)) {
+            if (order && option === current) {
+                const back = dropOrder(group, true);
+                message = `Заказ отменён${back ? `, ${back} золота вернулось` : ''}. Новый заказ — со следующего хода.`;
+                fire();
+                return {ok: true, cancelled: true};
+            }
+            return say(`${data.groups[group].name}: заказ на этот ход уже был. Следующий — со следующего хода.`);
+        }
+        if (option === current) return {ok: true, same: true};
+        if (game.treasury() < o.hire) return say(`Не хватает золота на «${o.name}»: найм ${o.hire}.`);
         game.gold -= o.hire;        // GAME: cm:treasury_mod(faction, -hire)
-        crew[group] = option;
+        orders[group] = {option, paid: o.hire};
+        orderTurn[group] = game.turn;
         crewChosen = true;
-        message = o.empty ? 'Стрелки сошли с бортов.' : `«${o.name}» встают к бортам: найм ${o.hire}, содержание ${o.upkeep} за ход.`;
+        message = o.empty ? 'Стрелки сойдут с бортов в начале хода.' : `«${o.name}» в найме: ${o.hire} золота, встанут к бортам в начале хода.`;
         fire();
         return {ok: true};
     };
@@ -201,20 +231,24 @@ export function makeBuildings(data, game, parts) {
     let crewChosen = false;
     M.crew_hint = () => !crewChosen;
     M.set_crew_chosen_silently = v => { crewChosen = !!v; };
-    M.crew_snapshot = () => ({...crew});
-    M.set_crew_silently = saved => { for (const [g, o] of Object.entries(saved || {})) if (data.groups[g] && data.groups[g].options[o]) crew[g] = o; };
-    // a building that no longer stands takes its crew away
-    const dropLostCrew = () => {
-        const lost = [];
-        for (const g of Object.keys(crew)) {
-            const o = M.crew_options(g).find(x => x.key === crew[g]);
-            if (o && !o.unlocked) { lost.push(o.name); delete crew[g]; }
-        }
-        return lost;
+    M.crew_snapshot = () => ({crew: {...crew}, orders: JSON.parse(JSON.stringify(orders)), changed: {...orderTurn}});
+    M.set_crew_silently = saved => {
+        const s = saved && saved.crew ? saved : {crew: saved || {}};       // an older save held only what stands
+        for (const [g, o] of Object.entries(s.crew || {})) if (data.groups[g] && data.groups[g].options[o]) crew[g] = o;
+        for (const [g, o] of Object.entries(s.orders || {})) if (data.groups[g] && o && data.groups[g].options[o.option]) orders[g] = o;
+        Object.assign(orderTurn, s.changed || {});
     };
+    // a building that no longer stands takes its option away: the order with its gold, the standing crew without
     game.on('BuildingDemolished', () => {
-        const lost = dropLostCrew();
-        if (lost.length) { message = `«${lost.join('», «')}» сошли с корабля: их постройки больше нет. Найм не возвращается.`; fire(); }
+        const said = [];
+        for (const g of Object.keys(data.groups)) {
+            const options = M.crew_options(g);
+            const ordered = orders[g] && options.find(x => x.key === orders[g].option);
+            if (ordered && !ordered.unlocked) { const back = dropOrder(g, true); said.push(`заказ «${ordered.name}» снят, ${back} золота вернулось`); }
+            const standing = options.find(x => x.key === crew[g]);
+            if (standing && !standing.unlocked) { delete crew[g]; said.push(`«${standing.name}» сошли с корабля, найм не возвращается`); }
+        }
+        if (said.length) { message = 'Постройки больше нет: ' + said.join('; ') + '.'; fire(); }
     });
 
     // The game's events, as the mod listens to them (core:add_listener)
@@ -224,9 +258,18 @@ export function makeBuildings(data, game, parts) {
         fire();
     });
     game.on('FactionTurnStart', () => {
+        // the orders go in (M.carry_out), then the upkeep of what stands now is taken (M.pay_upkeep)
+        const came = [];
+        for (const g of Object.keys(orders)) {
+            const option = orders[g].option;
+            dropOrder(g, false);
+            if (option === data.groups[g].start) delete crew[g]; else crew[g] = option;
+            came.push(option === data.groups[g].start ? 'стрелки сошли с бортов' : `«${data.groups[g].options[option].name}» встали к бортам`);
+        }
         const upkeep = M.crew_upkeep();
-        game.gold -= upkeep;        // GAME: the mod takes the crew's upkeep at the faction's turn start (cm:treasury_mod); the page lets the treasury go below zero
-        message = upkeep ? `Содержание экипажа: ${upkeep} золота.` : null;
+        game.gold -= upkeep;        // GAME: cm:treasury_mod; the page lets the treasury go below zero
+        message = [came.length ? came.join('; ') : '', upkeep ? `содержание экипажа: ${upkeep} золота` : ''].filter(Boolean).join(', ');
+        message = message ? message[0].toUpperCase() + message.slice(1) + '.' : null;
         fire();
     });
     return M;

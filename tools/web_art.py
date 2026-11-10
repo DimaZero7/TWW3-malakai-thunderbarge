@@ -955,6 +955,8 @@ def crew_tag(sign="plus", light=False):
     out.append(art.circle(cx, cy, r, CREW_LINE * 0.8, art.INK, "#e9b96a"))
     if sign == "plus":
         out.append(art.path(f"M{cx - 6.5} {cy} L{cx + 6.5} {cy} M{cx} {cy - 6.5} L{cx} {cy + 6.5}", CREW_LINE))
+    elif sign == "wait":        # an hourglass: a hire is on its way
+        out.append(art.path(f"M{cx - 5.5} {cy - 7} L{cx + 5.5} {cy - 7} L{cx - 5.5} {cy + 7} L{cx + 5.5} {cy + 7} Z", CREW_LINE * 0.7, art.INK, "#fff0cc"))
     else:       # two arrows, one each way: change
         out.append(art.path(f"M{cx - 6.5} {cy - 3} L{cx + 5.5} {cy - 3} M{cx + 2} {cy - 6.5} L{cx + 6} {cy - 3} "
                             f"M{cx + 6.5} {cy + 3.5} L{cx - 5.5} {cy + 3.5} M{cx - 2} {cy + 7} L{cx - 6} {cy + 3.5}", CREW_LINE * 0.75))
@@ -1004,6 +1006,15 @@ def crew_area(places):
     layer_plain("crew_rifles_hover", crew_brackets(3, CREW_LINE * 0.8, art.INK_SOFT, 0.9), places)
     layer_plain("crew_rifles_tag_plus_hover", crew_tag("plus", True), places)
     layer_plain("crew_rifles_tag_swap_hover", crew_tag("swap", True), places)
+    layer_plain("crew_rifles_tag_wait", crew_tag("wait"), places)
+    layer_plain("crew_rifles_tag_wait_hover", crew_tag("wait", True), places)
+    # a hire on its way: the red hatching the drawing puts over what is being built (build_of), over the two rows of places
+    hatch = []
+    for group in (CREW_PLACES[:2], CREW_PLACES[2:]):
+        x0, x1 = min(x for x, _ in group) - 14, max(x for x, _ in group) + 14
+        y0, y1 = min(y for _, y in group) - 28, max(y for _, y in group) + 4
+        hatch.append(art.hatch([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], 45, 6.5, 1.5, CHALK, 0.6))
+    layer_plain("crew_rifles_build", hatch, places)
     for kind in ("pirates", "quarrellers", "thunderers", "rakers", "torpedoes"):
         layer("crew_rifles_" + kind, [g for x, y in CREW_PLACES for g in crew_figure(kind, x, y + 2)], places)
     glow = crew_glow()
