@@ -1,0 +1,4 @@
+{
+ "_about": "Only for node: the page's scripts are ES modules, so tools/tests/*.mjs can import them (node tools/tests/page_logic_test.mjs). The browser does not read this file.",
+ "type": "module"
+}

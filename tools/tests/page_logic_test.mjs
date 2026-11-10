@@ -1,6 +1,6 @@
 // The page's logic as a whole, without a browser: buildings + crew + treasury + turn (web/js/game_sim.js, barge_buildings.js, crew_model.mjs) over the
 // exported data (build/web/data.json: run tools/web_export.py --data first).
-//   node --experimental-default-type=module tools/tests/page_logic_test.mjs
+//   node tools/tests/page_logic_test.mjs      (from the repository's root; web/js/package.json marks the page's scripts as ES modules for node)
 // A ledger is kept beside the game: after every step the treasury must be the ledger's sum. Prints a line a check, exit 1 on any failure.
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
