@@ -888,37 +888,116 @@ def aboard_frames():
 CREW_PLACES = [(x, y) for x, y in art.RIFLE_PLACES if (x, y + 2) != MALAKAI_AT]
 
 
-def crew_figure(kind, x, y, s=0.9):
-    """A dwarf of the crew at the rail, told apart by the outline: pirates bare-headed with a crest and a pistol in each hand, crossbowmen in a helm with
-    a crossbow, the others the panel's own dwarf with a long gun (thicker for the grudge-rakers, a tube for the torpedoes)."""
+# The figures of the rifle crews are drawn from the game's models (rendered front and side into build/crew_models/<kind>_ref.png; nothing of the
+# game is kept in the repository). What the models are, and what tells a kind apart when the figure is 20 px tall on the screen:
+#   a dwarf        1.4 to 1.5 high and 1.4 across the hanging arms; the head with its beard is a third of the height, the shoulders nearly as wide as
+#                  the dwarf is tall, the legs a quarter. Behind the rail he shows from the belt up: a wide block of shoulders, a big head set low.
+#   pirates        dwf_slayer_pirates: a bare bald head with a headscarf knotted behind, a huge moustache standing out to both sides, a beard in
+#                  thick plaits over a bare chest, bracers; no helm, no crest. A flintlock pistol with a flared muzzle, half his height, in each hand.
+#                  Told by: bare skin, the moustache's bar across the face, two short guns held out.
+#   quarrellers, thunderers, grudge-rakers    one body (dwf_warriors): a round helm with two horns up and a spike, a plaited beard to the belt, mail,
+#                  a skirt. Told only by the weapon: the crossbow (0.9 long, its bow 0.77 across), the rifle (1.3, nearly his height, thin), the
+#                  grudge-raker (1.4, a thick bundle of barrels with a drum behind).
+#   torpedoes      dwf_irondrakes: a flat-topped closed helm with eye slits and no horns, a square beard of plates, heavy pauldrons, an apron. The
+#                  drakegun is a fat tank 1.2 long with a thin nozzle. Told by: the flat helm, the square shoulders, the barrel-thick gun.
+# Colours from the models' own base colour textures (decoded into build/crew_models/tex, not kept): the pirate's skin a warm pink tan, his beard
+# ginger, his headscarf red (it is on the head's texture, with the knot's tails in the mesh); the warriors' mail silver grey with gold trim, the
+# beard brown, the helm steel with bone horns; the irondrake's plate blue steel with gold, his drakegun copper; the thunderers' rifle grey steel on
+# a brown stock; the grudge-raker steel barrels under much brass.
+SKIN, GINGER, SCARF = "#d48e66", "#b5622a", "#a8261a"
+MAIL, GOLD, BROWN, BONE, HELM = "#8f9296", "#c9a23c", "#6e4a2a", "#e8dcc0", "#7d7870"
+PLATE, DRAKE, WOOD, BARREL = "#66727c", "#a8623c", "#6b4320", "#3d3a36"
+
+
+def crew_figure(kind, x, y, s=1.0, detail=True):
+    """A dwarf of a rifle crew at the rail, from the belt up, turned to the bow (left), after the game's model of its unit (see above): sloping
+    shoulders wider than the head, the arms holding the weapon. detail False: without the small strokes (plaits, bands, trim)."""
+    P = lambda dx, dy: f"{x + dx * s:.1f} {y + dy * s:.1f}"
+    line = lambda d, w=1.0, fill="none", color=art.INK: art.path(d, w * s, color, fill)
+
+    def limb(d, colour, w=3.4):         # an arm: the colour inside an ink line
+        return [line(d, w + 1.6), line(d, w, color=colour)]
+
+    out = []
+    warrior = kind in ("quarrellers", "thunderers", "rakers")
+    cloth = {"pirates": SKIN, "torpedoes": PLATE}.get(kind, MAIL)
+    # the far arm and what lies behind the body
+    if kind == "pirates":               # the far arm bent up, its pistol held muzzle up beside the head
+        out += limb(f"M{P(9, -12)} L{P(14, -10)} L{P(15, -17)}", SKIN)
+        out.append(line(f"M{P(14, -15)} L{P(16.5, -18)} L{P(16, -28)}", 2.2, color=BARREL))
+        out.append(line(f"M{P(14, -28.5)} L{P(18, -28.5)}", 1.6, color=BARREL))
+    # the body: shoulders sloping from the neck, wider than the head
+    out.append(line(f"M{P(-8, 0)} L{P(-10, -7)} Q {P(-12.5, -13)} {P(-5, -15.5)} L{P(4, -15.5)} Q {P(12, -13)} {P(10, -7)} L{P(8, 0)} Z", 1.1, cloth))
     if kind == "pirates":
-        out = [art.path(f"M{x - 9 * s:.1f} {y - 9 * s:.1f} L{x - 19 * s:.1f} {y - 13 * s:.1f} L{x - 19 * s:.1f} {y - 9 * s:.1f}", 2.0 * s),
-               art.path(f"M{x + 9 * s:.1f} {y - 9 * s:.1f} L{x + 18 * s:.1f} {y - 15 * s:.1f} L{x + 20 * s:.1f} {y - 11 * s:.1f}", 2.0 * s)]
-        # no helm and no horns (the last stroke of the panel's dwarf): a bare head under a red kerchief with its knot, a short crest; Malakai beside them
-        # keeps the tall crest and the horned helm
-        out += art.dwarf(x, y, s, -1, False, helm="#a8261a", beard="#c8501a")[:-1]
-        out.append(art.path(f"M{x + 6 * s:.1f} {y - 21 * s:.1f} L{x + 11 * s:.1f} {y - 19 * s:.1f} M{x + 6 * s:.1f} {y - 21 * s:.1f} L{x + 10 * s:.1f} {y - 24 * s:.1f}", 1.3 * s, "#a8261a"))
-        out.append(art.path(f"M{x - 1.5 * s:.1f} {y - 25 * s:.1f} L{x:.1f} {y - 30 * s:.1f} L{x + 1.5 * s:.1f} {y - 25 * s:.1f}", 1.4 * s, "#c8501a"))
-        return out
-    if kind == "quarrellers":
-        out = art.dwarf(x, y, s, -1, False, helm="#6b6258", beard="#8a6a3c")
-        sx, sy = x - 16 * s, y - 10 * s           # the crossbow held across the rail: the stock, the bow as an arc, the string
-        out.append(art.path(f"M{x - 4 * s:.1f} {y - 8 * s:.1f} L{x - 24 * s:.1f} {y - 12 * s:.1f}", 2.2 * s))
-        out.append(art.path(f"M{sx - 3 * s:.1f} {sy - 9 * s:.1f} Q {sx - 12 * s:.1f} {sy - 1 * s:.1f} {sx - 1 * s:.1f} {sy + 7 * s:.1f}", 1.6 * s))
-        out.append(art.path(f"M{sx - 3 * s:.1f} {sy - 9 * s:.1f} L{sx - 1 * s:.1f} {sy + 7 * s:.1f}", 0.7 * s))
-        return out
-    if kind == "torpedoes":
-        # an irondrake: a steel helm, no long gun, the torpedo's tube on the shoulder under the chin, its copper head forward
-        out = art.dwarf(x, y, s, -1, False, helm="#57504a")
-        out.append(art.path(f"M{x + 9 * s:.1f} {y - 8 * s:.1f} L{x - 21 * s:.1f} {y - 12.5 * s:.1f}", 5.0 * s, art.STEEL))
-        out.append(art.dot(x - 22.5 * s, y - 12.7 * s, 3.6 * s, art.COPPER))
-        return out
-    out = art.dwarf(x, y, s)
-    if kind == "rakers":
-        # the grudge-raker: a bundle of barrels at the gun's end, two more strokes beside the gun and a band round them
-        for d in (-2.6, 2.6):
-            out.append(art.path(f"M{x - 9 * s:.1f} {y - 10.5 * s + d * s:.1f} L{x - 22 * s:.1f} {y - 14 * s + d * s:.1f}", 1.7 * s))
-        out.append(art.path(f"M{x - 15 * s:.1f} {y - 16 * s:.1f} L{x - 14 * s:.1f} {y - 8 * s:.1f}", 1.5 * s))
+        out.append(line(f"M{P(-8.4, -1.6)} L{P(8.4, -1.6)}", 2.0, color=WOOD))                       # the wide belt
+    if warrior and detail:
+        out.append(line(f"M{P(-9.6, -5)} L{P(9.6, -5)}", 0.8, color=GOLD))
+    if kind == "torpedoes":             # the pauldrons, rounded plates with a gold edge
+        for sx in (-1, 1):
+            out.append(line(f"M{P(sx * 5, -16.5)} Q {P(sx * 13, -17.5)} {P(sx * 13.5, -9)} L{P(sx * 7, -9.5)} Z", 1.0, PLATE))
+            out.append(line(f"M{P(sx * 13.5, -9)} L{P(sx * 7, -9.5)}", 1.1, color=GOLD))
+    # the head, set low
+    out.append(art.circle(x - 1 * s, y - 19.5 * s, 5.4 * s, 1.0 * s, art.INK, SKIN if kind == "pirates" else "#e3b08a"))
+    if kind == "pirates":
+        # the red headscarf over the skull with its knot behind; the plaited ginger beard down the bare chest; the moustache, wider than the head
+        out.append(line(f"M{P(-6.4, -21)} A {5.4 * s:.1f} {5.4 * s:.1f} 0 0 1 {P(4.4, -21)} Z", 0.9, SCARF))
+        out.append(line(f"M{P(4.2, -22)} L{P(8.5, -24.5)} M{P(4.2, -22)} L{P(9, -20.5)}", 1.3, color=SCARF))
+        out.append(art.dot(x - 3.4 * s, y - 19.6 * s, 0.8 * s))
+        out.append(line(f"M{P(-4.5, -15)} L{P(2.5, -15)} L{P(1.6, -4)} L{P(-1, -7)} L{P(-3.6, -4)} Z", 0.9, GINGER))
+        out.append(line(f"M{P(-1, -17.2)} Q {P(-7, -14.2)} {P(-13, -19.5)} M{P(-1, -17.2)} Q {P(5, -14.2)} {P(11, -19.5)}", 3.4))
+        out.append(line(f"M{P(-1, -17.2)} Q {P(-7, -14.2)} {P(-13, -19.5)} M{P(-1, -17.2)} Q {P(5, -14.2)} {P(11, -19.5)}", 2.0, color=GINGER))
+    elif warrior:
+        # the steel helm with its gold rim, the spike, two bone horns turned up; the brown beard to the belt
+        out.append(line(f"M{P(-7, -20.5)} A {6 * s:.1f} {6.4 * s:.1f} 0 0 1 {P(5, -20.5)} Z", 1.0, HELM))
+        out.append(line(f"M{P(-7, -20.5)} L{P(5, -20.5)}", 1.2, color=GOLD))
+        out.append(line(f"M{P(-1, -26.5)} L{P(-1, -30)}", 1.4))
+        for sx, hx in ((-1, -6.5), (1, 4.5)):
+            d = f"M{P(hx, -22.5)} Q {P(hx + sx * 5, -23.5)} {P(hx + sx * 4, -30)}"
+            out += [line(d, 2.6), line(d, 1.3, color=BONE)]
+        out.append(line(f"M{P(-6, -17.5)} L{P(4, -17.5)} L{P(2.4, -5)} L{P(-1, -2.5)} L{P(-4.4, -5)} Z", 0.9, BROWN))
+        if detail:
+            out.append(line(f"M{P(-1, -16)} L{P(-1, -5)}", 0.6, color=BONE))
+    else:
+        # the irondrake: a flat-topped closed helm with a gold band and a slit, no horns; the beard a square below it
+        out.append(line(f"M{P(-8, -18)} L{P(-8, -27)} L{P(6, -27)} L{P(6, -18)} Z", 1.1, PLATE))
+        out.append(line(f"M{P(-8, -25)} L{P(6, -25)}", 1.2, color=GOLD))
+        out.append(line(f"M{P(-6, -21.8)} L{P(-0.5, -21.8)}", 1.5))
+        out.append(line(f"M{P(-6.5, -18)} L{P(4.5, -18)} L{P(4.5, -9)} L{P(-6.5, -9)} Z", 0.9, GINGER))
+    # the near arm and the weapon before the body
+    if kind == "pirates":
+        # the near arm held out level, the pistol half his height, its muzzle flared
+        out += limb(f"M{P(-9, -12)} L{P(-16, -11)}", SKIN)
+        out.append(line(f"M{P(-15, -8)} L{P(-16.5, -12)} L{P(-27, -13)}", 2.3, color=BARREL))
+        out.append(line(f"M{P(-27.5, -15.2)} L{P(-27.5, -10.8)}", 1.7, color=BARREL))
+    elif kind == "quarrellers":
+        # the crossbow level before him: the brown stock, the steel bow across its end, the string
+        out.append(line(f"M{P(5, -8.5)} L{P(-21, -11.5)}", 3.4))
+        out.append(line(f"M{P(5, -8.5)} L{P(-21, -11.5)}", 2.0, color=WOOD))
+        out.append(line(f"M{P(-18, -21.5)} Q {P(-26.5, -11.5)} {P(-19, -2)}", 2.0, color=BARREL))
+        out.append(line(f"M{P(-18, -21.5)} L{P(-9, -10)} L{P(-19, -2)}", 0.6))
+        out += limb(f"M{P(-9, -12)} L{P(-12, -8.5)}", MAIL, 3.0) + limb(f"M{P(9, -12)} L{P(4, -7)}", MAIL, 3.0)
+    elif kind == "thunderers":
+        # the long rifle at the shoulder, aimed: the brown stock under the cheek, a thin steel barrel almost his height, gold bands
+        out.append(line(f"M{P(9, -12)} L{P(2, -14.5)}", 4.6))
+        out.append(line(f"M{P(9, -12)} L{P(2, -14.5)}", 3.2, color=WOOD))
+        out.append(line(f"M{P(2, -14.5)} L{P(-33, -18.5)}", 1.7, color=BARREL))
+        if detail:
+            out.append(line(f"M{P(-12, -17.4)} L{P(-12, -14.8)} M{P(-24, -18.8)} L{P(-24, -16.2)}", 1.2, color=GOLD))
+        out += limb(f"M{P(-9, -12)} L{P(-15, -14.5)}", MAIL, 3.0) + limb(f"M{P(9, -11)} L{P(5, -13)}", MAIL, 3.0)
+    elif kind == "rakers":
+        # the grudge-raker at the hip: a thick bundle of dark barrels bound in brass, a big brass drum by the hand
+        for d in (-2.6, 0, 2.6):
+            out.append(line(f"M{P(3, -6.5 + d)} L{P(-26, -8.5 + d)}", 2.0, color=BARREL))
+        out.append(line(f"M{P(-12, -11.5)} L{P(-12, -3.8)} M{P(-22, -12)} L{P(-22, -4.4)}", 1.8, color=GOLD))
+        out.append(art.circle(x - 1 * s, y - 6.5 * s, 4.8 * s, 1.0 * s, art.INK, GOLD))
+        out += limb(f"M{P(-9, -12)} L{P(-9, -7)}", MAIL, 3.0) + limb(f"M{P(9, -12)} L{P(5, -7)}", MAIL, 3.0)
+    else:
+        # the drakegun at the hip: a fat copper tank, a thin nozzle with a bright head far out
+        out.append(line(f"M{P(9, -1.5)} L{P(9, -8.5)} Q {P(0, -11)} {P(-11, -10.5)} L{P(-11, -3.5)} Q {P(0, -1)} {P(9, -1.5)} Z", 1.1, DRAKE))
+        out.append(line(f"M{P(-11, -7)} L{P(-26, -8.5)}", 2.0, color=BARREL))
+        out.append(art.dot(x - 27 * s, y - 8.6 * s, 2.4 * s, GOLD))
+        if detail:
+            out.append(line(f"M{P(3, -9.6)} L{P(3, -1.6)} M{P(-5, -10.6)} L{P(-5, -2.6)}", 1.0, color=GOLD))
     return out
 
 
