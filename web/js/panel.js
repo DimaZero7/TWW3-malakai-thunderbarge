@@ -224,8 +224,12 @@ function demoTip(parent, id, x, bottom, spec) {
 // The game's numbers (ui/campaign ui/building_browser.twui.xml): a slot of the tree is 74 x 74 and the arrow between two slots 32 (TreeCallback, padding_y;
 // the template's own comment: "106 is the sum of the height of a tree slot (74), plus the height of an arrow (32)"). Nothing here is scaled.
 const NODE = 74, TIER_GAP = 106, LINE = 3;
-// columns of the tree when it has side branches: the trunk right of the middle, a left branch, a right branch
-const COLUMN = {trunk: 0.62, left: 0.2, right: 0.86};
+// columns of the tree when it has side branches: the trunk right of the middle, a left branch, a right branch. A branch may stand some columns to the
+// right of its side's column (blueprint.json, branches, shift): a side branch of a side chain, the column over the chain's first building stays free
+// for the chain's own levels. One such column is the game's 106 (a slot of 74 and 32 between, TreeCallback padding_x of building_browser.twui.xml).
+// left: the left chain's slot starts 20 from the tree's edge, so its side branch one column right (with its unit card, 17 beyond the slot) ends
+// before the trunk's slot begins.
+const COLUMN = {trunk: 0.62, left: 0.138, right: 0.86}, COLUMN_STEP = 106;
 const TREE = 'mtb_tree_node_';
 
 export function treeLayout(nodes) {
@@ -245,7 +249,7 @@ export function treeLayout(nodes) {
         const cols = {};
         for (const n of nodes) {
             const col = n.branch ? n.branch.side : 'trunk';
-            const key = col + ':' + tier[n.key];
+            const key = col + ':' + tier[n.key] + ':' + ((n.branch && n.branch.shift) || 0);
             (cols[key] ||= []).push(n.key);
         }
         for (const [key, keys] of Object.entries(cols)) {
@@ -288,7 +292,7 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
     const pos = {};
     for (const n of nodes) {
         const t = direction === 'up' ? tiers.length - 1 - tier[n.key] : tier[n.key];
-        pos[n.key] = {x: x + place[n.key] * w - NODE / 2, y: y + t * TIER_GAP};
+        pos[n.key] = {x: x + place[n.key] * w - NODE / 2 + ((n.branch && n.branch.shift) || 0) * COLUMN_STEP, y: y + t * TIER_GAP, shift: (n.branch && n.branch.shift) || 0};
     }
     // the lines first, under the nodes
     let seg = 0;
@@ -306,6 +310,13 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
             const ay = down ? a.y + NODE : a.y, by = down ? b.y : b.y + NODE;
             const mid = (ay + by) / 2;
             const colour = n.branch && n.branch.colour;       // a line into a branch's node has the branch's colour
+            if (b.shift > a.shift && !down) {
+                // a side branch: the line leaves the building by its side, at the middle (under its unit cards, which end 28 below the slot's top),
+                // and turns up into the branch's node
+                const side = a.y + NODE / 2;
+                line(a.x + NODE, side, bx, side, colour); line(bx, side, bx, by, colour);
+                continue;
+            }
             line(ax, ay, ax, mid, colour); line(ax, mid, bx, mid, colour); line(bx, mid, bx, by, colour);
         }
     }
@@ -356,7 +367,7 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
     // building unlocks (building_frame.twui.xml, units_list: docked to the slot's top right corner, dock_offset 17, -22, anchored by its own top right
     // corner): the row of cards ends 17 right of the slot and starts 22 above it; one card stands 68 from the slot's left, a second pushes the row left
     // by 13 (the entries overlap by 10). The row is a later sibling of the slot's button: over its frames and marks, and not greyed with it.
-    // On hover the demo window, the same as Malakai's side: left of the slot, level with the card, clear of the slot, the cards and the other nodes.
+    // On hover the demo window, the same as Malakai's side: left of the tree's leftmost slot, level with the card, clear of the slot, the cards and the other nodes.
     view.crew = [];
     const specs = ((!flags.tree && blueprint.crew_cards) || []).map(spec => {
         const group = view.data.groups[spec.group], option = group && group.options[spec.option];
@@ -371,7 +382,7 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         const card = slotUnitCard(parent, 'mtb_crew_card_' + spec.option, cx, cy, uc, group.card_frame || 'gold', flags.aboard === 'outline');
         const centre = parent.y + cy + CARD_H / 2, tip_h = 261;
         const bottom = Math.min(frame.Height() - 12, Math.max(70 + tip_h, centre + tip_h / 2));
-        const demo = demoTip(frame, 'crew_demo_tip_' + spec.option, parent.x + v.button.x - 8 - 300, bottom, {movie: spec.movie, head: spec.head || option.name, text: spec.text || ''});
+        const demo = demoTip(frame, 'crew_demo_tip_' + spec.option, parent.x + Math.min(6, ...view.tree.map(t => t.button.x - 8)) - 300, bottom, {movie: spec.movie, head: spec.head || option.name, text: spec.text || ''});
         card.SetHoverChild(demo.tip);
         view.crew.push({card, tip: demo.tip, building: v.node.key});
     }

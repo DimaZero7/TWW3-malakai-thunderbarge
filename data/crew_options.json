@@ -128,8 +128,9 @@
      },
      "upkeep_from": {
       "unit": "wh_main_dwf_inf_quarrellers_0",
-      "count": 12
-     }
+      "count": 11
+     },
+     "_note": "Opened by crew_weapons_1 (the training dummies), a choice of the crew panel. 11 as the pirates: Malakai takes the twelfth rifle seat; the seats and the ammo are still for 12."
     },
     "torpedoes": {
      "vmd": "torpedo_prop3.vmd",
@@ -908,6 +909,7 @@
    "Открывает доступ к кораблю"
   ],
   "crew_weapons_1": [
+   "Открывает в экипаже: Арбалетчики (стрелки), 11 гномов",
    "Меткость стрелков: +5 %"
   ],
   "crew_weapons_2": [
@@ -951,9 +953,18 @@
  },
  "no_auto_line": [
   "airship_hull_2",
-  "beer_hall_1"
+  "beer_hall_1",
+  "crew_weapons_1"
  ],
  "building_effects": {
+  "crew_weapons_1": [
+   {
+    "effect": "wh_dlc05_effect_building_army_xp_gain",
+    "scope": "force_to_force_own",
+    "value": 250,
+    "_note": "The game's own row of this building (unit experience per turn of the force, 150) with the user's number, 10.11.2026: the same key overrides."
+   }
+  ],
   "mtb_nest_1": [
    {
     "effect": "wh_main_effect_agent_field_line_of_sight_mod",
