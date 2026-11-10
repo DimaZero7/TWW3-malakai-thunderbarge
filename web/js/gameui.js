@@ -37,6 +37,13 @@ const TEXT = {
     text_caption_grey: {size: 16, line: 20, colour: '#8E8A80', align: 'center', valign: 'top'},
     text_caption_left: {size: 16, colour: '#FFF8D7', nowrap: true},
     text_caption_copper: {size: 16, colour: '#EBBD7C', align: 'right', nowrap: true},
+    // the game's unit information panel (ui/common ui/unit_information.twui.xml): the name header_14 centred, the rest body_12, the notes body_10;
+    // on the screen 19, 16 and 13 px, as the building information window
+    text_unit_title: {size: 19, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
+    text_unit: {size: 16, colour: '#FFF8D7', nowrap: true},
+    text_unit_right: {size: 16, colour: '#FFF8D7', nowrap: true, align: 'right'},
+    text_unit_centre: {size: 16, colour: '#FFF8D7', nowrap: true, align: 'center'},
+    text_unit_note: {size: 13, line: 17, colour: '#D8CDB0', valign: 'top'},
     text_button: {size: 14, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
     text_name_grey: {size: 14, colour: '#8E8A80', nowrap: true, font: 'header'},
     text_body: {size: 12, colour: '#FFF8D7', valign: 'top'},
@@ -60,6 +67,14 @@ const STATE_IMAGE = {active: 'normal', hover: 'hover', down: 'selected', down_of
 // the game's own state changes on the mouse (transitions of button_layout)
 const ON_ENTER = {active: 'hover', selected: 'selected_hover'};
 const ON_LEAVE = {hover: 'active', selected_hover: 'selected', down: 'active', down_off: 'active'};
+
+// The clips the page has (web/art/*.webm, *.mp4): read once from the folder's listing, so a clip put there is taken at the next load and a clip that
+// is not there costs no failed request.
+let clipList = null;
+function clips() {
+    clipList ||= fetch('/art/').then(r => (r.ok ? r.text() : '')).then(t => new Set([...t.matchAll(/href="([^"]+\.(?:webm|mp4))"/g)].map(m => decodeURIComponent(m[1])))).catch(() => new Set());
+    return clipList;
+}
 
 let tooltipBox = null;
 let tooltipOwner = null;     // the component whose tooltip is shown
@@ -150,7 +165,8 @@ export class Component {
     SetInteractive(on) {
         if (on && !this.clickable) {
             this.clickable = true;
-            this.el.addEventListener('mouseup', e => { if (e.button === 0) clickHandler(this); });
+            // the click belongs to the innermost component that takes it: what lies under it does not get it too
+            this.el.addEventListener('mouseup', e => { if (e.button === 0) { e.stopPropagation(); clickHandler(this); } });
         }
     }
     // An image that does not take the mouse (a state without interactive="true"): the mouse goes to what lies under it
@@ -164,11 +180,9 @@ export class Component {
     // A movie component (the game's MoviePlayer): the first of the files that exists plays looped and silent; none: a placeholder text
     async SetMovie(urls, placeholder) {
         this.el.innerHTML = '';
+        const have = await clips();
         for (const u of urls) {
-            try {
-                const r = await fetch(u, {method: 'HEAD'});
-                if (!r.ok) continue;
-            } catch (e) { continue; }
+            if (!have.has(u.split('/').pop())) continue;
             const v = document.createElement('video');
             Object.assign(v, {src: u, loop: true, muted: true, autoplay: true, playsInline: true});
             v.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
@@ -182,6 +196,9 @@ export class Component {
         p.textContent = placeholder;
         this.el.appendChild(p);
     }
+    // The layer of a window (web/css/page.css, the one scale of z-index): 'click' a window opened by a click, 'hover' a window shown under the mouse.
+    // A window under the mouse is always over a window opened by a click, and both over the drawing and the panel.
+    SetLayer(name) { this.el.classList.add('layer_' + name); return this; }
     // More children shown while the mouse is over this component, beside the one of SetHoverChild (a tooltip window of the component's own)
     AddHoverChild(child) { (this.hoverChildren ||= []).push(child); child.SetVisible(!!this.hovered); }
     // the hover state's brighten_t0 shader (0.40 on the slot): brightness raised while the mouse is over
@@ -192,7 +209,7 @@ export class Component {
         this.textEl = document.createElement('div');
         this.textEl.className = 't' + (spec.nowrap ? ' nowrap' : '') + (spec.valign === 'top' ? ' top' : '') + (spec.font === 'header' ? ' header' : '');
         Object.assign(this.textEl.style, {fontSize: spec.size + 'px', color: spec.colour, fontWeight: spec.bold ? 'bold' : 'normal', fontStyle: spec.italic ? 'italic' : 'normal', lineHeight: spec.line ? spec.line + 'px' : '', textAlign: spec.align || 'left',
-                                          justifyContent: spec.align === 'center' ? 'center' : 'flex-start'});
+                                          justifyContent: spec.align === 'center' ? 'center' : spec.align === 'right' ? 'flex-end' : 'flex-start'});
         this.el.appendChild(this.textEl);
     }
     makeButton(skin) {
@@ -205,6 +222,7 @@ export class Component {
         this.el.addEventListener('mouseup', e => {
             if (e.button !== 0 || this.state === 'inactive') return;
             if (this.state === 'down') this.SetState('hover');
+            e.stopPropagation();
             clickHandler(this);
         });
     }

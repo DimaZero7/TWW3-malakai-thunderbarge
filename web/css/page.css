@@ -43,6 +43,18 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .t.top { align-items: flex-start; display: block; }
 .t.nowrap { white-space: nowrap; }
 .t.header { font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif; letter-spacing: 0.2px; }
+/* The layers of the game's screen, one scale for the whole page (web/js/gameui.js, SetLayer). From the bottom: the panel and the drawing with all that is
+   drawn on it (no z-index); a window opened by a click (the crew's choice); a window shown under the mouse (a building's information, a unit's panel,
+   the demo window of Malakai's side); the small text tooltip at the pointer. A window under the mouse is never under a window opened by a click. */
+:root { --z-click: 20; --z-hover: 40; --z-tooltip: 60; }
+.layer_click { z-index: var(--z-click); }
+.layer_hover { z-index: var(--z-hover); }
+/* the game's unit information panel: the parchment (parchment_texture_v_rolls.png, margins 80) over the panel's tile, the header of the stats
+   (parchment_button_square_active.png, margins 10) */
+.unit_parchment { background: #17130e url(/build/game/ui/skins/default/panel_back_tile.png); background-clip: border-box; border: 1px solid #6b4a26;
+                  box-shadow: 0 0 0 1px #15110c, inset 0 0 26px rgba(0, 0, 0, 0.55); pointer-events: none; }
+.unit_parchment > .c { margin: -1px 0 0 -1px; }
+.unit_header { border: 1px solid transparent; border-image: url(/build/game/ui/skins/default/parchment_button_square_active.png) 10 fill / 10px stretch; }
 /* the game's tooltip window (building_information.twui.xml: tooltip_frame.png, margins 15; its instruction window: margins 16 and 20) and the title's
    separator (separator_skull2.png, 380 x 14, margins 50 left and right) */
 .tooltip_frame { border: 15px solid transparent; border-image: url(/build/game/ui/skins/default/tooltip_frame.png) 15 fill round; pointer-events: none; }
@@ -61,7 +73,7 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .c.movie { background: #15110c; overflow: hidden; }
 .movie_placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; color: #c9b88f;
                      font: italic 14px "Palatino Linotype", Georgia, serif; border: 1px dashed #6b4a26; box-sizing: border-box; }
-.tooltip { position: absolute; z-index: 10; max-width: 380px; padding: 8px 11px; background: #15110c; border: 2px solid #8a5a2c; color: #fff8d7;
+.tooltip { position: absolute; z-index: var(--z-tooltip); max-width: 380px; padding: 8px 11px; background: #15110c; border: 2px solid #8a5a2c; color: #fff8d7;
            font: 13px/1.35 "Palatino Linotype", Georgia, serif; pointer-events: none; }
 
 /* ---- the overview of the chains under the screen (not the game's UI: ordinary layout) ---- */

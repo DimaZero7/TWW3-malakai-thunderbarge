@@ -13,7 +13,8 @@
 //                   'cancelled'  the option that stands was clicked while an order waited: the order is gone, its hire is back
 //                   'kept'       nothing to change: the order already is this option, or it stands and nothing is ordered
 //                   'locked'     no building opens it yet: nothing changes
-//                   'poor'       not enough gold even with the hire of the waiting order back: nothing changes
+//                   'poor'       not enough gold even with the hire of the waiting order back: nothing changes (what costs nothing is never
+//                                refused, with the treasury in debt too)
 //     result.back, result.taken   gold returned and gold taken by this click
 //
 //   turn(state)                the faction's turn start: the order goes in; -> state
@@ -33,7 +34,7 @@ export function click(state, option, ctx) {
     }
     if (state.order && state.order.option === option) return {...same, result: {kind: 'kept', option, why: 'ordered'}};
     const hire = option === ctx.start ? 0 : ctx.hire(option);
-    if (ctx.gold + paid < hire) return {...same, result: {kind: 'poor', option, hire, have: ctx.gold + paid}};
+    if (hire > 0 && ctx.gold + paid < hire) return {...same, result: {kind: 'poor', option, hire, have: ctx.gold + paid}};
     return {state: {standing: state.standing, order: {option, paid: hire}}, gold: ctx.gold + paid - hire,
             result: {kind: 'ordered', option, back: paid, taken: hire, instead: state.order ? state.order.option : null}};
 }

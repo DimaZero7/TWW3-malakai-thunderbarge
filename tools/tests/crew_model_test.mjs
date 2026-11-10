@@ -46,6 +46,7 @@ scenario('empty stands, empty clicked', 'empty', 6000, [['empty', 'kept', null, 
 scenario('not enough gold', 'empty', 100, [['pirates', 'poor', null, 100], ['quarrellers', 'ordered', 'quarrellers', 20], ['pirates', 'poor', 'quarrellers', 20]]);
 scenario('enough only with the waiting hire back', 'empty', 110, [['quarrellers', 'ordered', 'quarrellers', 30], ['pirates', 'ordered', 'pirates', 0], ['quarrellers', 'ordered', 'quarrellers', 30]]);
 
+scenario('a treasury in debt: no hire, but the crew may be taken off', 'pirates', -20, [['quarrellers', 'poor', null, -20], ['empty', 'ordered', 'empty', -20], ['pirates', 'cancelled', null, -20]]);
 // the window closed and opened, the page reloaded: the state is plain data, a copy of it behaves the same
 {
     const a = scenario('before a reload', 'empty', 6000, [['pirates', 'ordered', 'pirates', 5890]]);

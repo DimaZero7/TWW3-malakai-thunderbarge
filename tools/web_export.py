@@ -61,7 +61,13 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            # the army panel's unit card (ui/common ui/land_unit_card.twui.xml), for the crew's choice: the frame over the unit's picture, the plate of the
            # number of men and its bar, the half round of the unit's category, the frame of the selected card
            "ui/skins/default/unit_card_frame_plain.png", "ui/skins/default/unit_card_back.png", "ui/skins/default/bar_white.png",
-           "ui/skins/default/unit_card_semicircle.png", "ui/skins/default/unit_card_selected.png"]
+           "ui/skins/default/unit_card_semicircle.png", "ui/skins/default/unit_card_selected.png",
+           # the game's unit information panel (ui/common ui/unit_information.twui.xml): the parchment, the header of its stats, the icons of its top bar
+           "ui/skins/default/parchment_texture_v_rolls.png", "ui/skins/default/parchment_button_square_active.png", "ui/skins/default/parchment_header_min.png",
+           "ui/skins/default/icon_entity_small.png", "ui/skins/default/parchment_divider_2.png", "ui/skins/default/bar_back.png",
+           "ui/skins/default/icon_stat_damage.png",
+           "ui/skins/default/modifier_icon_armour_piercing.png",
+           "ui/skins/default/frame_text.png"]      # the plate of a recruitment card's cost
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
@@ -221,17 +227,26 @@ def export_data():
         unit_pictures.extend([card["picture"], card["category"]])
         return card
 
+    # the crew's own rows (seats, weapons, projectiles), as tools/build.py adds them to the campaign pack: the numbers of each option come from them
+    crew_tables = {k: [dict(r) for r in v] for k, v in t.items() if isinstance(v, list)}
+    crew_options.extend(crew_tables, stock, build.UNIT, build.BARGE)
+    crew_tables["_stock"] = stock
     groups = {}
     for group_key, group in config["groups"].items():
         groups[group_key] = {"name": group["ui"]["name"], "about": group["ui"]["about"], "start": group["start"], "seats": len(group["seats"]),
                              "mount": group.get("mount"), "mount_name": group.get("mount_name"), "card_frame": group.get("card_frame"),
+                             # buildings that make the group shoot tighter: the spread of its shots times this (data/crew_options.json, boost)
+                             "boost": [{"building": prefix + b, "spread": step["calibration_area"], "range": step.get("effective_range")}
+                                       for b, step in zip(group["boost"]["buildings"], group["boost"]["steps"])] if group.get("boost") else [],
                              "requires": prefix + group["requires"]["building"] if group.get("requires") else None,
                              "options": {k: {"name": (o.get("ui") or {}).get("name", k), "about": (o.get("ui") or {}).get("about", ""),
                                              "hidden": bool((o.get("ui") or {}).get("hidden") or (o.get("ui") or {}).get("none")),
                                              "card": crew_ui.own_card_name(config, group_key, k), "unit_card": unit_card_of(o),
+                                             # the crew's own weapon as the mod builds it (the numbers of the mod's panel, crew_ui.group_numbers)
+                                             "numbers": crew_ui.group_numbers(crew_tables, group_key, k, o, group),
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}
     data = {"_about": "Made by tools/web_export.py from data/crew_options.json and the game's tables through the mod's own build functions. Do not edit.",
-            "prefix": prefix, "hull": [level_of(r) for r in hull], "chains": chains, "groups": groups, "auto_active": [prefix + s for s in config["auto_active"]],
+            "prefix": prefix, "ammo_mod": {prefix + k: v for k, v in config["ammo_mod"].items()}, "hull": [level_of(r) for r in hull], "chains": chains, "groups": groups, "auto_active": [prefix + s for s in config["auto_active"]],
             "levels": levels, "art": json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8"))}
     OUT.mkdir(parents=True, exist_ok=True)
     for path, blob in game_files(sorted(set(unit_pictures))).items():

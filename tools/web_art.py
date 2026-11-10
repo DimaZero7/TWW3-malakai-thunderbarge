@@ -907,11 +907,18 @@ def crew_figure(kind, x, y, s=0.9):
         out.append(art.path(f"M{sx - 3 * s:.1f} {sy - 9 * s:.1f} Q {sx - 12 * s:.1f} {sy - 1 * s:.1f} {sx - 1 * s:.1f} {sy + 7 * s:.1f}", 1.6 * s))
         out.append(art.path(f"M{sx - 3 * s:.1f} {sy - 9 * s:.1f} L{sx - 1 * s:.1f} {sy + 7 * s:.1f}", 0.7 * s))
         return out
+    if kind == "torpedoes":
+        # an irondrake: a steel helm, no long gun, the torpedo's tube on the shoulder under the chin, its copper head forward
+        out = art.dwarf(x, y, s, -1, False, helm="#57504a")
+        out.append(art.path(f"M{x + 9 * s:.1f} {y - 8 * s:.1f} L{x - 21 * s:.1f} {y - 12.5 * s:.1f}", 5.0 * s, art.STEEL))
+        out.append(art.dot(x - 22.5 * s, y - 12.7 * s, 3.6 * s, art.COPPER))
+        return out
     out = art.dwarf(x, y, s)
     if kind == "rakers":
-        out.append(art.path(f"M{x:.1f} {y - 6 * s:.1f} L{x - 21 * s:.1f} {y - 11.5 * s:.1f}", 2.0 * s))
-    if kind == "torpedoes":
-        out.append(art.path(f"M{x + 6 * s:.1f} {y - 15 * s:.1f} L{x - 22 * s:.1f} {y - 21 * s:.1f}", 4.2 * s, art.STEEL))
+        # the grudge-raker: a bundle of barrels at the gun's end, two more strokes beside the gun and a band round them
+        for d in (-2.6, 2.6):
+            out.append(art.path(f"M{x - 9 * s:.1f} {y - 10.5 * s + d * s:.1f} L{x - 22 * s:.1f} {y - 14 * s + d * s:.1f}", 1.7 * s))
+        out.append(art.path(f"M{x - 15 * s:.1f} {y - 16 * s:.1f} L{x - 14 * s:.1f} {y - 8 * s:.1f}", 1.5 * s))
     return out
 
 

@@ -58,7 +58,7 @@
      },
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
-      "count": 12
+      "count": 11
      }
     },
     "thunderers": {
@@ -81,7 +81,7 @@
      },
      "upkeep_from": {
       "unit": "wh_main_dwf_inf_thunderers_0",
-      "count": 12
+      "count": 11
      }
     },
     "pirates": {
@@ -152,7 +152,7 @@
      },
      "upkeep_from": {
       "unit": "wh_main_dwf_inf_irondrakes_2",
-      "count": 12
+      "count": 11
      }
     }
    },
