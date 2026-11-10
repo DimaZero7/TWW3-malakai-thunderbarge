@@ -35,6 +35,7 @@ const TEXT = {
     // (16 px, the game's body size on the screen: at the scale the page has on a screen, about 0.6, it is still 10 px)
     text_caption: {size: 16, line: 20, colour: '#FFF8D7', align: 'center', valign: 'top'},
     text_caption_grey: {size: 16, line: 20, colour: '#8E8A80', align: 'center', valign: 'top'},
+    text_caption_left: {size: 16, colour: '#FFF8D7', nowrap: true},
     text_caption_copper: {size: 16, colour: '#EBBD7C', align: 'right', nowrap: true},
     text_button: {size: 14, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
     text_name_grey: {size: 14, colour: '#8E8A80', nowrap: true, font: 'header'},

@@ -3,6 +3,8 @@
 // It talks to the game only through `game` (web/js/game_sim.js here, the game itself there); places marked GAME are the game's commands.
 // Data: build/web/data.json (tools/web_export.py), made by the same functions as the mod's pack; nothing here repeats a price or a tier.
 
+import * as crewModel from './crew_model.mjs';
+
 export function makeBuildings(data, game, parts) {
     const M = {game, prefix: data.prefix, parts};
     // The page's own requirements over the mod's data (blueprint.json, tree.requires: full keys) and the nodes shown but not orderable yet
@@ -165,88 +167,81 @@ export function makeBuildings(data, game, parts) {
         fire();
     };
 
-    // ---- The crew: what stands in a group of seats (the riflemen), chosen by the player among what the buildings have opened. ----
-    // The rules are the mod's, line for line (src/tww3_mtb_crew.lua: M.choose, drop_order, M.carry_out, M.pay_upkeep, lose_building):
-    //   the panel orders, the turn carries out: what stands now stays for the whole turn, the order goes in at the faction's turn start;
-    //   the hire is taken at once when it is ordered and kept beside the order; taking the order back returns all of it;
-    //   one order of a group a turn: picking what stands now takes this turn's order back, and that was the turn's change (no other order till the next);
-    //   what stood is not paid back when it is replaced, and going back to it is paid again; empty is free;
-    //   the upkeep is taken at the faction's turn start, after the orders went in, for what stands then;
-    //   a building that goes locks its option at once: an order for it comes back with its gold, a crew of it leaves (the group falls to its start),
-    //   nothing returned for that.
-    // GAME: tww3_mtb_crew.choose(group, option) / .get() / .orders() / .changed(group) / .unlocked(); the treasury through cm:treasury_mod.
-    const crew = {};            // group -> option that stands
-    const orders = {};          // group -> {option, paid}: what goes in at the next turn start
-    const orderTurn = {};       // group -> the turn of its last order
+    // ---- The crew: what stands in a group of seats (the riflemen) and what is ordered for the next turn. ----
+    // The rules live apart from the page, in web/js/crew_model.mjs (pure functions, tested by tools/tests/crew_model_test.mjs); here they only meet
+    // the game: the treasury, the buildings, the turn. From the mod (src/tww3_mtb_crew.lua): an order goes in at the faction's turn start and what
+    // stands stays till then; the hire is taken when it is ordered and comes back when the order is taken back; what stood is not paid back; the
+    // upkeep is taken at the turn start, after the orders went in; a building that goes takes its option (an order with its gold back, a standing
+    // crew for nothing). Not the mod's, the page's (the mod is to follow): the order may be changed any number of times in a turn, and the gold
+    // taken always is the hire of the order that waits.
+    // GAME: tww3_mtb_crew.choose(group, option) / .get() / .orders() / .unlocked(); the treasury through cm:treasury_mod.
+    const crew = {};            // group -> {standing, order: null | {option, paid}} (crew_model.mjs)
     const openedBy = {};        // group -> option -> the building level that opens it
     for (const row of Object.values(levels)) for (const u of row.unlocks || []) (openedBy[u.group] ||= {})[u.option] = row;
-    M.crew = group => crew[group] || data.groups[group].start;
-    M.crew_order = group => (orders[group] ? orders[group].option : null);
-    M.crew_changed = group => orderTurn[group] === game.turn;
+    const stateOf = g => crew[g] || {standing: data.groups[g].start, order: null};
+    const ctxOf = g => ({start: data.groups[g].start, gold: game.treasury(), hire: o => (data.groups[g].options[o] || {}).hire || 0,
+                         unlocked: o => o === data.groups[g].start || (!!(openedBy[g] || {})[o] && game.has_building(openedBy[g][o].key))});
+    M.crew = group => stateOf(group).standing;
+    M.crew_order = group => (stateOf(group).order ? stateOf(group).order.option : null);
     M.crew_options = group => {
-        const g = data.groups[group];
+        const g = data.groups[group], ctx = ctxOf(group);
         const rank = k => { const b = (openedBy[group] || {})[k]; return b ? b.tier * 100000 + b.cost : 0; };
         return Object.entries(g.options).filter(([k, o]) => !o.hidden && (k === g.start || (openedBy[group] || {})[k]))
-            .map(([key, o], i) => ({key, i, ...o, empty: key === g.start, building: (openedBy[group] || {})[key] || null,
-                                    unlocked: key === g.start || game.has_building((openedBy[group] || {})[key].key)}))
+            .map(([key, o], i) => ({key, i, ...o, empty: key === g.start, building: (openedBy[group] || {})[key] || null, unlocked: ctx.unlocked(key)}))
             .sort((a, b) => (a.empty ? -1 : b.empty ? 1 : rank(a.key) - rank(b.key) || a.i - b.i));
     };
     const upkeepOf = (g, o) => (data.groups[g].options[o] || {}).upkeep || 0;
     // gold per turn now, and with the orders of this turn (M.upkeep of the mod)
     M.crew_upkeep = () => Object.keys(data.groups).reduce((sum, g) => sum + upkeepOf(g, M.crew(g)), 0);
     M.crew_upkeep_next = () => Object.keys(data.groups).reduce((sum, g) => sum + upkeepOf(g, M.crew_order(g) || M.crew(g)), 0);
-    const dropOrder = (group, giveBack) => {
-        const o = orders[group];
-        if (!o) return 0;
-        delete orders[group];
-        if (giveBack) game.gold += o.paid;      // GAME: cm:treasury_mod(faction, +paid)
-        return giveBack ? o.paid : 0;
+    // What a click on an option would do, without doing it (the window's line under the mouse), and what the last click did (its line after).
+    const nameOf = (g, o) => (o === data.groups[g].start ? 'пустые борта' : `«${data.groups[g].options[o].name}»`);
+    const sayResult = (g, r, done) => {
+        const n = nameOf(g, r.option), start = data.groups[g].start;
+        if (r.kind === 'locked') return {bad: true, text: `Заперто: ${n} откроет постройка «${openedBy[g][r.option].name}»`};
+        if (r.kind === 'poor') return {bad: true, text: `Не хватает золота на ${n}: найм ${r.hire}, есть ${r.have}`};
+        if (r.kind === 'kept') return {text: r.why === 'ordered' ? (r.option === start ? 'Экипаж уже сходит в начале хода' : `${n} уже в найме`) : r.option === start ? 'У бортов никого' : `${n} уже у бортов`};
+        const back = r.back ? `, вернулось ${r.back}` : '', willBack = r.back ? `, вернётся ${r.back}` : '';
+        if (r.kind === 'cancelled') return {text: done ? `Заказ на ${nameOf(g, r.option)} снят${back}` : `Снять заказ на ${nameOf(g, r.option)}${willBack}: у бортов остаются, кто стоит`};
+        if (r.option === start) return {text: done ? `Экипаж сойдёт в начале хода${back}` : `Снять экипаж в начале хода${willBack}`};
+        const instead = r.instead && r.instead !== start ? ` вместо ${nameOf(g, r.instead)}` : '';
+        return {text: done ? `В найме ${n}${instead}: списано ${r.taken}${back}, встанут в начале хода` : `Нанять ${n}${instead}: найм ${r.taken}${willBack}, встанут в начале хода`};
     };
+    const notes = {};           // group -> what the last click did
+    M.crew_note = group => notes[group] || null;
+    M.crew_preview = (group, option) => { const r = crewModel.click(stateOf(group), option, ctxOf(group)).result; return {kind: r.kind, ...sayResult(group, r, false)}; };
     M.set_crew = (group, option) => {
-        const o = M.crew_options(group).find(x => x.key === option);
-        if (!o) return {ok: false};
-        const say = text => { message = text; fire(); return {ok: false, why: text}; };
-        if (!o.unlocked) return say(`«${o.name}» откроет постройка «${o.building.name}».`);
-        const current = M.crew(group), order = orders[group];
-        if (M.crew_changed(group)) {
-            if (order && option === current) {
-                const back = dropOrder(group, true);
-                message = `Заказ отменён${back ? `, ${back} золота вернулось` : ''}. Новый заказ — со следующего хода.`;
-                fire();
-                return {ok: true, cancelled: true};
-            }
-            return say(`${data.groups[group].name}: заказ на этот ход уже был. Следующий — со следующего хода.`);
-        }
-        if (option === current) return {ok: true, same: true};
-        if (game.treasury() < o.hire) return say(`Не хватает золота на «${o.name}»: найм ${o.hire}.`);
-        game.gold -= o.hire;        // GAME: cm:treasury_mod(faction, -hire)
-        orders[group] = {option, paid: o.hire};
-        orderTurn[group] = game.turn;
-        crewChosen = true;
-        message = o.empty ? 'Стрелки сойдут с бортов в начале хода.' : `«${o.name}» в найме: ${o.hire} золота, встанут к бортам в начале хода.`;
+        if (!data.groups[group].options[option]) return {ok: false};
+        const r = crewModel.click(stateOf(group), option, ctxOf(group));
+        crew[group] = r.state;
+        game.gold = r.gold;         // GAME: cm:treasury_mod(faction, back - taken)
+        notes[group] = sayResult(group, r.result, true);
+        if (r.result.kind === 'ordered') crewChosen = true;
+        message = notes[group].text + '.';
         fire();
-        return {ok: true};
+        return {ok: r.result.kind === 'ordered' || r.result.kind === 'cancelled', kind: r.result.kind};
     };
     // The hint: the place's tag glows until the player chooses a crew once (as the side's hint; GAME: cm:set_saved_value('mtb_crew_chosen', true)).
     let crewChosen = false;
     M.crew_hint = () => !crewChosen;
     M.set_crew_chosen_silently = v => { crewChosen = !!v; };
-    M.crew_snapshot = () => ({crew: {...crew}, orders: JSON.parse(JSON.stringify(orders)), changed: {...orderTurn}});
+    M.crew_snapshot = () => JSON.parse(JSON.stringify(crew));
     M.set_crew_silently = saved => {
-        const s = saved && saved.crew ? saved : {crew: saved || {}};       // an older save held only what stands
-        for (const [g, o] of Object.entries(s.crew || {})) if (data.groups[g] && data.groups[g].options[o]) crew[g] = o;
-        for (const [g, o] of Object.entries(s.orders || {})) if (data.groups[g] && o && data.groups[g].options[o.option]) orders[g] = o;
-        Object.assign(orderTurn, s.changed || {});
+        for (const [g, st] of Object.entries(saved || {})) {
+            if (!data.groups[g] || !st || !data.groups[g].options[st.standing]) continue;
+            const order = st.order && data.groups[g].options[st.order.option] ? {option: st.order.option, paid: Number(st.order.paid) || 0} : null;
+            crew[g] = {standing: st.standing, order};
+        }
     };
     // a building that no longer stands takes its option away: the order with its gold, the standing crew without
     game.on('BuildingDemolished', () => {
         const said = [];
-        for (const g of Object.keys(data.groups)) {
-            const options = M.crew_options(g);
-            const ordered = orders[g] && options.find(x => x.key === orders[g].option);
-            if (ordered && !ordered.unlocked) { const back = dropOrder(g, true); said.push(`заказ «${ordered.name}» снят, ${back} золота вернулось`); }
-            const standing = options.find(x => x.key === crew[g]);
-            if (standing && !standing.unlocked) { delete crew[g]; said.push(`«${standing.name}» сошли с корабля, найм не возвращается`); }
+        for (const g of Object.keys(crew)) {
+            const r = crewModel.lose(stateOf(g), ctxOf(g));
+            crew[g] = r.state;
+            game.gold = r.gold;
+            for (const l of r.lost) said.push(l.kind === 'order' ? `заказ на ${nameOf(g, l.option)} снят, ${l.back} золота вернулось` : `${nameOf(g, l.option)} сошли с корабля, найм не возвращается`);
+            if (r.lost.length) delete notes[g];
         }
         if (said.length) { message = 'Постройки больше нет: ' + said.join('; ') + '.'; fire(); }
     });
@@ -260,11 +255,11 @@ export function makeBuildings(data, game, parts) {
     game.on('FactionTurnStart', () => {
         // the orders go in (M.carry_out), then the upkeep of what stands now is taken (M.pay_upkeep)
         const came = [];
-        for (const g of Object.keys(orders)) {
-            const option = orders[g].option;
-            dropOrder(g, false);
-            if (option === data.groups[g].start) delete crew[g]; else crew[g] = option;
-            came.push(option === data.groups[g].start ? 'стрелки сошли с бортов' : `«${data.groups[g].options[option].name}» встали к бортам`);
+        for (const g of Object.keys(crew)) {
+            if (!crew[g].order) continue;
+            crew[g] = crewModel.turn(crew[g]);
+            delete notes[g];
+            came.push(crew[g].standing === data.groups[g].start ? 'стрелки сошли с бортов' : `${nameOf(g, crew[g].standing)} встали к бортам`);
         }
         const upkeep = M.crew_upkeep();
         game.gold -= upkeep;        // GAME: cm:treasury_mod; the page lets the treasury go below zero

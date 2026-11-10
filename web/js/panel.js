@@ -174,7 +174,7 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         // opened yet is grey under a padlock, as the game shows a unit that cannot be recruited yet, and its tooltip names the building.
         const options = M.crew_options(ca.group);
         // the frame's edge picture is 30 wide: everything keeps 26 clear of the window's sides, the foot line 30 of its lower edge
-        const pad = 26, slot_w = 106, pw = pad * 2 + slot_w * options.length, ph = pad + 28 + 4 + UNIT_H + 4 + 42 + 42 + 26;
+        const pad = 26, slot_w = 106, pw = pad * 2 + slot_w * options.length, ph = pad + 28 + 4 + UNIT_H + 4 + 42 + 42 + 26 + 26;
         const pick = image(sheet, 'mtb_crew_pick', LAYOUTS + 'backdrop.png', Math.min(ax, scheme_w - pw - 12), Math.min(ay + cbox[3] * scale + 14, scheme_h - ph - 6), pw, ph);      // under the place, inside the drawing
         pick.SetInteractive(true);      // a click on the window itself does nothing and does not reach the drawing
         crew.pick = pick;
@@ -185,6 +185,10 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         // without leaving them, so the demo window over the choice does not blink. That window is the one of the tree's small cards (demoTip, the same
         // clip web/art/<movie>.webm): above the choice, at its right end, clear of the cards under the mouse and of the place on the drawing.
         const px = pick.x, py = pick.y, slot_y = pad + 28 + 4, slot_h = UNIT_H + 4 + 84;
+        // The line at the window's foot: what the last click did (red when it did nothing and why), and over it, while the mouse is on a kind, what
+        // a click on that kind will do. Every click on a card answers here; the cards' own captions only say what is, never a command.
+        const foot_y = slot_y + slot_h + 4;
+        crew.status = text(pick, 'pick_status', 'text_caption_left', pad, foot_y, pw - 2 * pad, 22, '');
         const clips = Object.fromEntries((blueprint.crew_cards || []).filter(c => c.group === ca.group).map(c => [c.option, c]));
         crew.slots = options.map((o, i) => {
             const hit = make(pick, CREW_PICK + o.key, 'hit_area');
@@ -204,6 +208,10 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             slot.name = text(hit, 'name', 'text_caption', 2, UNIT_H + 4, slot_w - 4, 40, '');
             slot.money = text(hit, 'money', 'text_caption_grey', 2, UNIT_H + 4 + 42, slot_w - 4, 40, '');
             for (const c of [card, slot.name, slot.money]) c.SetPassive();
+            slot.hint = image(pick, 'hint_' + o.key, LAYOUTS + 'backdrop.png', pad, foot_y, pw - 2 * pad, 22);      // covers the status line under it
+            slot.hintText = text(slot.hint, 'text', 'text_caption_left', 0, 0, pw - 2 * pad, 22, '');
+            slot.hint.SetPassive();
+            hit.AddHoverChild(slot.hint);
             if (!o.empty) {
                 const clip = clips[o.key] || {};
                 slot.demo = demoTip(sheet, 'crew_pick_tip_' + o.key, px + pw - 300, py - 6, {movie: clip.movie || o.key + '_demo', head: clip.head || o.name, text: clip.text || o.about || '', note: ''});
@@ -819,18 +827,24 @@ function refresh(view, M) {
         c.glow.SetVisible(M.crew_hint());
         c.area.SetTooltipText(c.open ? '' : ordered ? (ordered.empty ? 'Стрелки сойдут с бортов в начале хода' : `${ordered.name}: в найме, встанут к бортам в начале хода`)
             : nobody ? '' : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' у бортов, ' : ''}содержание ${standing.upkeep} за ход`, true);
+        // Both states show at once: who stands (the game's frame of the selected card, "у бортов") and who is ordered (the game's banner of a unit
+        // being recruited with the turns, "в найме"); every other kind its hire and upkeep, red when the treasury cannot pay it.
         for (const slot of c.slots) {
-            const o = options.find(x => x.key === slot.key), poor = o.unlocked && !o.empty && o.key !== now && o.key !== order && M.game.treasury() < o.hire;
+            const o = options.find(x => x.key === slot.key), will = M.crew_preview(c.group, o.key);
             slot.selected.SetVisible(o.key === now);
             slot.padlock.SetVisible(!o.unlocked);
             slot.turnsBanner.SetVisible(o.key === order);
             slot.card.ShaderTechniqueSet(o.unlocked ? 'normal_t0' : 'set_greyscale_t0');
             slot.card.SetImageColour(255, 255, 255, o.unlocked ? 255 : 0x80);
             slot.name.SetStateText(o.unlocked ? o.name : `[[col:grey]]${o.name}[[/col]]`);
-            slot.money.SetStateText(o.key === order ? '[[col:yellow]]в найме: 1 ход[[/col]]' : o.key === now ? (ordered ? 'отменить заказ' : o.empty ? 'у бортов никого' : `у бортов\nза ход ${o.upkeep}`)
-                : !o.unlocked ? 'заперто' : o.empty ? 'снять экипаж' : `${poor ? '[[col:red]]' : ''}найм ${o.hire}${poor ? '[[/col]]' : ''}\nза ход ${o.upkeep}`);
+            slot.money.SetStateText(o.key === order ? `[[col:yellow]]${o.empty ? 'сойдут' : 'в найме'}: 1 ход[[/col]]`
+                : o.key === now ? (o.empty ? 'у бортов никого' : `[[col:yellow]]у бортов[[/col]]\nза ход ${o.upkeep}`)
+                : !o.unlocked ? 'заперто' : o.empty ? 'без экипажа' : `${will.kind === 'poor' ? '[[col:red]]' : ''}найм ${o.hire}${will.kind === 'poor' ? '[[/col]]' : ''}\nза ход ${o.upkeep}`);
+            slot.hintText.SetStateText(will.bad ? `[[col:red]]${will.text}[[/col]]` : will.text);
             if (slot.demo) slot.demo.note.SetStateText(o.unlocked ? '' : `[[col:red]]Откроет постройка «${o.building.name}»[[/col]]`);
         }
+        const note = M.crew_note(c.group);
+        c.status.SetStateText(note ? (note.bad ? `[[col:red]]${note.text}[[/col]]` : `[[col:grey]]${note.text}[[/col]]`) : '');
         const upkeep = M.crew_upkeep(), next = M.crew_upkeep_next();
         c.foot.SetStateText(`Содержание экипажа: ${upkeep} за ход` + (next !== upkeep ? ` → ${next}` : ''));
     }
@@ -922,8 +936,8 @@ function click(view, M, c) {
     } else if (id === CREW_CLOSE) {
         view.crewArea.open = false;
     } else if (id.startsWith(CREW_PICK)) {
-        const done = M.set_crew(view.crewArea.group, id.slice(CREW_PICK.length));
-        if (done.ok && !done.same) view.crewArea.open = false;      // ordered, or the order taken back: the drawing shows it
+        // the window stays: the card, the captions, the foot line and the treasury answer every click at once; it closes by its cross or the tag
+        M.set_crew(view.crewArea.group, id.slice(CREW_PICK.length));
     } else if (id === 'mtb_crew_pick') {
         // the window's own backing
     } else if (id.startsWith(TREE)) {
