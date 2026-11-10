@@ -883,6 +883,116 @@ def aboard_frames():
         im.save(OUT / f"aboard_outline_{name}.png", optimize=True)
 
 
+# ---------------- the riflemen's place on the drawing: the area the player clicks to choose the rifle crew ----------------
+# The five rifle places of the near side beside Malakai's own (crew_ui_art.RIFLE_PLACES without MALAKAI_AT's): two at the bow rail, three at the waist.
+CREW_PLACES = [(x, y) for x, y in art.RIFLE_PLACES if (x, y + 2) != MALAKAI_AT]
+
+
+def crew_figure(kind, x, y, s=0.9):
+    """A dwarf of the crew at the rail, told apart by the outline: pirates bare-headed with a crest and a pistol in each hand, crossbowmen in a helm with
+    a crossbow, the others the panel's own dwarf with a long gun (thicker for the grudge-rakers, a tube for the torpedoes)."""
+    if kind == "pirates":
+        out = [art.path(f"M{x - 9 * s:.1f} {y - 9 * s:.1f} L{x - 19 * s:.1f} {y - 13 * s:.1f} L{x - 19 * s:.1f} {y - 9 * s:.1f}", 2.0 * s),
+               art.path(f"M{x + 9 * s:.1f} {y - 9 * s:.1f} L{x + 18 * s:.1f} {y - 15 * s:.1f} L{x + 20 * s:.1f} {y - 11 * s:.1f}", 2.0 * s)]
+        # no helm and no horns (the last stroke of the panel's dwarf): a bare head under a red kerchief with its knot, a short crest; Malakai beside them
+        # keeps the tall crest and the horned helm
+        out += art.dwarf(x, y, s, -1, False, helm="#a8261a", beard="#c8501a")[:-1]
+        out.append(art.path(f"M{x + 6 * s:.1f} {y - 21 * s:.1f} L{x + 11 * s:.1f} {y - 19 * s:.1f} M{x + 6 * s:.1f} {y - 21 * s:.1f} L{x + 10 * s:.1f} {y - 24 * s:.1f}", 1.3 * s, "#a8261a"))
+        out.append(art.path(f"M{x - 1.5 * s:.1f} {y - 25 * s:.1f} L{x:.1f} {y - 30 * s:.1f} L{x + 1.5 * s:.1f} {y - 25 * s:.1f}", 1.4 * s, "#c8501a"))
+        return out
+    if kind == "quarrellers":
+        out = art.dwarf(x, y, s, -1, False, helm="#6b6258", beard="#8a6a3c")
+        sx, sy = x - 16 * s, y - 10 * s           # the crossbow held across the rail: the stock, the bow as an arc, the string
+        out.append(art.path(f"M{x - 4 * s:.1f} {y - 8 * s:.1f} L{x - 24 * s:.1f} {y - 12 * s:.1f}", 2.2 * s))
+        out.append(art.path(f"M{sx - 3 * s:.1f} {sy - 9 * s:.1f} Q {sx - 12 * s:.1f} {sy - 1 * s:.1f} {sx - 1 * s:.1f} {sy + 7 * s:.1f}", 1.6 * s))
+        out.append(art.path(f"M{sx - 3 * s:.1f} {sy - 9 * s:.1f} L{sx - 1 * s:.1f} {sy + 7 * s:.1f}", 0.7 * s))
+        return out
+    out = art.dwarf(x, y, s)
+    if kind == "rakers":
+        out.append(art.path(f"M{x:.1f} {y - 6 * s:.1f} L{x - 21 * s:.1f} {y - 11.5 * s:.1f}", 2.0 * s))
+    if kind == "torpedoes":
+        out.append(art.path(f"M{x + 6 * s:.1f} {y - 15 * s:.1f} L{x - 22 * s:.1f} {y - 21 * s:.1f}", 4.2 * s, art.STEEL))
+    return out
+
+
+def crew_ghost(x, y, s=0.9):
+    """A place nobody stands at, in pencil: the outline of a dwarf at the rail, dashed, as a draughtsman leaves room for a figure."""
+    d = (f"M{x - 8 * s:.1f} {y:.1f} L{x - 7 * s:.1f} {y - 13 * s:.1f} L{x + 7 * s:.1f} {y - 13 * s:.1f} L{x + 8 * s:.1f} {y:.1f} "
+         f"M{x - 5 * s:.1f} {y - 19 * s:.1f} A {5 * s:.1f} {5 * s:.1f} 0 1 1 {x + 5 * s:.1f} {y - 19 * s:.1f} A {5 * s:.1f} {5 * s:.1f} 0 1 1 {x - 5 * s:.1f} {y - 19 * s:.1f}")
+    return [art.path(d, 1.1, PENCIL, extra='stroke-dasharray="3 2.4"', op=0.9)]
+
+
+def crew_note(x, y, text, size=11):
+    """A draughtsman's note in pencil, slanted, with a leader's dot."""
+    return [f'<text x="{x}" y="{y}" font-family="Segoe Script, Comic Sans MS, cursive" font-size="{size}" fill="{PENCIL}" opacity="0.85" transform="rotate(-3 {x} {y})">{text}</text>']
+
+
+def crew_brackets(pad=0):
+    """Thin dashed frames round the two rows of places (the bow rail, the waist), as a dimensioned zone of a drawing."""
+    out = []
+    for group in (CREW_PLACES[:2], CREW_PLACES[2:]):
+        x0, x1 = min(x for x, _ in group) - 16 - pad, max(x for x, _ in group) + 16 + pad
+        y0, y1 = min(y for _, y in group) - 30 - pad, max(y for _, y in group) + 5 + pad
+        out.append(art.path(art.poly([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], True), 0.9, art.INK_SOFT, extra='stroke-dasharray="5 3.5"', op=0.8))
+    return out
+
+
+def crew_empty(variant="a"):
+    """The riflemen's place with nobody in it. a: dashed pencil outlines of the figures and a pencil note; b: dashed ink frames round the two rows
+    and the note; c: a small cross-in-circle station mark at each place and the note. a is the page's (see docs of the choice in the report)."""
+    note = crew_note(CREW_PLACES[2][0] + 18, CREW_PLACES[2][1] - 38, "стрелки: свободно")
+    if variant == "a":
+        return [g for x, y in CREW_PLACES for g in crew_ghost(x, y + 2)] + note
+    if variant == "b":
+        return crew_brackets() + note
+    out = []
+    for x, y in CREW_PLACES:
+        out.append(art.circle(x, y - 10, 6, 0.9, PENCIL, op=0.85))
+        out.append(art.path(f"M{x - 8} {y - 10} L{x + 8} {y - 10} M{x} {y - 18} L{x} {y - 2}", 0.7, PENCIL, op=0.85))
+    return out + note
+
+
+def crew_area(places):
+    """Layers of the riflemen's place: empty (pencil), the soft mark shown under the mouse, and the crew of each kind in ink."""
+    layer_plain("crew_rifles_empty", crew_empty("a"), places)
+    # under the mouse: the frames of the zone in thin soft ink, nothing brighter
+    layer_plain("crew_rifles_hover", crew_brackets(3), places)
+    for kind in ("pirates", "quarrellers", "thunderers", "rakers", "torpedoes"):
+        layer("crew_rifles_" + kind, [g for x, y in CREW_PLACES for g in crew_figure(kind, x, y + 2)], places)
+    return {"area": [min(x for x, _ in CREW_PLACES) - 20, min(y for _, y in CREW_PLACES) - 36, max(x for x, _ in CREW_PLACES) - min(x for x, _ in CREW_PLACES) + 40,
+                     max(y for _, y in CREW_PLACES) - min(y for _, y in CREW_PLACES) + 46]}
+
+
+def crew_area_variants():
+    """build/web/shots/crew_area_variants.png: the three looks of the empty place and the two crews on the base drawing, to choose from."""
+    from PIL import Image, ImageDraw
+    S = art.SCALE
+    base = Image.open(OUT / "blueprint_base.png").convert("RGBA")
+    box = (round(250 * S), round(330 * S), round(680 * S), round(500 * S))
+    w, h = round(art.DRAW_W * S), round(art.DRAW_H * S)
+    cells = [("А: карандашные контуры фигур (выбран)", crew_empty("a"), False), ("Б: пунктирные рамки зоны", crew_empty("b"), False), ("В: метки мест", crew_empty("c"), False),
+             ("А под мышью", crew_empty("a") + crew_brackets(3), False),
+             ("Мстители-пираты", [g for x, y in CREW_PLACES for g in crew_figure("pirates", x, y + 2)], True),
+             ("Арбалетчики", [g for x, y in CREW_PLACES for g in crew_figure("quarrellers", x, y + 2)], True)]
+    cw, ch = box[2] - box[0], box[3] - box[1]
+    sheet = Image.new("RGB", (cw * 2 + 30, (ch + 34) * 3 + 10), (20, 18, 15))
+    d = ImageDraw.Draw(sheet)
+    from PIL import ImageFont
+    font = ImageFont.truetype("arial.ttf", 16)
+    for i, (title, parts, ink) in enumerate(cells):
+        im = base.copy()
+        im.alpha_composite(art.paint(f"web_crew_variant_{i}", art.svg_page(parts, filtered=ink), w, h))
+        mal = Image.open(OUT / "malakai_near.png").convert("RGBA")
+        place = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]["malakai_near"]
+        im.alpha_composite(mal.resize((round(place[2] * S), round(place[3] * S))), (round(place[0] * S), round(place[1] * S)))
+        x, y = 10 + (i % 2) * (cw + 10), 10 + (i // 2) * (ch + 34)
+        d.text((x, y), title, fill=(235, 189, 124), font=font)
+        sheet.paste(im.crop(box).convert("RGB"), (x, y + 22))
+    target = REPO / "build" / "web" / "shots"
+    target.mkdir(parents=True, exist_ok=True)
+    sheet.save(target / "crew_area_variants.png")
+
+
 def tree_line():
     """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
     from PIL import Image
@@ -951,7 +1061,9 @@ def main():
     parts["pub"] = {"pencil": None, "build": "pub_build", "ink": "pub_ink"}
     # where Malakai stands: the plan with its marks and his figure (last, as above)
     side = side_art(places)
-    (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side}, indent=1), encoding="utf-8")
+    crew = crew_area(places)
+    (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side, "crew_area": crew}, indent=1), encoding="utf-8")
+    crew_area_variants()
     for f in sorted(OUT.glob("*.png")):
         print(f.name, f.stat().st_size)
 

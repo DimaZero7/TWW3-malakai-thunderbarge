@@ -57,7 +57,11 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/unit_card_build_frame.png",
            # the game's building information window (ui/campaign ui/building_information.twui.xml and its entries)
            "ui/skins/default/tooltip_frame.png", "ui/skins/default/separator_skull2.png", "ui/skins/default/unit_cat_holder_round.png",
-           "ui/skins/default/replenishement_positive.png"]
+           "ui/skins/default/replenishement_positive.png",
+           # the army panel's unit card (ui/common ui/land_unit_card.twui.xml), for the crew's choice: the frame over the unit's picture, the plate of the
+           # number of men and its bar, the half round of the unit's category, the frame of the selected card
+           "ui/skins/default/unit_card_frame_plain.png", "ui/skins/default/unit_card_back.png", "ui/skins/default/bar_white.png",
+           "ui/skins/default/unit_card_semicircle.png", "ui/skins/default/unit_card_selected.png"]
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
@@ -670,26 +674,26 @@ def export_overview():
 
 
 def recolour_card_frames(got):
-    """The game's frame of a small unit card (unit_card_build_frame.png, red) in each colour of the crew groups (data/crew_options.json, card_frames), for the
-    crew aboard on the page's tree: build/web/game/ui/skins/tww3_mtb/unit_card_build_frame_<colour>.png. Same size, same shape, every pixel's brightness kept;
-    in the mod it would be a file of the pack. A copy of a game picture: stays in build/."""
-    import io
-    path = "ui/skins/default/unit_card_build_frame.png"
-    if path not in got:
-        return
-    source = OUT / "raw" / "unit_card_build_frame.png"
-    source.parent.mkdir(parents=True, exist_ok=True)
-    source.write_bytes(got[path])
+    """The game's frames of a unit card (unit_card_build_frame.png of the small card, red; unit_card_frame_plain.png of the army panel's card) in each
+    colour of the crew groups (data/crew_options.json, card_frames), for the crew aboard: build/web/game/ui/skins/tww3_mtb/<name>_<colour>.png. Same size,
+    same shape, every pixel's brightness kept; in the mod they would be files of the pack. Copies of game pictures: they stay in build/."""
     colours = {k: v[0] for k, v in crew_options.CONFIG["card_frames"].items() if not k.startswith("_")}
     target = OUT / "game" / "ui" / "skins" / "tww3_mtb"
     target.mkdir(parents=True, exist_ok=True)
     code = ("import sys, json\nfrom PIL import Image\nsrc = Image.open(sys.argv[1]).convert('RGBA')\ncolours = json.loads(sys.argv[3])\n"
-            "top = max(max(p[:3]) for p in src.getdata() if p[3]) or 1\n"
+            "px = list(src.getdata())\ntop = max(max(p[:3]) for p in px if p[3]) or 1\n"
             "for name, c in colours.items():\n"
             "    out = Image.new('RGBA', src.size)\n"
-            "    out.putdata([tuple(min(255, round(v * max(p[:3]) / top)) for v in c) + (p[3],) for p in src.getdata()])\n"
-            "    out.save(sys.argv[2] + '/unit_card_build_frame_' + name + '.png')\n")
-    subprocess.run(["py", "-3.10", "-c", code, str(source), str(target), json.dumps(colours)], check=True)
+            "    out.putdata([tuple(min(255, round(v * max(p[:3]) / top)) for v in c) + (p[3],) for p in px])\n"
+            "    out.save(sys.argv[2] + '_' + name + '.png')\n")
+    for name in ("unit_card_build_frame", "unit_card_frame_plain"):
+        path = f"ui/skins/default/{name}.png"
+        if path not in got:
+            continue
+        source = OUT / "raw" / f"{name}.png"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(got[path])
+        subprocess.run(["py", "-3.10", "-c", code, str(source), str(target / name), json.dumps(colours)], check=True)
 
 
 def export_game_ui():

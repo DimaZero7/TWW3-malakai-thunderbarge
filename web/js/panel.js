@@ -9,6 +9,7 @@ const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they wo
 const ROW = 'mtb_ship_row_', ORDER = 'mtb_ship_order', CANCEL = 'mtb_ship_cancel', DEMOLISH = 'mtb_ship_demolish';
 const MAX_ROWS = 6;
 const SIDE = 'mtb_side_';
+const CREW_AREA = 'mtb_crew_area_', CREW_PICK = 'mtb_crew_pick_', CREW_CLOSE = 'mtb_crew_close';
 let view_flags = {};
 
 // helpers as in the Lua
@@ -121,6 +122,53 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             view.side[n] = image(sheet, 'malakai_' + n, WEB_ART + 'malakai_' + n + '.png', q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale);
         }
     }
+    // The riflemen's place on the drawing (blueprint.json, crew_area): part of the drawing, not a button. Nobody: dashed pencil outlines at the rail and a
+    // pencil note; a crew: its figures in ink, a layer per kind; under the mouse thin dashed frames round the two rows, in soft ink. A click opens the
+    // choice. It lies over Malakai's own figure, which stands at one of the rifle places and is not among the layers' five.
+    const ca = blueprint.crew_area, cbox = art.crew_area && art.crew_area.area;
+    if (ca && cbox && data.groups[ca.group]) {
+        const group = data.groups[ca.group], ax = cbox[0] * scale, ay = cbox[1] * scale;
+        const area = make(sheet, CREW_AREA + ca.group, 'hit_area');
+        size(area, cbox[2] * scale, cbox[3] * scale);
+        at(area, ax, ay);
+        area.SetInteractive(true);
+        const lay = name => { const q = place(name); const c = image(area, name, WEB_ART + name + '.png', q[0] * scale - ax, q[1] * scale - ay, q[2] * scale, q[3] * scale); c.SetPassive(); return c; };
+        const crew = view.crewArea = {spec: ca, area, group: ca.group, building: M.prefix + ca.building, layers: {}, open: false};
+        crew.hover = lay(`crew_${ca.group}_hover`);
+        area.SetHoverChild(crew.hover);
+        crew.empty = lay(`crew_${ca.group}_empty`);
+        for (const key of Object.keys(group.options)) if (key !== group.start && art.places[`crew_${ca.group}_${key}`]) crew.layers[key] = lay(`crew_${ca.group}_${key}`);
+        // The choice: a window of the same family as the demo window of Malakai's side (the panel's dark backing, a brass head, the frame's edge),
+        // under the place. Every kind the buildings can open, as the army panel's unit card in the crew's colour with the number aboard; a kind not
+        // opened yet is grey under a padlock, as the game shows a unit that cannot be recruited yet, and its tooltip names the building.
+        const options = M.crew_options(ca.group);
+        const pad = 16, slot_w = 88, pw = pad * 2 + slot_w * options.length, ph = pad + 28 + 8 + UNIT_H + 6 + 34 + 50 + 24 + pad;
+        const pick = image(sheet, 'mtb_crew_pick', LAYOUTS + 'backdrop.png', Math.min(ax, scheme_w - pw - 12), ay + cbox[3] * scale + 14, pw, ph);
+        pick.SetInteractive(true);      // a click on the window itself does nothing and does not reach the drawing
+        crew.pick = pick;
+        text(pick, 'pick_head', 'text_head', pad, pad - 4, pw - 2 * pad - 30, 28, ca.head || group.name);
+        const cross = image(pick, CREW_CLOSE, 'ui/skins/default/icon_cross.png', pw - pad - 22, pad - 2, 22, 22);
+        cross.SetInteractive(true);
+        crew.slots = options.map((o, i) => {
+            const x = pad + i * slot_w + (slot_w - UNIT_W) / 2, y = pad + 28 + 8;
+            const card = o.unit_card ? unitCard(pick, CREW_PICK + o.key, x, y, o.unit_card, group.card_frame || 'gold')
+                                     : image(pick, CREW_PICK + o.key, LAYOUTS + 'card_empty.png', x, y, UNIT_W, UNIT_H);
+            card.SetInteractive(true);
+            card.SetHoverBrighten(0.2);
+            const slot = {key: o.key, card};
+            slot.selected = image(card, 'selected', 'ui/skins/default/unit_card_selected.png', 0, 0, UNIT_W, UNIT_H);
+            slot.padlock = image(card, 'padlock', 'ui/skins/default/padlock.png', (UNIT_W - 26) / 2, 46, 26, 33);
+            for (const c of [slot.selected, slot.padlock]) c.SetPassive();
+            slot.name = text(pick, 'name_' + o.key, 'text_caption', pad + i * slot_w + 2, y + UNIT_H + 6, slot_w - 4, 32, '');
+            slot.money = text(pick, 'money_' + o.key, 'text_caption_grey', pad + i * slot_w + 2, y + UNIT_H + 6 + 34, slot_w - 4, 48, '');
+            return slot;
+        });
+        crew.foot = text(pick, 'pick_foot', 'text_copper', pad, ph - pad - 18, pw - 2 * pad, 20, '');
+        const edge = make(pick, 'pick_edge', 'frame_edge');
+        size(edge, pw, ph);
+        at(edge, 0, 0);
+        pick.SetVisible(false);
+    }
     const sheet_frame = make(frame, 'scheme_frame', 'frame_edge');
     size(sheet_frame, scheme_w + 8, scheme_h + 8);
     at(sheet_frame, sx - 4, sy - 4);
@@ -184,6 +232,22 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
 // picture), the video, a brass head and light text with even margins, the panel's frame edge over it all. x: its left, bottom: its lower edge.
 // The clip is web/art/<movie>.webm or .mp4, taken when the file is there; until then a placeholder.
 // In the game: a frame layout with a movie component (the spell browser's MoviePlayer callback, its loop property).
+// A unit as the army panel shows it (ui/common ui/land_unit_card.twui.xml): 60 x 130, the unit's picture, the frame, the plate with the number of men
+// over the bar (health_frame at 4, 3: 52 x 11), the half round with the unit's category (unit_cat_frame, the icon 22 x 22). The crew aboard has the
+// game's frame in the crew group's colour, as the small card of the tree. uc: unit_card of build/web/data.json.
+const UNIT_W = 60, UNIT_H = 130;
+function unitCard(parent, id, x, y, uc, colour) {
+    const D = 'ui/skins/default/';
+    const card = image(parent, id, uc.picture, x, y, UNIT_W, UNIT_H);
+    const parts = [image(card, 'frame', `ui/skins/tww3_mtb/unit_card_frame_plain_${colour}.png`, 0, 0, UNIT_W, UNIT_H),
+                   image(card, 'health_back', D + 'unit_card_back.png', 4, 3, 52, 11), image(card, 'health_fill', D + 'bar_white.png', 4, 11, 52, 3),
+                   text(card, 'unit_strength_number', 'text_card_number', 4, 1, 52, 12, String(uc.men)),
+                   image(card, 'unit_cat_frame', D + 'unit_card_semicircle.png', 3, 95, 55, 35), image(card, 'unit_category_icon', uc.category, 19, 106, 22, 22)];
+    parts[2].SetImageColour(60, 190, 40, 255);      // full strength: the game's green bar
+    for (const c of parts) c.SetPassive();
+    return card;
+}
+
 // The small unit card beside a building's slot in the game's building browser (ui/templates/building_frame.twui.xml, units_list > unit_list >
 // template_unit_entry_parent > unit_context): 23 x 50, the unit's picture (unit_card_ph in the template) squeezed into it and unit_card_build_frame.png
 // over it at the same size. Nothing is added round it. The crew aboard has the game's frame in the crew group's colour instead of the game's red
@@ -686,6 +750,29 @@ function refresh(view, M) {
         view.side.near_build.SetVisible(false);
         view.side.far_build.SetVisible(false);
     }
+    if (view.crewArea) {
+        // the place is there from the moment its building stands; with the building gone the place and its choice go too
+        const c = view.crewArea, shown = M.status(c.building).state === 'built', now = M.crew(c.group);
+        const options = M.crew_options(c.group), standing = options.find(o => o.key === now);
+        c.area.SetVisible(shown);
+        if (!shown) c.open = false;
+        c.pick.SetVisible(shown && c.open);
+        c.empty.SetVisible(!standing || standing.empty);
+        for (const [key, layer] of Object.entries(c.layers)) layer.SetVisible(key === now);
+        c.area.SetTooltipText(c.open ? '' : !standing || standing.empty ? c.spec.free : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' у бортов, ' : ''}содержание ${standing.upkeep} за ход`, true);
+        for (const slot of c.slots) {
+            const o = options.find(x => x.key === slot.key), poor = o.unlocked && !o.empty && o.key !== now && M.game.treasury() < o.hire;
+            slot.selected.SetVisible(o.key === now);
+            slot.padlock.SetVisible(!o.unlocked);
+            slot.card.ShaderTechniqueSet(o.unlocked ? 'normal_t0' : 'set_greyscale_t0');
+            slot.card.SetImageColour(255, 255, 255, o.unlocked ? 255 : 0x80);
+            slot.name.SetStateText(o.unlocked ? o.name : `[[col:grey]]${o.name}[[/col]]`);
+            slot.money.SetStateText(o.empty ? 'у бортов никого' : !o.unlocked ? `откроет «${o.building.name}»`
+                : `${poor ? '[[col:red]]' : ''}найм ${o.hire}${poor ? '[[/col]]' : ''}\nза ход ${o.upkeep}`);
+            slot.card.SetTooltipText(o.empty ? 'Пусто' : !o.unlocked ? `${o.name}\nОткроет постройка «${o.building.name}»` : `${o.name}\n${o.about || ''}`, true);
+        }
+        c.foot.SetStateText(`Содержание экипажа: ${M.crew_upkeep()} за ход`);
+    }
     let rowsShown = 0;
     view.rows.forEach((r, i) => {
         const row = view.levels[i];
@@ -769,6 +856,14 @@ function click(view, M, c) {
     const id = c.Id();
     if (id.startsWith(SIDE)) {
         if (view.side && view.side.ready) M.set_malakai_side(id.slice(SIDE.length));      // no sides while the barge is only ordered
+    } else if (id.startsWith(CREW_AREA)) {
+        view.crewArea.open = !view.crewArea.open;
+    } else if (id === CREW_CLOSE) {
+        view.crewArea.open = false;
+    } else if (id.startsWith(CREW_PICK)) {
+        if (M.set_crew(view.crewArea.group, id.slice(CREW_PICK.length)).ok) view.crewArea.open = false;
+    } else if (id === 'mtb_crew_pick') {
+        // the window's own backing
     } else if (id.startsWith(TREE)) {
         const v = view.tree[Number(id.slice(TREE.length))];
         if (v) view.selected = v.node.key;

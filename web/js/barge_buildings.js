@@ -106,8 +106,9 @@ export function makeBuildings(data, game, parts) {
         if (!M.can_demolish(key).ok) return {ok: false, why: M.can_demolish(key).why};
         // guess: no gold back (the data has no refund for demolishing). In the game the hull cannot be demolished at all (CanDismantle = false): here it can, to test.
         // GAME: HordeContext.BuildingSlotList.At(n).Dismantle
+        const crewBefore = message;
         if (!game.dismantle(row.key)) return {ok: false};
-        message = `Снесено: «${row.name}».`;
+        message = `Снесено: «${row.name}».` + (message !== crewBefore && message ? ' ' + message : '');
         fire();
         return {ok: true};
     };
@@ -164,13 +165,65 @@ export function makeBuildings(data, game, parts) {
         fire();
     };
 
+    // ---- The crew: what stands in a group of seats (the riflemen), chosen by the player among what the buildings have opened. ----
+    // The rules are the mod's (src/tww3_mtb_crew.lua): a building only opens an option; the hire is taken once, at the choice; what stood is not paid
+    // back when it is replaced, and going back to it is paid again; empty is free; the upkeep is taken at the faction's turn start for what stands; a
+    // building that goes takes its option with it, the group falls back to its start (empty), nothing is returned.
+    // One difference, the page's: the choice stands at once. In the mod the panel orders and the turn carries out, one change of a group a turn.
+    // GAME: tww3_mtb_crew.order(group, option) / .get() / .unlocked(); the treasury through cm:treasury_mod.
+    const crew = {};
+    const openedBy = {};        // group -> option -> the building level that opens it
+    for (const row of Object.values(levels)) for (const u of row.unlocks || []) (openedBy[u.group] ||= {})[u.option] = row;
+    M.crew = group => crew[group] || data.groups[group].start;
+    M.crew_options = group => {
+        const g = data.groups[group];
+        const rank = k => { const b = (openedBy[group] || {})[k]; return b ? b.tier * 100000 + b.cost : 0; };
+        return Object.entries(g.options).filter(([k, o]) => !o.hidden && (k === g.start || (openedBy[group] || {})[k]))
+            .map(([key, o], i) => ({key, i, ...o, empty: key === g.start, building: (openedBy[group] || {})[key] || null,
+                                    unlocked: key === g.start || game.has_building((openedBy[group] || {})[key].key)}))
+            .sort((a, b) => (a.empty ? -1 : b.empty ? 1 : rank(a.key) - rank(b.key) || a.i - b.i));
+    };
+    M.crew_upkeep = () => Object.keys(data.groups).reduce((sum, g) => sum + ((data.groups[g].options[M.crew(g)] || {}).upkeep || 0), 0);
+    M.set_crew = (group, option) => {
+        const o = M.crew_options(group).find(x => x.key === option);
+        if (!o) return {ok: false};
+        if (option === M.crew(group)) return {ok: true, same: true};
+        if (!o.unlocked) { message = `«${o.name}» откроет постройка «${o.building.name}».`; fire(); return {ok: false, why: message}; }
+        if (game.treasury() < o.hire) { message = `Не хватает золота на «${o.name}»: найм ${o.hire}.`; fire(); return {ok: false, why: message}; }
+        game.gold -= o.hire;        // GAME: cm:treasury_mod(faction, -hire)
+        crew[group] = option;
+        message = o.empty ? 'Стрелки сошли с бортов.' : `«${o.name}» встают к бортам: найм ${o.hire}, содержание ${o.upkeep} за ход.`;
+        fire();
+        return {ok: true};
+    };
+    M.crew_snapshot = () => ({...crew});
+    M.set_crew_silently = saved => { for (const [g, o] of Object.entries(saved || {})) if (data.groups[g] && data.groups[g].options[o]) crew[g] = o; };
+    // a building that no longer stands takes its crew away
+    const dropLostCrew = () => {
+        const lost = [];
+        for (const g of Object.keys(crew)) {
+            const o = M.crew_options(g).find(x => x.key === crew[g]);
+            if (o && !o.unlocked) { lost.push(o.name); delete crew[g]; }
+        }
+        return lost;
+    };
+    game.on('BuildingDemolished', () => {
+        const lost = dropLostCrew();
+        if (lost.length) { message = `«${lost.join('», «')}» сошли с корабля: их постройки больше нет. Найм не возвращается.`; fire(); }
+    });
+
     // The game's events, as the mod listens to them (core:add_listener)
     game.on('MilitaryForceBuildingCompleteEvent', ctx => {
         // GAME: here the mod's own on_building also runs (src/tww3_mtb_crew.lua): the bay appears, the hull's mount row changes
         message = `Постройка завершена: «${M.level(ctx.building).name}».`;
         fire();
     });
-    game.on('FactionTurnStart', () => { message = null; fire(); });
+    game.on('FactionTurnStart', () => {
+        const upkeep = M.crew_upkeep();
+        game.gold -= upkeep;        // GAME: the mod takes the crew's upkeep at the faction's turn start (cm:treasury_mod); the page lets the treasury go below zero
+        message = upkeep ? `Содержание экипажа: ${upkeep} золота.` : null;
+        fire();
+    });
     return M;
 }
 

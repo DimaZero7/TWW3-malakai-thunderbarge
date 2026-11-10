@@ -31,6 +31,9 @@ const TEXT = {
     text_info_centre: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top'},
     text_info_italic: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top', italic: true},
     text_info: {size: 16, line: 22, colour: '#FFF8D7', valign: 'top'},
+    // a short caption under a card, centred, two lines at most
+    text_caption: {size: 12, colour: '#FFF8D7', align: 'center', valign: 'top'},
+    text_caption_grey: {size: 12, colour: '#8E8A80', align: 'center', valign: 'top'},
     text_button: {size: 14, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
     text_name_grey: {size: 14, colour: '#8E8A80', nowrap: true, font: 'header'},
     text_body: {size: 12, colour: '#FFF8D7', valign: 'top'},
@@ -116,7 +119,7 @@ export class Component {
         const h = this.text ? Math.ceil(rect.height / scale) : 0;
         return [Math.ceil(rect.width / scale), h, Math.round(h / lineH)];
     }
-    SetTooltipText(text) { this.tooltip = text; if (tooltipOwner === this) tooltipBox.innerHTML = colourText(text); }
+    SetTooltipText(text) { this.tooltip = text; if (tooltipOwner === this) { tooltipBox.innerHTML = colourText(text); if (!text) { tooltipOwner = null; hideTooltip(); } } }
     SetOpacity(a) { this.el.style.opacity = String(a / 255); }      // 0..255 as the game's
     SetState(state) { this.state = state; this.paintSkin(); }
     CurrentState() { return this.state; }
