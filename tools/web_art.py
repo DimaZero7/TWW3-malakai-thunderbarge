@@ -946,17 +946,25 @@ def crew_tag(sign="plus", light=False):
     """The tag of the place, on a leader down to the waist: a slip of light parchment in an ink line with the group's name and a sign in a ring.
     plus: nobody yet, the place waits for a choice (as an empty slot of the game); swap: a crew stands, it can be changed."""
     x, y, w, h = CREW_TAG
+    if sign == "wait":
+        w += 24             # room for the turns beside the hourglass
     fill = "#fff0cc" if light else LIGHT
     out = [art.path(f"M{x + 74} {y + h} L{x + 71} {y + h + 30}", CREW_LINE * 0.8),          # the leader down to a place of the waist, clear of Malakai
            art.dot(x + 71, y + h + 32, 3.2),
            art.path(f"M{x + 6} {y} L{x + w} {y} L{x + w} {y + h} L{x + 6} {y + h} L{x} {y + h - 7} L{x} {y + 7} Z", CREW_LINE, art.INK, fill),
            f'<text x="{x + 12}" y="{y + h - 10.5}" font-family="Palatino Linotype, Book Antiqua, Georgia, serif" font-weight="bold" font-size="{CREW_TEXT}" fill="{art.INK}">Стрелки</text>']
     cx, cy, r = x + w - 19, y + h / 2, 11.5
+    if sign == "wait":
+        # a hire on its way: an hourglass and the turns left, in the tag's own ink and letters, in the sign's place (the ring drawn out into a pill)
+        px0, px1 = x + w - 55, x + w - 7
+        out.append(art.path(f"M{px0 + r} {cy - r} L{px1 - r} {cy - r} A {r} {r} 0 0 1 {px1 - r} {cy + r} L{px0 + r} {cy + r} A {r} {r} 0 0 1 {px0 + r} {cy - r} Z", CREW_LINE * 0.8, art.INK, "#e9b96a"))
+        hx = px0 + 14
+        out.append(art.path(f"M{hx - 5.5} {cy - 7} L{hx + 5.5} {cy - 7} L{hx - 5.5} {cy + 7} L{hx + 5.5} {cy + 7} Z", CREW_LINE * 0.7, art.INK, "#fff0cc"))
+        out.append(f'<text x="{px1 - 20}" y="{y + h - 10.5}" font-family="Palatino Linotype, Book Antiqua, Georgia, serif" font-weight="bold" font-size="{CREW_TEXT}" fill="{art.INK}">1</text>')
+        return out
     out.append(art.circle(cx, cy, r, CREW_LINE * 0.8, art.INK, "#e9b96a"))
     if sign == "plus":
         out.append(art.path(f"M{cx - 6.5} {cy} L{cx + 6.5} {cy} M{cx} {cy - 6.5} L{cx} {cy + 6.5}", CREW_LINE))
-    elif sign == "wait":        # an hourglass: a hire is on its way
-        out.append(art.path(f"M{cx - 5.5} {cy - 7} L{cx + 5.5} {cy - 7} L{cx - 5.5} {cy + 7} L{cx + 5.5} {cy + 7} Z", CREW_LINE * 0.7, art.INK, "#fff0cc"))
     else:       # two arrows, one each way: change
         out.append(art.path(f"M{cx - 6.5} {cy - 3} L{cx + 5.5} {cy - 3} M{cx + 2} {cy - 6.5} L{cx + 6} {cy - 3} "
                             f"M{cx + 6.5} {cy + 3.5} L{cx - 5.5} {cy + 3.5} M{cx - 2} {cy + 7} L{cx - 6} {cy + 3.5}", CREW_LINE * 0.75))
@@ -996,6 +1004,62 @@ def crew_glow(out_prefix="crew_glow"):
     return {"box": [x - pad, y - pad, w + 2 * pad, h + 2 * pad], "phases": phases}
 
 
+SEPIA = art.INK_SOFT            # the soft brown ink of the drawing's own thin lines and shadows
+
+
+def crew_sketch(kind, variant="c"):
+    """A crew that is hired but not aboard yet, as a sketch at its places (build/web/shots/crew_hiring_variants.png):
+    a: the kind's outline in pencil, no fills (the page's pencil of what is not built, its lines made firm enough for the page's real scale);
+    b: the ink figures half see-through;
+    c, the page's: the kind's outline in sepia over a light cut-out, as the empty places are cut out, with a few slanted sepia strokes across: a
+    figure drawn in but not inked yet."""
+    figures = [g for x, y in CREW_PLACES for g in crew_figure(kind, x, y + 2)]
+    if variant == "b":
+        return [f'<g filter="url(#ink)" opacity="0.5">{"".join(figures)}</g>']
+    import re
+    text = "".join(figures)
+    line = PENCIL if variant == "a" else SEPIA
+    text = re.sub(r'stroke="#[0-9a-fA-F]{6}"', f'stroke="{line}"', text)
+    text = re.sub(r'fill="#[0-9a-fA-F]{6}"', 'fill="none"' if variant == "a" else f'fill="{LIGHT}"', text)
+    text = re.sub(r'stroke-width="([0-9.]+)"', lambda m: f'stroke-width="{max(1.5, float(m.group(1)) * 0.85):.2f}"', text)
+    if variant == "a":
+        return [f'<g opacity="0.95">{text}</g>']
+    out = [text]
+    for x, y in CREW_PLACES:        # three slanted strokes over the body: the shading of a sketch
+        for dx in (-5, 0, 5):
+            out.append(art.path(f"M{x + dx - 3:.1f} {y + 1:.1f} L{x + dx + 3:.1f} {y - 10:.1f}", 0.9, SEPIA, op=0.75))
+    return out
+
+
+def crew_hiring_variants():
+    """build/web/shots/crew_hiring_variants.png: the three looks of a hired crew that is not aboard yet, at the page's scale 1 and at the user's 0.6."""
+    from PIL import Image, ImageDraw, ImageFont
+    S, user = art.SCALE, 0.6
+    base = Image.open(OUT / "blueprint_base.png").convert("RGBA")
+    box = (round(230 * S), round(320 * S), round(700 * S), round(500 * S))
+    w, h = round(art.DRAW_W * S), round(art.DRAW_H * S)
+    place = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]["malakai_near"]
+    mal = Image.open(OUT / "malakai_near.png").convert("RGBA").resize((round(place[2] * S), round(place[3] * S)))
+    cells = [("А: карандашный контур типа", "a"), ("Б: полупрозрачные чернила", "b"), ("В (выбран): контур сепией по светлому вырезу и лёгкая штриховка", "c")]
+    one = 1.029 / S
+    cw, ch = round((box[2] - box[0]) * one), round((box[3] - box[1]) * one)
+    font = ImageFont.truetype("arial.ttf", 15)
+    sheet = Image.new("RGB", (cw + round(cw * user) + 40, (ch + 30) * 3 + 10), (20, 18, 15))
+    d = ImageDraw.Draw(sheet)
+    for i, (title, variant) in enumerate(cells):
+        im = base.copy()
+        im.alpha_composite(art.paint(f"web_crew_hiring_{i}", art.svg_page(crew_sketch("pirates", variant) + crew_tag("wait"), filtered=False), w, h))
+        im.alpha_composite(mal, (round(place[0] * S), round(place[1] * S)))
+        crop = im.crop(box).convert("RGB")
+        y = 10 + i * (ch + 30)
+        d.text((10, y), title + "   |   масштаб 1 и 0.6", fill=(235, 189, 124), font=font)
+        sheet.paste(crop.resize((cw, ch), Image.LANCZOS), (10, y + 22))
+        sheet.paste(crop.resize((round(cw * user), round(ch * user)), Image.LANCZOS), (cw + 26, y + 22))
+    target = REPO / "build" / "web" / "shots"
+    target.mkdir(parents=True, exist_ok=True)
+    sheet.save(target / "crew_hiring_variants.png")
+
+
 def crew_area(places):
     """Layers of the riflemen's place: the empty figures, the tag in its two states and lit under the mouse, the frames shown under the mouse, the warm
     pulse of the tag, and the crew of each kind in ink."""
@@ -1008,19 +1072,15 @@ def crew_area(places):
     layer_plain("crew_rifles_tag_swap_hover", crew_tag("swap", True), places)
     layer_plain("crew_rifles_tag_wait", crew_tag("wait"), places)
     layer_plain("crew_rifles_tag_wait_hover", crew_tag("wait", True), places)
-    # a hire on its way: the red hatching the drawing puts over what is being built (build_of), over the two rows of places
-    hatch = []
-    for group in (CREW_PLACES[:2], CREW_PLACES[2:]):
-        x0, x1 = min(x for x, _ in group) - 14, max(x for x, _ in group) + 14
-        y0, y1 = min(y for _, y in group) - 28, max(y for _, y in group) + 4
-        hatch.append(art.hatch([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], 45, 6.5, 1.5, CHALK, 0.6))
-    layer_plain("crew_rifles_build", hatch, places)
+    # a hire on its way: the ordered kind as a sketch at the places (crew_sketch), no chalk
+    for kind in ("pirates", "quarrellers", "thunderers", "rakers", "torpedoes"):
+        layer_plain(f"crew_rifles_{kind}_sketch", crew_sketch(kind), places)
     for kind in ("pirates", "quarrellers", "thunderers", "rakers", "torpedoes"):
         layer("crew_rifles_" + kind, [g for x, y in CREW_PLACES for g in crew_figure(kind, x, y + 2)], places)
     glow = crew_glow()
     tx, ty, tw, th = CREW_TAG
     x0, y0 = min(min(x for x, _ in CREW_PLACES) - 20, tx - 4), min(min(y for _, y in CREW_PLACES) - 36, ty - 4)
-    x1, y1 = max(max(x for x, _ in CREW_PLACES) + 20, tx + tw + 4), max(y for _, y in CREW_PLACES) + 10
+    x1, y1 = max(max(x for x, _ in CREW_PLACES) + 20, tx + tw + 24 + 4), max(y for _, y in CREW_PLACES) + 10
     return {"area": [x0, y0, x1 - x0, y1 - y0], "glow": glow, "step_ms": 110}
 
 
@@ -1129,6 +1189,7 @@ def main():
     crew = crew_area(places)
     (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side, "crew_area": crew}, indent=1), encoding="utf-8")
     crew_area_variants()
+    crew_hiring_variants()
     for f in sorted(OUT.glob("*.png")):
         print(f.name, f.stat().st_size)
 

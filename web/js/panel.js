@@ -155,12 +155,11 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             crew.glow.phases.forEach((ph, i) => ph.SetVisible(crew.phase === i + 1));
         }, art.crew_area.step_ms);
         crew.empty = lay(`crew_${ca.group}_empty`);
-        // a hire on its way: the red hatching of what is being built over the places, the tag with an hourglass, the turns in red beside its leader
-        crew.build = lay(`crew_${ca.group}_build`);
+        // a hire on its way, in the drawing's own means: the ordered kind sketched at the places (sepia over a light cut-out, not inked yet) when
+        // nobody stands there, and the tag with an hourglass and the turns left in its ring
+        crew.sketches = {};
+        for (const key of Object.keys(group.options)) if (art.places[`crew_${ca.group}_${key}_sketch`]) crew.sketches[key] = lay(`crew_${ca.group}_${key}_sketch`);
         crew.tags = {plus: lay(`crew_${ca.group}_tag_plus`), swap: lay(`crew_${ca.group}_tag_swap`), wait: lay(`crew_${ca.group}_tag_wait`)};
-        const tagAt = place(`crew_${ca.group}_tag_plus`);
-        crew.turns = text(area, 'crew_turns', 'text_ink_big', (tagAt[0] + 84) * scale - ax, (tagAt[1] + 40) * scale - ay, 150, 26, '');
-        crew.turns.SetPassive();
         // what shows under the mouse, in one holder: the frames and the lighter tag of the state
         crew.hover = make(area, 'hover', 'hover_holder');
         size(crew.hover, cbox[2] * scale, cbox[3] * scale);
@@ -804,8 +803,8 @@ function refresh(view, M) {
     }
     if (view.crewArea) {
         // The place is there from the moment its building stands; with the building gone the place and its choice go too. What stands is in ink; an
-        // order waits for the turn: the red hatching of a thing being built over the places, the ordered kind pale under it when nobody stands there
-        // (a crew that stands stays in ink until the turn replaces it), the tag with an hourglass and the turns beside it.
+        // order waits for the turn: the ordered kind as a sketch at the places when nobody stands there (a crew that stands stays in ink until the
+        // turn replaces it, then only the tag tells of the order), the tag with an hourglass and the turns left.
         const c = view.crewArea, shown = M.status(c.building).state === 'built', now = M.crew(c.group), order = M.crew_order(c.group);
         const options = M.crew_options(c.group), standing = options.find(o => o.key === now), ordered = options.find(o => o.key === order);
         const nobody = !standing || standing.empty, coming = ordered && !ordered.empty && nobody ? order : null;
@@ -813,15 +812,10 @@ function refresh(view, M) {
         if (!shown) c.open = false;
         c.pick.SetVisible(shown && c.open);
         c.empty.SetVisible(nobody && !coming);
-        for (const [key, layer] of Object.entries(c.layers)) {
-            layer.SetVisible(key === (nobody ? coming : now));
-            layer.SetImageColour(255, 255, 255, key === coming ? 0xA0 : 255);
-        }
-        c.build.SetVisible(!!ordered);
+        for (const [key, layer] of Object.entries(c.layers)) layer.SetVisible(!nobody && key === now);
+        for (const [key, layer] of Object.entries(c.sketches)) layer.SetVisible(key === coming);
         const tag = ordered ? 'wait' : nobody ? 'plus' : 'swap';
         for (const k of Object.keys(c.tags)) { c.tags[k].SetVisible(k === tag); c.hoverTags[k].SetVisible(k === tag); }
-        c.turns.SetVisible(!!ordered);
-        c.turns.SetStateText(ordered ? 'найм: 1 ход' : '');
         c.glow.SetVisible(M.crew_hint());
         c.area.SetTooltipText(c.open ? '' : ordered ? (ordered.empty ? 'Стрелки сойдут с бортов в начале хода' : `${ordered.name}: в найме, встанут к бортам в начале хода`)
             : nobody ? '' : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' у бортов, ' : ''}содержание ${standing.upkeep} за ход`, true);

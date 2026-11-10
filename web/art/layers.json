@@ -190,20 +190,44 @@
   "crew_rifles_tag_wait": [
    475.0,
    349.38,
-   156.25,
+   180.0,
    75.0
   ],
   "crew_rifles_tag_wait_hover": [
    475.0,
    349.38,
-   156.25,
+   180.0,
    75.0
   ],
-  "crew_rifles_build": [
-   307.5,
-   381.25,
-   308.75,
-   78.12
+  "crew_rifles_pirates_sketch": [
+   303.75,
+   383.75,
+   317.5,
+   74.38
+  ],
+  "crew_rifles_quarrellers_sketch": [
+   298.75,
+   386.25,
+   312.5,
+   71.88
+  ],
+  "crew_rifles_thunderers_sketch": [
+   300.62,
+   386.25,
+   310.62,
+   71.88
+  ],
+  "crew_rifles_rakers_sketch": [
+   300.62,
+   386.25,
+   310.62,
+   71.88
+  ],
+  "crew_rifles_torpedoes_sketch": [
+   300.0,
+   386.25,
+   311.25,
+   71.88
   ]
  },
  "parts": {
@@ -273,7 +297,7 @@
   "area": [
    303,
    348,
-   329,
+   353,
    116
   ],
   "glow": {
