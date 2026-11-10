@@ -893,8 +893,8 @@ CREW_PLACES = [(x, y) for x, y in art.RIFLE_PLACES if (x, y + 2) != MALAKAI_AT]
 #   a dwarf        1.4 to 1.5 high and 1.4 across the hanging arms; the head with its beard is a third of the height, the shoulders nearly as wide as
 #                  the dwarf is tall, the legs a quarter. Behind the rail he shows from the belt up: a wide block of shoulders, a big head set low.
 #   pirates        dwf_slayer_pirates: a bare bald head with a headscarf knotted behind, a huge moustache standing out to both sides, a beard in
-#                  thick plaits over a bare chest, bracers; no helm, no crest. A flintlock pistol with a flared muzzle, half his height, in each hand.
-#                  Told by: bare skin, the moustache's bar across the face, two short guns held out.
+#                  thick plaits over a bare chest, bracers; no helm, no crest. A flintlock pistol with a flared muzzle, half his height, in one hand, a broad cutlass nearly his height in the other.
+#                  Told by: bare skin, the moustache's bar across the face, the short gun held out and the blade raised.
 #   quarrellers, thunderers, grudge-rakers    one body (dwf_warriors): a round helm with two horns up and a spike, a plaited beard to the belt, mail,
 #                  a skirt. Told only by the weapon: the crossbow (0.9 long, its bow 0.77 across), the rifle (1.3, nearly his height, thin), the
 #                  grudge-raker (1.4, a thick bundle of barrels with a drum behind).
@@ -922,10 +922,12 @@ def crew_figure(kind, x, y, s=1.0, detail=True):
     warrior = kind in ("quarrellers", "thunderers", "rakers")
     cloth = {"pirates": SKIN, "torpedoes": PLATE}.get(kind, MAIL)
     # the far arm and what lies behind the body
-    if kind == "pirates":               # the far arm bent up, its pistol held muzzle up beside the head
-        out += limb(f"M{P(9, -12)} L{P(14, -10)} L{P(15, -17)}", SKIN)
-        out.append(line(f"M{P(14, -15)} L{P(16.5, -18)} L{P(16, -28)}", 2.2, color=BARREL))
-        out.append(line(f"M{P(14, -28.5)} L{P(18, -28.5)}", 1.6, color=BARREL))
+    if kind == "pirates":
+        # the far arm raised with the cutlass (dwf_slayer_pirate_sword_1h: a broad straight blade nearly his height, the tip cut slanting, a small
+        # guard); the pistol is in the other hand
+        out.append(line(f"M{P(14.5, -19)} L{P(20, -37)} L{P(24.5, -38)} L{P(18.5, -18)} Z", 1.0, "#b9bcc0"))
+        out.append(line(f"M{P(12, -17.5)} L{P(21, -19.5)}", 1.8, color=BARREL))
+        out += limb(f"M{P(9, -12)} L{P(15, -11)} L{P(16.5, -17)}", SKIN)
     # the body: shoulders sloping from the neck, wider than the head
     out.append(line(f"M{P(-8, 0)} L{P(-10, -7)} Q {P(-12.5, -13)} {P(-5, -15.5)} L{P(4, -15.5)} Q {P(12, -13)} {P(10, -7)} L{P(8, 0)} Z", 1.1, cloth))
     if kind == "pirates":
