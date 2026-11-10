@@ -5,6 +5,7 @@ The game finds them by path: CreateComponent(id, "ui/tww3_mtb/image"). All text 
 The numbers (damage, reload, range) are read from the rows the build makes, so a change of data/crew_options.json shows up in the panel without any other edit.
 """
 import json
+import math
 import struct
 import sys
 import uuid
@@ -195,30 +196,37 @@ def group_numbers(t, group_key, option_key, opt, group):
     return out
 
 
+def round_gold(value):
+    """The crew's money rule (user, 10.11.2026): hire and upkeep of every crew option are rounded up to a multiple of 10 (103 -> 110, 26 -> 30, 110 stays).
+    The one place of the rule: the mod's Lua data, the panel, the building lines and the web page all take their numbers from upkeep() and hire() below."""
+    return int(math.ceil(round(value, 6) / 10) * 10)
+
+
 def upkeep(opt, stock):
-    """Gold per turn of an option: upkeep_cost x count / guns or men of the source unit, or the number by hand."""
+    """Gold per turn of an option: upkeep_cost x count / guns or men of the source unit, or the number by hand; rounded up to 10 (round_gold)."""
     if "upkeep" in opt:
-        return opt["upkeep"]
+        return round_gold(opt["upkeep"])
     source = opt.get("upkeep_from")
     if not source:
         return 0
     unit = next(r for r in stock["main_units"] if r["unit"] == source["unit"])
     land = next(r for r in stock["land_units"] if r["key"] == unit["land_unit"])
     size = land["num_engines"] or unit["num_men"]
-    return round(unit["upkeep_cost"] * source["count"] / size)
+    return round_gold(unit["upkeep_cost"] * source["count"] / size)
 
 
 def hire(opt, stock):
-    """Gold to hire an option: recruitment_cost of the same source unit as the upkeep x count / its guns or men, or the number by hand. An empty option is free."""
+    """Gold to hire an option: recruitment_cost of the same source unit as the upkeep x count / its guns or men, or the number by hand; rounded up to 10
+    (round_gold). An empty option is free."""
     if "hire" in opt:
-        return opt["hire"]
+        return round_gold(opt["hire"])
     source = opt.get("upkeep_from")
     if not source:
         return 0
     unit = next(r for r in stock["main_units"] if r["unit"] == source["unit"])
     land = next(r for r in stock["land_units"] if r["key"] == unit["land_unit"])
     size = land["num_engines"] or unit["num_men"]
-    return round(unit["recruitment_cost"] * source["count"] / size)
+    return round_gold(unit["recruitment_cost"] * source["count"] / size)
 
 
 def game_text(prefix):
