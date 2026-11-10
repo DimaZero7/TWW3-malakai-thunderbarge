@@ -869,21 +869,18 @@ def branch_frames():
 
 
 def aboard_frames():
-    """The frame round a small unit card of the crew aboard, beside a building's slot in the tree (web/js/panel.js, crew_cards): the crew group's colour,
-    3 units round the game's 23 x 50 card of the building browser, drawn four times larger. Says the unit stands on the ship, not in the army's line."""
+    """The second variant of marking a crew aboard on its small unit card in the tree (web/js/panel.js, ?aboard=outline): a thin line of the crew group's
+    colour laid over the game's own frame, inside the card's 23 x 50, drawn four times larger. The page's default is the game's frame recoloured
+    (tools/web_export.py, recolour_card_frames)."""
     from PIL import Image, ImageDraw
     colours = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))["card_frames"]
     for name, pair in colours.items():
         if name.startswith("_"):
             continue
-        light, dark = tuple(pair[0]) + (255,), tuple(pair[1]) + (255,)
-        w, h = 116, 224
+        w, h = 92, 200
         im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        d = ImageDraw.Draw(im)
-        d.rectangle((0, 0, w - 1, h - 1), outline=(30, 14, 0, 255), width=3)
-        d.rectangle((3, 3, w - 4, h - 4), outline=light, width=7)
-        d.rectangle((10, 10, w - 11, h - 11), outline=dark, width=3)
-        im.save(OUT / f"aboard_frame_{name}.png", optimize=True)
+        ImageDraw.Draw(im).rectangle((2, 2, w - 3, h - 3), outline=tuple(pair[0]) + (255,), width=5)
+        im.save(OUT / f"aboard_outline_{name}.png", optimize=True)
 
 
 def tree_line():

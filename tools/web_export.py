@@ -638,12 +638,36 @@ def export_overview():
     print("overview:", len(out), "chains,", sum(len(c["cards"]) for c in out), "levels; incomplete:", {c["title"]: c["missing"] for c in out if c["missing"]})
 
 
+def recolour_card_frames(got):
+    """The game's frame of a small unit card (unit_card_build_frame.png, red) in each colour of the crew groups (data/crew_options.json, card_frames), for the
+    crew aboard on the page's tree: build/web/game/ui/skins/tww3_mtb/unit_card_build_frame_<colour>.png. Same size, same shape, every pixel's brightness kept;
+    in the mod it would be a file of the pack. A copy of a game picture: stays in build/."""
+    import io
+    path = "ui/skins/default/unit_card_build_frame.png"
+    if path not in got:
+        return
+    source = OUT / "raw" / "unit_card_build_frame.png"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(got[path])
+    colours = {k: v[0] for k, v in crew_options.CONFIG["card_frames"].items() if not k.startswith("_")}
+    target = OUT / "game" / "ui" / "skins" / "tww3_mtb"
+    target.mkdir(parents=True, exist_ok=True)
+    code = ("import sys, json\nfrom PIL import Image\nsrc = Image.open(sys.argv[1]).convert('RGBA')\ncolours = json.loads(sys.argv[3])\n"
+            "top = max(max(p[:3]) for p in src.getdata() if p[3]) or 1\n"
+            "for name, c in colours.items():\n"
+            "    out = Image.new('RGBA', src.size)\n"
+            "    out.putdata([tuple(min(255, round(v * max(p[:3]) / top)) for v in c) + (p[3],) for p in src.getdata()])\n"
+            "    out.save(sys.argv[2] + '/unit_card_build_frame_' + name + '.png')\n")
+    subprocess.run(["py", "-3.10", "-c", code, str(source), str(target), json.dumps(colours)], check=True)
+
+
 def export_game_ui():
     got = game_files(GAME_UI)
     for path, blob in got.items():
         target = OUT / "game" / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob)
+    recolour_card_frames(got)
     missing = sorted(set(GAME_UI) - set(got))
     print(f"game UI pictures: {len(got)}" + (f", not in the packs: {missing}" if missing else ""))
     (OUT / "game" / "index.json").write_text(json.dumps(sorted(got), indent=1), encoding="utf-8")

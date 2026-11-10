@@ -132,13 +132,15 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     at(column, cx, sy);
     view.head = text(column, 'head', 'text_head', 14, 6, column_w - 28, 28, 'Корабль');
     view.about = text(column, 'about', 'text_body', 14, 32, column_w - 28, 40, '');
-    const rows_top = 80, row_gap = 4, foot_h = 82;
-    const row_h = Math.min(92, Math.floor((scheme_h - rows_top - foot_h - row_gap * (MAX_ROWS - 1) - 8) / MAX_ROWS));
     // a stage with a tree of buildings (blueprint.json, tree; ?tree=demo the example) shows it instead of rows
     const treeMode = !!(blueprint.tree || (flags.tree === 'demo' && blueprint.tree_demo));
+    // with the tree at the game's size (slots of 74, 106 from one to the next) the column is tight: the tree starts right under the caption and the note
+    // at the foot takes only its three lines
+    const rows_top = 80, row_gap = 4, foot_h = treeMode ? 56 : 82;
+    const row_h = Math.min(92, Math.floor((scheme_h - rows_top - foot_h - row_gap * (MAX_ROWS - 1) - 8) / MAX_ROWS));
     view.detail_top = rows_top;
     if (treeMode) {
-        view.detail_top = rows_top + 6 + makeTree(column, view, M, blueprint, flags, 14, rows_top + 6, column_w - 28) + 16;
+        view.detail_top = rows_top - 8 + makeTree(column, view, M, blueprint, flags, 14, rows_top - 8, column_w - 28) + 6;
         view.selName = text(column, 'sel_name', 'text_head', 14, 0, column_w - 28, 26, '');
         view.selMeta = text(column, 'sel_meta', 'text_line', 14, 0, column_w - 28, 20, '');
     } else {
@@ -182,15 +184,19 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
 // picture), the video, a brass head and light text with even margins, the panel's frame edge over it all. x: its left, bottom: its lower edge.
 // The clip is web/art/<movie>.webm or .mp4, taken when the file is there; until then a placeholder.
 // In the game: a frame layout with a movie component (the spell browser's MoviePlayer callback, its loop property).
-// The small unit card beside a building's slot in the game's building browser (ui/templates/building_frame.twui.xml: units_list docked to the slot's top
-// right corner, entries unit_context of 23 x 50: the unit's picture squeezed into it under unit_card_build_frame.png, the entries overlapping by 10),
-// inside a thin frame of the crew group's colour (tools/web_art.py, aboard_frames) that says the unit stands on the ship and not in the army's line.
-const CARD_B = 3, CARD_W = 23, CARD_H = 50, CARD_STEP = CARD_W + 2 * CARD_B - 10;
-function slotUnitCard(parent, id, x, y, uc, colour) {
-    const B = CARD_B;
-    const card = image(parent, id, WEB_ART + `aboard_frame_${colour}.png`, x, y, CARD_W + 2 * B, CARD_H + 2 * B);
-    image(card, 'picture', uc.picture, B, B, CARD_W, CARD_H);
-    image(card, 'frame', 'ui/skins/default/unit_card_build_frame.png', B, B, CARD_W, CARD_H);
+// The small unit card beside a building's slot in the game's building browser (ui/templates/building_frame.twui.xml, units_list > unit_list >
+// template_unit_entry_parent > unit_context): 23 x 50, the unit's picture (unit_card_ph in the template) squeezed into it and unit_card_build_frame.png
+// over it at the same size. Nothing is added round it. The crew aboard has the game's frame in the crew group's colour instead of the game's red
+// (build/web/game/ui/tww3_mtb/unit_card_build_frame_<colour>.png, tools/web_export.py), as the game itself recolours this frame (state active_red).
+// ?aboard=outline: the other variant, the game's red frame with a thin line of the colour over it (web/art/aboard_outline_<colour>.png).
+// The game's hover state enlarges the card to 30 x 65; the page only brightens it.
+const CARD_W = 23, CARD_H = 50, CARD_OVERLAP = 10;
+function slotUnitCard(parent, id, x, y, uc, colour, outline) {
+    const card = image(parent, id, uc.picture, x, y, CARD_W, CARD_H);
+    if (outline) {
+        image(card, 'frame', 'ui/skins/default/unit_card_build_frame.png', 0, 0, CARD_W, CARD_H);
+        image(card, 'aboard', WEB_ART + `aboard_outline_${colour}.png`, 0, 0, CARD_W, CARD_H);
+    } else image(card, 'frame', `ui/skins/tww3_mtb/unit_card_build_frame_${colour}.png`, 0, 0, CARD_W, CARD_H);
     card.SetHoverBrighten(0.25);
     return card;
 }
@@ -215,7 +221,9 @@ function demoTip(parent, id, x, bottom, spec) {
 // Tiers by depth (the longest way from a node with no requirement), the order inside a tier by the mean place of the nodes it needs (one pass, enough
 // for a small tree), every tier spread evenly across the width. direction "down": the first buildings on top, what needs them below; "up": the other way.
 // Lines run square: from a node to halfway, across, on to the other node; lines that meet share their halfway.
-const NODE = 64, TIER_GAP = 92, LINE = 3;
+// The game's numbers (ui/campaign ui/building_browser.twui.xml): a slot of the tree is 74 x 74 and the arrow between two slots 32 (TreeCallback, padding_y;
+// the template's own comment: "106 is the sum of the height of a tree slot (74), plus the height of an arrow (32)"). Nothing here is scaled.
+const NODE = 74, TIER_GAP = 106, LINE = 3;
 // columns of the tree when it has side branches: the trunk right of the middle, a left branch, a right branch
 const COLUMN = {trunk: 0.62, left: 0.2, right: 0.86};
 const TREE = 'mtb_tree_node_';
@@ -318,7 +326,7 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         v.frameSelected = image(b, 'selected', n.branch ? WEB_ART + `branch_frame_${n.branch.colour}_selected.png` : D + 'building_frame_selected.png', 0, 0, NODE, NODE);
         v.constructing = image(b, 'constructing', D + 'constructing_1.png', 6, 6, NODE - 12, NODE - 12);
         v.constructing.SetImageColour(255, 255, 255, 0x64);
-        v.check = image(b, 'check', D + 'icon_check_green.png', NODE - 28, 2, 26, 23);
+        v.check = image(b, 'check', D + 'icon_check_green.png', 44, 48, 31, 28);      // the template's built state: 31 x 28 at 44, 48, the lower right corner
         v.padlock = image(b, 'padlock', D + 'padlock.png', NODE - 24, 2, 20, 25);
         // hover as the template: an unselected slot gets building_frame_hover (the default skin's, red; the dwarfs have no skin of their own for it)
         // over it, 90 px against the slot's 74, and brighten 0.40; the selected slot gets building_frame_selected_hover instead (refreshTree swaps them)
@@ -330,10 +338,12 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         v.turnsBanner = image(b, 'turns_banner', D + 'turns_banner_queued.png', -6, NODE - 16, NODE + 12, 20);
         v.turns = text(b, 'turns', 'text_line', 20, NODE - 16, NODE - 14, 20, '');
         // the cost under the slot
-        v.cost = image(parent, TREE + 'cost_' + i, D + 'icon_banner_bg.png', x - 2, y + NODE + 2, NODE + 4, 18);
-        v.costRed = image(v.cost, 'red', D + 'red_text_banner_shadow.png', 0, 0, NODE + 4, 18);
+        // (the game shows the cost on hover, right of the slot: cost_list at 21, 26; under the slot it is the page's own place, kept; 62 wide so that
+        // the unit card of the slot below, which starts 68 from the slot's left, stays clear of it)
+        v.cost = image(parent, TREE + 'cost_' + i, D + 'icon_banner_bg.png', x + 3, y + NODE + 2, 62, 18);
+        v.costRed = image(v.cost, 'red', D + 'red_text_banner_shadow.png', 0, 0, 62, 18);
         image(v.cost, 'coins', D + 'icon_treasury.png', 4, 1, 16, 16);
-        v.costText = text(v.cost, 'value', 'text_line', 22, -1, NODE - 22, 20, '');
+        v.costText = text(v.cost, 'value', 'text_line', 22, -1, 40, 20, '');
         return v;
     });
     // the construction's clock-wipe, frame by frame (constructing_1 .. 12), as the game animates it
@@ -342,22 +352,24 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         view.wipe = view.wipe % 12 + 1;
         for (const v of view.tree || []) if (v.constructing.Visible()) v.constructing.SetImagePath(D + `constructing_${view.wipe}.png`, 0);
     }, 120);
-    // The crew a building opens (blueprint.json, crew_cards): small unit cards beside its slot, as the game's building browser shows the units a building
-    // unlocks. Always in colour, whatever the slot's state (in the game too: the slot is a sibling, its grey does not reach them). The game hangs them
-    // from 22 above the slot and 19 inside it; here the slots stand closer (the cost banner of the slot above comes down to 8 over this one) and the slot's
-    // corner holds the check or the padlock, so the cards start 7 above the slot and 8 inside it. On hover the demo window, the same as Malakai's side:
-    // it opens left of the slot, over the drawing's edge, level with the card, and covers neither the slot nor the cards nor the tree's other nodes.
+    // The crew a building opens (blueprint.json, crew_cards): small unit cards beside its slot, exactly as the game's building browser places the units a
+    // building unlocks (building_frame.twui.xml, units_list: docked to the slot's top right corner, dock_offset 17, -22, anchored by its own top right
+    // corner): the row of cards ends 17 right of the slot and starts 22 above it; one card stands 68 from the slot's left, a second pushes the row left
+    // by 13 (the entries overlap by 10). The row is a later sibling of the slot's button: over its frames and marks, and not greyed with it.
+    // On hover the demo window, the same as Malakai's side: left of the slot, level with the card, clear of the slot, the cards and the other nodes.
     view.crew = [];
-    const count = {};
+    const specs = ((!flags.tree && blueprint.crew_cards) || []).map(spec => {
+        const group = view.data.groups[spec.group], option = group && group.options[spec.option];
+        return {spec, group, option, uc: option && option.unit_card, v: view.tree.find(t => t.node.key === M.prefix + spec.building)};
+    }).filter(c => c.uc && c.v);
     const frame = parent.parent;
-    for (const spec of (!flags.tree && blueprint.crew_cards) || []) {
-        const group = view.data.groups[spec.group], option = group && group.options[spec.option], uc = option && option.unit_card;
-        const v = view.tree.find(t => t.node.key === M.prefix + spec.building);
-        if (!uc || !v) continue;
-        const n = count[v.node.key] = (count[v.node.key] || 0) + 1;
-        const cx = v.button.x + NODE - 8 + (n - 1) * CARD_STEP, cy = v.button.y - 7;
-        const card = slotUnitCard(parent, 'mtb_crew_card_' + spec.option, cx, cy, uc, group.card_frame || 'gold');
-        const centre = parent.y + cy + (CARD_H + 2 * CARD_B) / 2, tip_h = 261;
+    const placed = {};
+    for (const {spec, group, option, uc, v} of specs) {
+        const total = specs.filter(c => c.v === v).length, i = placed[v.node.key] = (placed[v.node.key] || 0) + 1;
+        const row_w = CARD_W + (total - 1) * (CARD_W - CARD_OVERLAP);
+        const cx = v.button.x + NODE + 17 - row_w + (i - 1) * (CARD_W - CARD_OVERLAP), cy = v.button.y - 22;
+        const card = slotUnitCard(parent, 'mtb_crew_card_' + spec.option, cx, cy, uc, group.card_frame || 'gold', flags.aboard === 'outline');
+        const centre = parent.y + cy + CARD_H / 2, tip_h = 261;
         const bottom = Math.min(frame.Height() - 12, Math.max(70 + tip_h, centre + tip_h / 2));
         const demo = demoTip(frame, 'crew_demo_tip_' + spec.option, parent.x + v.button.x - 8 - 300, bottom, {movie: spec.movie, head: spec.head || option.name, text: spec.text || ''});
         card.SetHoverChild(demo.tip);

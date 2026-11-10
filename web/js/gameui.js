@@ -10,6 +10,7 @@ export function url(path) {
     if (path.startsWith(LAYOUTS + 'web/')) return '/art/' + path.slice((LAYOUTS + 'web/').length);   // the stage layers of tools/web_art.py
     if (path.startsWith(LAYOUTS)) return '/mod/ui/' + path.slice(LAYOUTS.length);                     // data/ui, as tools/crew_ui.py packs it
     if (path.startsWith('ui/buildings/icons/tww3_mtb_')) return '/mod/ui/buildings/' + path.slice('ui/buildings/icons/tww3_mtb_'.length);  // tools/crew_buildings.py
+    if (path.startsWith('ui/skins/tww3_mtb/')) return '/build/game/' + path;                              // recoloured copies of the game's pictures, tools/web_export.py
     return '/build/game/' + path;                                                                         // the game's own pictures, tools/web_export.py
 }
 
