@@ -1,5 +1,5 @@
 {
- "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself, so the barge is not useless. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md). mount: the option of a group that is its bare mount (port, doors, rings): the building of that option makes the bay exist; until then the group stands on start (none: a plain ship) and its weapons, unlocked or not, cannot be placed. mount_name: how the panel calls it. rings_only: the seat's hull detail with nobody in it. auto_active: also the mount buildings, the bare mount appears at once. The holes of a group on none are covered by patches on the seat ap_thunderburner (tools/hull_parts.py, patches). building_names: what the bound buildings are called in the game, so the name says what they give. buildings: building level -> list of [group, option]: one building may open several. new_chains: chains and levels this mod adds (tiers, prices, texts; tools/build.py). building_edits: tier, cost, time of stock levels. building_lines: green lines of a building. boost: rows per level of chain for one group (accuracy, range). ammo_mod: ammunition of every crew by cargo level. abilities: new abilities enabled by buildings. no_panel: a group only buildings set, the panel does not list it. requires: a building without which the group holds no weapon (the bare mount stays). disabled: an option with its data kept, in no table of the game. Own drawn cards: data/ui/crew_cards/<option>.png and <option>_small.png, or <group>_<option> when several groups have that option; the build takes them when they are there, the stock unit card otherwise. hire: gold to hire an option by hand instead of the sum from the unit of upkeep_from (recruitment_cost x count / its guns or men); no upkeep_from: free.",
+ "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself: only a bare mount or an option of a no_panel group; a crew of the panel is never placed by a building, the player picks it. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md). mount: the option of a group that is its bare mount (port, doors, rings): the building of that option makes the bay exist; until then the group stands on start (none: a plain ship) and its weapons, unlocked or not, cannot be placed. mount_name: how the panel calls it. rings_only: the seat's hull detail with nobody in it. auto_active: also the mount buildings, the bare mount appears at once. The holes of a group on none are covered by patches on the seat ap_thunderburner (tools/hull_parts.py, patches). building_names: what the bound buildings are called in the game, so the name says what they give. buildings: building level -> list of [group, option]: one building may open several. new_chains: chains and levels this mod adds (tiers, prices, texts; tools/build.py). building_edits: tier, cost, time of stock levels. building_lines: green lines of a building. boost: rows per level of chain for one group (accuracy, range). ammo_mod: ammunition of every crew by cargo level. abilities: new abilities enabled by buildings. no_panel: a group only buildings set, the panel does not list it. requires: a building without which the group holds no weapon (the bare mount stays). disabled: an option with its data kept, in no table of the game. Own drawn cards: data/ui/crew_cards/<option>.png and <option>_small.png, or <group>_<option> when several groups have that option; the build takes them when they are there, the stock unit card otherwise. hire: gold to hire an option by hand instead of the sum from the unit of upkeep_from (recruitment_cost x count / its guns or men); no upkeep_from: free.",
  "empty_like": "wh3_dlc23_chd_veh_hidden_rider",
  "remove_bow_figure": false,
  "fixed_seats": [
@@ -100,14 +100,13 @@
      "ui": {
       "name": "Мстители-пираты",
       "card": "wh3_dlc25_dwf_inf_slayer_pirates",
-      "about": "Пистоли: быстро, близко, запас мал.",
-      "hidden": true
+      "about": "Пистоли: быстро, близко, запас мал."
      },
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_inf_slayer_pirates",
-      "count": 12
+      "count": 11
      },
-     "_note": "No building opens it since 08.11.2026 (user): the rifles start empty, airship_hull_2 gives no crew. Kept hidden for the test commands; data stays."
+     "_note": "Opened by beer_hall_1 since 10.11.2026 (user): a choice of the crew panel, not placed by the building. airship_hull_2 gives no crew since 08.11.2026, the rifles start empty. 11 pirates: Malakai takes the twelfth rifle seat (docs/design/barge-upgrades-ideas.md, Место Малакая), so hire and upkeep count 11. His seat is not made in the mod yet: the group still has 12 seats and the pirates still stand on all 12, ammo 8 x 12."
     },
     "quarrellers": {
      "variant_file": "dwf_quarrellers",
@@ -602,6 +601,10 @@
    [
     "pub",
     "stock"
+   ],
+   [
+    "rifles",
+    "pirates"
    ]
   ],
   "mtb_guns_1": [
@@ -914,7 +917,8 @@
    "Меткость стрелков: +15 %"
   ],
   "beer_hall_1": [
-   "Открывает цепочку экипажа"
+   "Открывает цепочку экипажа",
+   "Открывает в экипаже: Мстители-пираты (стрелки), 11 гномов"
   ],
   "support_radius_1": [
    "Обязательна для всех орудий",

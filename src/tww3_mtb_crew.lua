@@ -17,14 +17,14 @@
 --   tww3_mtb_crew.status                   'applied', 'not applied', 'stock: <reason>'
 --
 -- A human Malakai's buildings only unlock options (CONFIG.buildings, from data/crew_options.json); the player places them in the crew panel
--- (src/tww3_mtb_crew_ui.lua). Only the buildings of CONFIG.auto_active also set their option. The built list is saved and the unlocked set is
+-- (src/tww3_mtb_crew_ui.lua). Only the buildings of CONFIG.auto_active also set their option, and only a bare mount or a group the panel does not list. The built list is saved and the unlocked set is
 -- worked out from it: a building that no longer stands leaves it and locks its option again, and if that option stood in the barge the group goes
 -- to what its latest still standing building unlocks, or to its start, with one message to the player. A higher level of the same chain counts as
 -- the lower one still standing. Under the AI nothing follows: start_ai.
 --
 -- The panel orders, the turn carries out: what stands now stays for all battles of this turn, an order goes in at the faction's turn start, with the upkeep.
 -- One order per group per turn, kept in the save; picking what stands now takes the order back, which uses that turn's change. A demolished building acts at
--- once and takes back an order for what it unlocked, and does not count as the group's change. The first barge's pirates (CONFIG.auto_active) stand at once.
+-- once and takes back an order for what it unlocked, and does not count as the group's change. A bare mount and the pub (CONFIG.auto_active) stand at once.
 --
 -- Boost: some buildings make a group better without changing its option (accuracy of the shooters, range and accuracy of the guns). The numbers live in rows of that group's own weapons,
 -- one set of seat rows per level, so nothing else of the unit is touched: the seats point at option@level. Requires: a group's weapons may need another building too (the guns: signals).
@@ -467,8 +467,10 @@ function M.on_built(key)
     for _, binding in ipairs(bindings) do
         log('built ' .. key .. ': unlocked ' .. binding.group .. '=' .. binding.option)
         if M.on_unlocked and not CONFIG.groups[binding.group].no_panel then pcall(M.on_unlocked, binding.group, binding.option) end
-        -- The first pirates, and a bare mount: it appears at once, in a group that had nothing.
-        if CONFIG.auto_active[key] and M.get()[binding.group] == CONFIG.groups[binding.group].start then
+        -- A bare mount and a group the panel does not list (the pub) appear at once, in a group that had nothing. A crew the player chooses
+        -- in the panel is only unlocked, also by such a building (the beer hall's pirates).
+        local group = CONFIG.groups[binding.group]
+        if CONFIG.auto_active[key] and (group.no_panel or group.mount == binding.option) and M.get()[binding.group] == group.start then
             M.set(binding.group, binding.option)
             set_any = true
         end

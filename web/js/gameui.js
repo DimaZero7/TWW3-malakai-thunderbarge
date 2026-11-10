@@ -19,6 +19,8 @@ const TEXT = {
     text_head: {size: 18, colour: '#EBBD7C', bold: true, nowrap: true, font: 'header'},
     text_name: {size: 14, colour: '#FFF8D7', nowrap: true, font: 'header'},
     // a button's label, centred: a layout the mod does not have yet (tools/crew_ui.py: text_layout(..., "Center", "Never split"))
+    // the number of men on a unit card (land_unit_card, unit_strength_number): small, centred
+    text_card_number: {size: 11, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true},
     text_button: {size: 14, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
     text_name_grey: {size: 14, colour: '#8E8A80', nowrap: true, font: 'header'},
     text_body: {size: 12, colour: '#FFF8D7', valign: 'top'},
@@ -89,6 +91,16 @@ export class Component {
     SetImagePath(path) { this.path = path; if (this.img) this.img.src = url(path); }
     SetStateText(text) { this.text = text; if (this.textEl) this.textEl.innerHTML = colourText(text); }
     GetStateText() { return this.text || ''; }
+    // the game's uic:TextDimensions(): width, height and lines of the text as laid out in the component's width
+    TextDimensions() {
+        if (!this.textEl) return [0, 0, 0];
+        const r = document.createRange();
+        r.selectNodeContents(this.textEl);
+        const rect = r.getBoundingClientRect(), scale = this.el.getBoundingClientRect().width / (this.w || 1) || 1;
+        const lineH = parseFloat(getComputedStyle(this.textEl).lineHeight) || 15;
+        const h = this.text ? Math.ceil(rect.height / scale) : 0;
+        return [Math.ceil(rect.width / scale), h, Math.round(h / lineH)];
+    }
     SetTooltipText(text) { this.tooltip = text; if (tooltipOwner === this) tooltipBox.innerHTML = colourText(text); }
     SetOpacity(a) { this.el.style.opacity = String(a / 255); }      // 0..255 as the game's
     SetState(state) { this.state = state; this.paintSkin(); }
@@ -100,8 +112,15 @@ export class Component {
     paintFilter() { this.el.style.filter = [this.colourFilter, this.greyFilter, this.hoverFilter].filter(Boolean).join(' '); }
     SetDisabled(on) { this.SetState(on ? 'inactive' : 'active'); }
     // The colour of a state's image (the twui's image colour, RGBA): the RGB darkens it as the game's multiply does, the alpha is its opacity.
+    // A real colour (not a grey) tints: the picture's shape filled with the colour, as the game's multiply does to a white picture (a bar).
     SetImageColour(r, g, b, a) {
         this.el.style.opacity = String(a / 255);
+        if (this.img && (r !== g || g !== b)) {
+            const mask = `url("${this.img.src}")`;
+            Object.assign(this.el.style, {backgroundColor: `rgb(${r},${g},${b})`, maskImage: mask, webkitMaskImage: mask, maskSize: '100% 100%', webkitMaskSize: '100% 100%'});
+            this.img.style.visibility = 'hidden';
+            return;
+        }
         const k = Math.min(r, g, b) / 255;
         this.colourFilter = k < 1 ? `brightness(${k.toFixed(2)})` : '';
         this.paintFilter();

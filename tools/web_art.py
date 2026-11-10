@@ -868,6 +868,27 @@ def branch_frames():
         Image.new("RGBA", (4, 4), light).save(OUT / f"tree_line_{name}.png")
 
 
+def aboard_frames():
+    """The frame round a unit card of the crew aboard (web/js/panel.js, crew_cards): the ring of the branch's nodes, the crew group's colour, at the size of
+    the game's unit card (60 x 130) with 6 units round it. Says the unit stands on the ship, not in the army's line."""
+    from PIL import Image, ImageDraw
+    colours = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))["card_frames"]
+    for name, pair in colours.items():
+        if name.startswith("_"):
+            continue
+        light, dark = tuple(pair[0]) + (255,), tuple(pair[1]) + (255,)
+        w, h = 144, 284
+        im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, w - 1, h - 1), outline=(30, 14, 0, 255), width=3)
+        d.rectangle((3, 3, w - 4, h - 4), outline=light, width=6)
+        d.rectangle((9, 9, w - 10, h - 10), outline=dark, width=3)
+        corner = tuple(min(255, v + 60) for v in pair[0]) + (255,)
+        for x, y in ((0, 0), (w - 18, 0), (0, h - 18), (w - 18, h - 18)):
+            d.rectangle((x, y, x + 17, y + 17), fill=corner, outline=(30, 14, 0, 255), width=2)
+        im.save(OUT / f"aboard_frame_{name}.png", optimize=True)
+
+
 def tree_line():
     """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
     from PIL import Image
@@ -923,6 +944,7 @@ def main():
     tree_line()
     branch_frames()
     branch_selected_frames()
+    aboard_frames()
     node_back()
     # the hull's second level being built over the frame (last: the drawings above keep their random hatching)
     layer("barge_build", barge_build(), places)

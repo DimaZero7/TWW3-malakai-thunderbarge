@@ -51,7 +51,13 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/building_frame.png", "ui/skins/default/building_frame_plain.png", "ui/skins/default/building_frame_hover.png",
            "ui/skins/default/building_frame_selected.png", "ui/skins/default/building_frame_selected_hover.png", "ui/skins/default/icon_check_green.png", "ui/skins/default/build_frame_cross.png",
            "ui/skins/default/padlock.png", "ui/skins/default/icon_banner_bg.png", "ui/skins/default/red_text_banner_shadow.png",
-           "ui/skins/default/turns_banner_queued.png", "ui/skins/default/turns_banner.png", "ui/skins/default/1x1_transparent_white.png"]
+           "ui/skins/default/turns_banner_queued.png", "ui/skins/default/turns_banner.png", "ui/skins/default/1x1_transparent_white.png",
+           # the army panel's unit card (ui/common ui/land_unit_card.twui.xml): the frame over the unit's picture, the plate of the number of men, the bar,
+           # the half round of the unit's category; the pictures of the units themselves come with export_data (unit_card_of)
+           "ui/skins/default/unit_card_frame_plain.png", "ui/skins/default/unit_card_back.png", "ui/skins/default/bar_white.png",
+           "ui/skins/default/unit_card_semicircle.png",
+           # the units a building unlocks in the game's building information (ui/campaign ui/building_info_recruitment_effects.twui.xml)
+           "ui/skins/default/replenishement_positive.png"]
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
@@ -173,19 +179,38 @@ def export_data():
         chain_rows = sorted((r for r in rows.values() if r["chain"] == chain and r["level_name"].startswith(prefix)), key=lambda r: r["level"])
         if any(r["visible_in_ui"] for r in chain_rows):
             chains.append({"key": chain, "levels": [level_of(r) for r in chain_rows if r["visible_in_ui"]]})
+    # The game's own unit card of a crew option, as the army panel shows the unit it is taken from (upkeep_from): the picture of unit_variants.unit_card,
+    # the category icon of main_units.ui_unit_group_land, the number of men aboard. Copies of the game's pictures go to build/web/game only.
+    variant_card = {r["unit"]: r["unit_card"] for r in stock["unit_variants"]}
+    unit_group = {r["unit"]: r["ui_unit_group_land"] for r in stock["main_units"]}
+    unit_pictures = []
+
+    def unit_card_of(option):
+        source = option.get("upkeep_from") or {}
+        unit = source.get("unit")
+        if not unit or unit not in variant_card or option.get("stock"):
+            return None
+        card = {"picture": f"ui/units/icons/{variant_card[unit]}.png", "category": f"ui/common ui/unit_category_icons/{unit_group[unit]}.png", "men": source["count"]}
+        unit_pictures.extend([card["picture"], card["category"]])
+        return card
+
     groups = {}
     for group_key, group in config["groups"].items():
         groups[group_key] = {"name": group["ui"]["name"], "about": group["ui"]["about"], "start": group["start"], "seats": len(group["seats"]),
-                             "mount": group.get("mount"), "mount_name": group.get("mount_name"),
+                             "mount": group.get("mount"), "mount_name": group.get("mount_name"), "card_frame": group.get("card_frame"),
                              "requires": prefix + group["requires"]["building"] if group.get("requires") else None,
                              "options": {k: {"name": (o.get("ui") or {}).get("name", k), "about": (o.get("ui") or {}).get("about", ""),
                                              "hidden": bool((o.get("ui") or {}).get("hidden") or (o.get("ui") or {}).get("none")),
-                                             "card": crew_ui.own_card_name(config, group_key, k),
+                                             "card": crew_ui.own_card_name(config, group_key, k), "unit_card": unit_card_of(o),
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}
     data = {"_about": "Made by tools/web_export.py from data/crew_options.json and the game's tables through the mod's own build functions. Do not edit.",
             "prefix": prefix, "hull": [level_of(r) for r in hull], "chains": chains, "groups": groups, "auto_active": [prefix + s for s in config["auto_active"]],
             "levels": levels, "art": json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8"))}
     OUT.mkdir(parents=True, exist_ok=True)
+    for path, blob in game_files(sorted(set(unit_pictures))).items():
+        target = OUT / "game" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(blob)
     (OUT / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     guns = next(c for c in chains if c["key"] == "mtb_guns")["levels"][0]
     print("data:", guns["name"], guns["cost"], "gold,", guns["turns"], "turn(s), tier", guns["tier"], "icon", guns["icon"], "lines", guns["lines"])
@@ -569,7 +594,9 @@ def export_overview():
                 g, o = groups[b["group"]], groups[b["group"]]["options"][b["option"]]
                 opens.append({"group": b["group"], "group_name": g["ui"]["name"], "option": b["option"], "name": (o.get("ui") or {}).get("name", b["option"]),
                               "mount": g.get("mount") == b["option"], "mount_name": g.get("mount_name"),
-                              "hire": crew_ui.hire(o, stock), "upkeep": crew_ui.upkeep(o, stock), "auto": key.removeprefix(prefix) in config["auto_active"],
+                              # the panel lists the group (a choice of the crew panel); the pub is not a choice, buildings set it
+                              "panel": not g.get("no_panel"),
+                              "hire": crew_ui.hire(o, stock), "upkeep": crew_ui.upkeep(o, stock), "auto": key.removeprefix(prefix) in config["auto_active"] and bool(g.get("no_panel") or g.get("mount") == b["option"]),
                               "requires": prefix + g["requires"]["building"] if g.get("requires") else None})
             units = sorted({unit_names.get(f"land_units_onscreen_name_{unit_land.get(u['unit'], u['unit'])}", u["unit"]) for u in allowed if u["building"] == key}) if allowed else None
             need = list(required.get(key, []))

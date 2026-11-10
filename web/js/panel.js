@@ -111,24 +111,11 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             const inset = ms.portrait_inset * scale;
             view.side.portraits[s] = image(b, 'portrait', ms.portrait, inset, inset, ms.mark * scale - 2 * inset, ms.mark * scale - 2 * inset);
         }
-        // the demo window: shown on hover of the plan or a mark until the side is first changed (as the hint's glow), then the plain short tooltips.
-        // In the game: a frame layout with a movie component (the spell browser's MoviePlayer callback, its loop property), see the report.
-        // a dark backing (the panel's backdrop picture), the video, a brass head and light text with even margins, the panel's frame edge over it all
-        const tw = 300, pad = 14, vw = tw - 2 * pad, vh = Math.round(vw * 9 / 16), th = pad + vh + 12 + 24 + 44 + pad;
-        const tx = (ms.plan[0] + ms.plan[2] + 12) * scale, ty = (ms.plan[1] + ms.plan[3]) * scale - th;
-        const tip = image(sheet, 'side_demo_tip', LAYOUTS + 'backdrop.png', tx, ty, tw, th);
-        view.side.tip = tip;
-        view.side.video = make(tip, 'video', 'movie');
-        size(view.side.video, vw, vh);
-        at(view.side.video, pad, pad);
-        view.side.video.SetMovie(['side_demo.webm', 'side_demo.mp4'].map(f => '/art/' + f), 'Здесь будет видео из игры');
-        text(tip, 'tip_head', 'text_head', pad, pad + vh + 10, vw, 24, 'Борт Малакая');
-        text(tip, 'tip_text', 'text_body', pad, pad + vh + 36, vw, 44,
-             'Выберите, с какого борта Малакай ведёт огонь. Сменить борт можно позже, между боями.');
-        const edge = make(tip, 'tip_edge', 'frame_edge');
-        size(edge, tw, th);
-        at(edge, 0, 0);
-        tip.SetVisible(false);
+        // the demo window: shown on hover of the plan or a mark until the side is first changed (as the hint's glow), then the plain short tooltips
+        const demo = demoTip(sheet, 'side_demo_tip', (ms.plan[0] + ms.plan[2] + 12) * scale, (ms.plan[1] + ms.plan[3]) * scale, {movie: 'side_demo', head: 'Борт Малакая',
+            text: 'Выберите, с какого борта Малакай ведёт огонь. Сменить борт можно позже, между боями.'});
+        view.side.tip = demo.tip;
+        view.side.video = demo.video;
         for (const n of ['near', 'far', 'near_build', 'far_build']) {
             const q = place('malakai_' + n);
             view.side[n] = image(sheet, 'malakai_' + n, WEB_ART + 'malakai_' + n + '.png', q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale);
@@ -174,6 +161,27 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     text(column, 'foot', 'text_note', 14, scheme_h - foot_h + 2, column_w - 28, foot_h - 6,
         'Постройка идёт через очередь игры: цена списывается при заказе, отмена в том же ходу возвращает всё. Готовая часть встаёт на модель и на чертёж в начале хода.');
 
+    // The crew a building opens (blueprint.json, crew_cards), in the details of that building, before and after it is built. Laid out after the game's
+    // building information (ui/campaign ui/building_information.twui.xml: effects_list, then building_info_recruitment_effects.twui.xml): under the effects
+    // a separator (the template names h_line.png, a file the game does not have: the tree's brass line stands in), the icon at 10 and the title at 38 ("Unlocks recruitment of:"), then an entry per unit. The game's entry is a round category
+    // icon and the unit's name; here it is the name and the unit's own card of the army panel (unitCard) at the right of the details, in the frame of the
+    // crew aboard. On hover of the card the same demo window as Malakai's side, opening to the card's left.
+    view.crew = [];
+    view.text_w = column_w - 28;
+    for (const spec of blueprint.crew_cards || []) {
+        const group = data.groups[spec.group], option = group && group.options[spec.option], uc = option && option.unit_card;
+        if (!uc) continue;
+        const card = unitCard(column, 'mtb_crew_card_' + spec.option, column_w - 14 - CARD_W, 0, uc, group.card_frame || 'gold');
+        const line = image(column, 'crew_line_' + spec.option, WEB_ART + 'tree_line.png', 14, 0, column_w - 28 - CARD_W - 12, 1);
+        const icon = image(column, 'crew_icon_' + spec.option, 'ui/skins/default/replenishement_positive.png', 14 + 10 - 8, 0, 18, 18);
+        const title = text(column, 'crew_title_' + spec.option, 'text_line', 14 + 38 - 12, 0, 240, 16, 'Открывает в экипаже:');
+        const money = [option.hire ? `найм ${option.hire}` : '', option.upkeep ? `содержание ${option.upkeep}/ход` : ''].filter(Boolean).join(' · ');
+        const name = text(column, 'crew_name_' + spec.option, 'text_line', 14 + 38 - 12, 0, column_w - 28 - CARD_W - 38, 16, `[[col:yellow]]${option.name}[[/col]]${money ? ' · ' + money : ''}`);
+        const demo = demoTip(column, 'crew_demo_tip_' + spec.option, column_w - 14 - CARD_W - 12 - 300, 0, {movie: spec.movie, head: spec.head || option.name, text: spec.text || ''});
+        card.SetHoverChild(demo.tip);
+        view.crew.push({card, line, icon, title, name, tip: demo.tip, tip_h: demo.h, building: M.prefix + spec.building, option_name: option.name});
+    }
+
     // which levels show: the first of the chain now, all of it behind ?full=1
     view.levels = [];
     for (const key of blueprint.chains) {
@@ -189,6 +197,44 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view.frame = frame;
     view.scale = scale;
     return {view, refresh: () => refresh(view, M), click: (c) => click(view, M, c)};
+}
+
+// The demo window, one component for every place that shows a clip of the game (Malakai's side, a crew aboard): a dark backing (the panel's backdrop
+// picture), the video, a brass head and light text with even margins, the panel's frame edge over it all. x: its left, bottom: its lower edge.
+// The clip is web/art/<movie>.webm or .mp4, taken when the file is there; until then a placeholder.
+// In the game: a frame layout with a movie component (the spell browser's MoviePlayer callback, its loop property).
+// A unit as the army panel shows it (ui/common ui/land_unit_card.twui.xml: 60 x 130, the unit's picture, the frame, the plate with the number of men over
+// the bar, the half round with the unit's category), inside a frame of the crew group's colour (tools/web_art.py, aboard_frames) that says the unit stands
+// on the ship and not in the army's line. uc: unit_card of build/web/data.json (tools/web_export.py).
+const CARD_B = 6, CARD_W = 60 + 2 * CARD_B, CARD_H = 130 + 2 * CARD_B;
+function unitCard(parent, id, x, y, uc, colour) {
+    const D = 'ui/skins/default/', B = CARD_B;
+    const card = image(parent, id, WEB_ART + `aboard_frame_${colour}.png`, x, y, CARD_W, CARD_H);
+    image(card, 'picture', uc.picture, B, B, 60, 130);
+    image(card, 'frame', D + 'unit_card_frame_plain.png', B, B, 60, 130);
+    image(card, 'health_back', D + 'unit_card_back.png', B + 4, B + 3, 52, 11);
+    image(card, 'health_fill', D + 'bar_white.png', B + 4, B + 11, 52, 3).SetImageColour(60, 190, 40, 255);      // full strength: the game's green bar
+    text(card, 'unit_strength_number', 'text_card_number', B + 4, B + 1, 52, 12, String(uc.men));
+    image(card, 'unit_cat_frame', D + 'unit_card_semicircle.png', B + 3, B + 95, 55, 35);
+    image(card, 'unit_category_icon', uc.category, B + 19, B + 106, 22, 22);
+    card.SetHoverBrighten(0.25);
+    return card;
+}
+
+function demoTip(parent, id, x, bottom, spec) {
+    const tw = 300, pad = 14, vw = tw - 2 * pad, vh = Math.round(vw * 9 / 16), th = pad + vh + 12 + 24 + 44 + pad;
+    const tip = image(parent, id, LAYOUTS + 'backdrop.png', x, bottom - th, tw, th);
+    const video = make(tip, 'video', 'movie');
+    size(video, vw, vh);
+    at(video, pad, pad);
+    video.SetMovie(['.webm', '.mp4'].map(ext => '/art/' + spec.movie + ext), 'Здесь будет видео из игры');
+    text(tip, 'tip_head', 'text_head', pad, pad + vh + 10, vw, 24, spec.head);
+    text(tip, 'tip_text', 'text_body', pad, pad + vh + 36, vw, 44, spec.text);
+    const edge = make(tip, 'tip_edge', 'frame_edge');
+    size(edge, tw, th);
+    at(edge, 0, 0);
+    tip.SetVisible(false);
+    return {tip, video, w: tw, h: th};
 }
 
 // ---------------- the tree of buildings: square nodes joined by brass lines, laid out from the requirements ----------------
@@ -409,13 +455,29 @@ function effectLines(row, card) {
     return card.effects.filter(e => !e.hidden && !e.off).map(e => e.text || `${e.effect} = ${e.value}`);
 }
 
+// The green lines with what the level opens in the crew panel (the overview's card, opens): hire and upkeep from the mod's data, as the overview writes them.
+// The money goes on the green line that names the option (the mod's line "Открывает в экипаже: ..."), else on a line of its own.
+// Not the groups the panel does not list (the pub: buildings set it) and not the bare mounts, whose green line says it already.
+function detailLines(row, card, shown = []) {
+    // a crew shown with its card under the lines (shown: its names) is not repeated as a line
+    const lines = effectLines(row, card).filter(l => !shown.some(n => l.includes(n)));
+    for (const o of (card && card.opens) || []) {
+        if (o.panel === false || o.mount || shown.includes(o.name)) continue;
+        const money = [o.hire ? `найм ${o.hire}` : '', o.upkeep ? `содержание ${o.upkeep}/ход` : ''].filter(Boolean).join(', ');
+        const i = lines.findIndex(l => l.includes(o.name));
+        if (i >= 0) { if (money) lines[i] += ` [[col:yellow]](${money})[[/col]]`; }
+        else lines.push(`[[col:yellow]]${o.group_name}: ${o.name}[[/col]]${money ? ` (${money})` : ''}`);
+    }
+    return lines;
+}
+
 function tooltip(row, status, card) {
     const lines = [`[[col:yellow]]${row.name}[[/col]]`];
     if (card && card.game_name && card.game_name !== row.name) lines.push(`В игре: «${card.game_name}». Название — мода`);
     const text = firstPart(row.text || (card && card.text));
     if (text) lines.push(text);
     lines.push(`Цена: ${row.cost} золота, срок: ${turnsText(row.turns)}`);
-    for (const l of effectLines(row, card)) lines.push(`[[col:green]]${l}[[/col]]`);
+    for (const l of detailLines(row, card)) lines.push(`[[col:green]]${l}[[/col]]`);
     if (status.why) lines.push(status.why);
     return lines.join('\n');
 }
@@ -517,6 +579,11 @@ function refresh(view, M) {
     if (view.tree) view.demolish.button.SetVisible(!!(view_flags.full || view.demolishShown));
     const sel = view.selected && M.level(view.selected);
     for (const c of [view.detail, view.lines, view.order.button, view.cancel.button]) c.SetVisible(!!sel);
+    // the crew the selected building opens: its card at the right of the details, the texts beside it narrower
+    const crew = view.crew.filter(c => sel && c.building === sel.key && !demo);
+    for (const c of view.crew) if (!crew.includes(c)) { for (const part of [c.card, c.line, c.icon, c.title, c.name, c.tip]) part.SetVisible(false); c.card.SetHoverChild(null); }
+    const text_w = view.text_w - (crew.length ? CARD_W + 12 : 0);
+    for (const c of [view.detail, view.lines, ...(view.selMeta ? [view.selMeta, view.selName] : [])]) size(c, text_w, c.Height());
     if (!sel) {
         view.demolish.button.SetVisible(false);
         view.message.SetStateText(M.message() || '');
@@ -528,12 +595,29 @@ function refresh(view, M) {
     if (view.selMeta) {
         const s0 = M.status(sel.key);
         const state = {built: 'Построено', building: `Строится: осталось ${turnsText(s0.turns || 0)}`, open: 'Можно заказать', locked: s0.why || 'Недоступно'}[s0.state] || '';
-        const price = s0.poor ? `[[col:red]]Цена: ${sel.cost} золота[[/col]]` : `Цена: ${sel.cost} золота`;
+        const label = crew.length ? '' : 'Цена: ';      // beside a crew's card the line is narrower
+        const price = s0.poor ? `[[col:red]]${label}${sel.cost} золота[[/col]]` : `${label}${sel.cost} золота`;
         view.selMeta.SetStateText(`${price} · ${turnsText(sel.turns)} · ${state}`);
     }
     view.detail.SetStateText(firstPart(sel.text || (card && card.text)));
-    at(view.lines, 14, y + 46);
-    view.lines.SetStateText(effectLines(sel, card).join('\n'));
+    // the green lines and what the level opens in the crew panel: under the description as tall as its text (uic:TextDimensions), down to the commands
+    const lines_y = view.tree ? y + Math.max(1, view.detail.TextDimensions()[2]) * 15 + 4 : y + 46;
+    at(view.lines, 14, lines_y);
+    size(view.lines, view.lines.Width(), Math.max(80, view.order.button.y - lines_y - 4));
+    view.lines.SetStateText(detailLines(sel, card, crew.map(c => c.option_name)).join('\n'));
+    let crew_y = lines_y + view.lines.TextDimensions()[1] + 3;
+    for (const c of crew) {
+        for (const part of [c.card, c.line, c.icon, c.title, c.name]) part.SetVisible(true);
+        at(c.line, 14, crew_y);
+        at(c.icon, c.icon.x, crew_y + 2);
+        at(c.title, c.title.x, crew_y + 2);
+        at(c.name, c.name.x, crew_y + 16);
+        const card_y = view.order.button.y - 6 - CARD_H;
+        at(c.card, c.card.x, card_y);
+        at(c.tip, c.tip.x, card_y + CARD_H - c.tip_h);
+        c.card.SetHoverChild(c.tip);
+        crew_y += 34;
+    }
     const st = M.status(sel.key);
     view.order.button.SetState(st.state === 'open' ? 'active' : 'inactive');
     view.order.button.SetTooltipText(st.state === 'open' ? `Заказать «${sel.name}»: ${sel.cost} золота, ${turnsText(sel.turns)}` : (st.why || (st.state === 'building' ? 'Уже строится' : 'Уже построено')), true);
