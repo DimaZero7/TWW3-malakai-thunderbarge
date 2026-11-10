@@ -122,9 +122,12 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             view.side[n] = image(sheet, 'malakai_' + n, WEB_ART + 'malakai_' + n + '.png', q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale);
         }
     }
-    // The riflemen's place on the drawing (blueprint.json, crew_area): part of the drawing, not a button. Nobody: dashed pencil outlines at the rail and a
-    // pencil note; a crew: its figures in ink, a layer per kind; under the mouse thin dashed frames round the two rows, in soft ink. A click opens the
-    // choice. It lies over Malakai's own figure, which stands at one of the rifle places and is not among the layers' five.
+    // The riflemen's place on the drawing (blueprint.json, crew_area): part of the drawing, not a button, and seen as a place to click at the scale the
+    // page really has on a screen (about 0.6; tools/web_art.py sizes its lines and the tag's text for 0.5). Nobody: light cut-outs of the figures in a
+    // dashed ink line; a crew: its figures in ink, a layer per kind. Over the waist a tag on a leader, "Стрелки" and a sign in a ring: a plus while the
+    // place is empty, two arrows when a crew stands (it can be changed). Until the first choice the tag has a warm pulse, the same as Malakai's empty
+    // side. Under the mouse: dashed frames round the two rows in soft ink and the tag's slip lighter; the whole box takes the click, the gaps too.
+    // It lies over Malakai's own figure, which stands at one of the rifle places and is not among the layers' five.
     const ca = blueprint.crew_area, cbox = art.crew_area && art.crew_area.area;
     if (ca && cbox && data.groups[ca.group]) {
         const group = data.groups[ca.group], ax = cbox[0] * scale, ay = cbox[1] * scale;
@@ -134,23 +137,48 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
         area.SetInteractive(true);
         const lay = name => { const q = place(name); const c = image(area, name, WEB_ART + name + '.png', q[0] * scale - ax, q[1] * scale - ay, q[2] * scale, q[3] * scale); c.SetPassive(); return c; };
         const crew = view.crewArea = {spec: ca, area, group: ca.group, building: M.prefix + ca.building, layers: {}, open: false};
-        crew.hover = lay(`crew_${ca.group}_hover`);
-        area.SetHoverChild(crew.hover);
+        // the pulse first, under the tag: one picture a phase, switched by a timer (GAME: SetState by core:get_tm():repeat_real_callback, as the side's)
+        const g = art.crew_area.glow;
+        crew.glow = image(area, 'crew_glow', WEB_ART + 'crew_glow_0.png', g.box[0] * scale - ax, g.box[1] * scale - ay, g.box[2] * scale, g.box[3] * scale);
+        crew.glow.SetPassive();
+        crew.glow.phases = [];
+        for (let i = 1; i < g.phases; i++) {
+            const ph = image(crew.glow, 'phase_' + i, WEB_ART + `crew_glow_${i}.png`, 0, 0, g.box[2] * scale, g.box[3] * scale);
+            ph.SetVisible(false);
+            crew.glow.phases.push(ph);
+        }
+        crew.glow.img.style.visibility = 'visible';
+        crew.phase = 0;
+        setInterval(() => {
+            crew.phase = (crew.phase + 1) % g.phases;
+            crew.glow.img.style.visibility = crew.phase === 0 ? 'visible' : 'hidden';
+            crew.glow.phases.forEach((ph, i) => ph.SetVisible(crew.phase === i + 1));
+        }, art.crew_area.step_ms);
         crew.empty = lay(`crew_${ca.group}_empty`);
+        crew.tags = {plus: lay(`crew_${ca.group}_tag_plus`), swap: lay(`crew_${ca.group}_tag_swap`)};
+        // what shows under the mouse, in one holder: the frames and the lighter tag of the state
+        crew.hover = make(area, 'hover', 'hover_holder');
+        size(crew.hover, cbox[2] * scale, cbox[3] * scale);
+        crew.hover.SetPassive();
+        const inHover = name => { const q = place(name); return image(crew.hover, name, WEB_ART + name + '.png', q[0] * scale - ax, q[1] * scale - ay, q[2] * scale, q[3] * scale); };
+        inHover(`crew_${ca.group}_hover`);
+        crew.hoverTags = {plus: inHover(`crew_${ca.group}_tag_plus_hover`), swap: inHover(`crew_${ca.group}_tag_swap_hover`)};
+        area.SetHoverChild(crew.hover);
         for (const key of Object.keys(group.options)) if (key !== group.start && art.places[`crew_${ca.group}_${key}`]) crew.layers[key] = lay(`crew_${ca.group}_${key}`);
         // The choice: a window of the same family as the demo window of Malakai's side (the panel's dark backing, a brass head, the frame's edge),
         // under the place. Every kind the buildings can open, as the army panel's unit card in the crew's colour with the number aboard; a kind not
         // opened yet is grey under a padlock, as the game shows a unit that cannot be recruited yet, and its tooltip names the building.
         const options = M.crew_options(ca.group);
-        const pad = 16, slot_w = 88, pw = pad * 2 + slot_w * options.length, ph = pad + 28 + 8 + UNIT_H + 6 + 34 + 50 + 24 + pad;
-        const pick = image(sheet, 'mtb_crew_pick', LAYOUTS + 'backdrop.png', Math.min(ax, scheme_w - pw - 12), ay + cbox[3] * scale + 14, pw, ph);
+        // the frame's edge picture is 30 wide: everything keeps 26 clear of the window's sides, the foot line 30 of its lower edge
+        const pad = 26, slot_w = 106, pw = pad * 2 + slot_w * options.length, ph = pad + 28 + 4 + UNIT_H + 4 + 42 + 42 + 26;
+        const pick = image(sheet, 'mtb_crew_pick', LAYOUTS + 'backdrop.png', Math.min(ax, scheme_w - pw - 12), Math.min(ay + cbox[3] * scale + 14, scheme_h - ph - 6), pw, ph);      // under the place, inside the drawing
         pick.SetInteractive(true);      // a click on the window itself does nothing and does not reach the drawing
         crew.pick = pick;
-        text(pick, 'pick_head', 'text_head', pad, pad - 4, pw - 2 * pad - 30, 28, ca.head || group.name);
-        const cross = image(pick, CREW_CLOSE, 'ui/skins/default/icon_cross.png', pw - pad - 22, pad - 2, 22, 22);
+        text(pick, 'pick_head', 'text_head', pad, pad - 4, 240, 28, ca.head || group.name);
+        const cross = image(pick, CREW_CLOSE, 'ui/skins/default/icon_cross.png', pw - pad - 24, pad - 2, 22, 22);
         cross.SetInteractive(true);
         crew.slots = options.map((o, i) => {
-            const x = pad + i * slot_w + (slot_w - UNIT_W) / 2, y = pad + 28 + 8;
+            const x = pad + i * slot_w + (slot_w - UNIT_W) / 2, y = pad + 28 + 4;
             const card = o.unit_card ? unitCard(pick, CREW_PICK + o.key, x, y, o.unit_card, group.card_frame || 'gold')
                                      : image(pick, CREW_PICK + o.key, LAYOUTS + 'card_empty.png', x, y, UNIT_W, UNIT_H);
             card.SetInteractive(true);
@@ -159,11 +187,11 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
             slot.selected = image(card, 'selected', 'ui/skins/default/unit_card_selected.png', 0, 0, UNIT_W, UNIT_H);
             slot.padlock = image(card, 'padlock', 'ui/skins/default/padlock.png', (UNIT_W - 26) / 2, 46, 26, 33);
             for (const c of [slot.selected, slot.padlock]) c.SetPassive();
-            slot.name = text(pick, 'name_' + o.key, 'text_caption', pad + i * slot_w + 2, y + UNIT_H + 6, slot_w - 4, 32, '');
-            slot.money = text(pick, 'money_' + o.key, 'text_caption_grey', pad + i * slot_w + 2, y + UNIT_H + 6 + 34, slot_w - 4, 48, '');
+            slot.name = text(pick, 'name_' + o.key, 'text_caption', pad + i * slot_w + 2, y + UNIT_H + 4, slot_w - 4, 40, '');
+            slot.money = text(pick, 'money_' + o.key, 'text_caption_grey', pad + i * slot_w + 2, y + UNIT_H + 4 + 42, slot_w - 4, 40, '');
             return slot;
         });
-        crew.foot = text(pick, 'pick_foot', 'text_copper', pad, ph - pad - 18, pw - 2 * pad, 20, '');
+        crew.foot = text(pick, 'pick_foot', 'text_caption_copper', pad + 240, pad - 4, pw - 2 * pad - 240 - 34, 28, '');      // in the head's row, before the cross
         const edge = make(pick, 'pick_edge', 'frame_edge');
         size(edge, pw, ph);
         at(edge, 0, 0);
@@ -757,9 +785,13 @@ function refresh(view, M) {
         c.area.SetVisible(shown);
         if (!shown) c.open = false;
         c.pick.SetVisible(shown && c.open);
-        c.empty.SetVisible(!standing || standing.empty);
+        const nobody = !standing || standing.empty;
+        c.empty.SetVisible(nobody);
+        c.tags.plus.SetVisible(nobody); c.tags.swap.SetVisible(!nobody);
+        c.hoverTags.plus.SetVisible(nobody); c.hoverTags.swap.SetVisible(!nobody);
+        c.glow.SetVisible(M.crew_hint());
         for (const [key, layer] of Object.entries(c.layers)) layer.SetVisible(key === now);
-        c.area.SetTooltipText(c.open ? '' : !standing || standing.empty ? c.spec.free : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' у бортов, ' : ''}содержание ${standing.upkeep} за ход`, true);
+        c.area.SetTooltipText(c.open || nobody ? '' : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' у бортов, ' : ''}содержание ${standing.upkeep} за ход`, true);
         for (const slot of c.slots) {
             const o = options.find(x => x.key === slot.key), poor = o.unlocked && !o.empty && o.key !== now && M.game.treasury() < o.hire;
             slot.selected.SetVisible(o.key === now);
@@ -767,7 +799,7 @@ function refresh(view, M) {
             slot.card.ShaderTechniqueSet(o.unlocked ? 'normal_t0' : 'set_greyscale_t0');
             slot.card.SetImageColour(255, 255, 255, o.unlocked ? 255 : 0x80);
             slot.name.SetStateText(o.unlocked ? o.name : `[[col:grey]]${o.name}[[/col]]`);
-            slot.money.SetStateText(o.empty ? 'у бортов никого' : !o.unlocked ? `откроет «${o.building.name}»`
+            slot.money.SetStateText(o.empty ? 'у бортов никого' : !o.unlocked ? 'заперто'
                 : `${poor ? '[[col:red]]' : ''}найм ${o.hire}${poor ? '[[/col]]' : ''}\nза ход ${o.upkeep}`);
             slot.card.SetTooltipText(o.empty ? 'Пусто' : !o.unlocked ? `${o.name}\nОткроет постройка «${o.building.name}»` : `${o.name}\n${o.about || ''}`, true);
         }

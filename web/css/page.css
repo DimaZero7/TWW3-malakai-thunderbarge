@@ -52,6 +52,8 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .separator_skull { border-style: solid; border-color: transparent; border-width: 0 50px; border-image: url(/build/game/ui/skins/default/separator_skull2.png) 0 50 fill stretch; }
 .col_game_green { color: #91E732; }
 .col_game_red { color: #E22828; }
+/* a place of the drawing that takes a click: the hand over all of it, the gaps between its figures and its tag too */
+.hit_area { cursor: pointer; }
 .col_grey { color: #8e8a80; }
 .col_yellow { color: #ffd65a; }
 .col_green { color: #9bd36a; }

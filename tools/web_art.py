@@ -915,82 +915,136 @@ def crew_figure(kind, x, y, s=0.9):
     return out
 
 
-def crew_ghost(x, y, s=0.9):
-    """A place nobody stands at, in pencil: the outline of a dwarf at the rail, dashed, as a draughtsman leaves room for a figure."""
-    d = (f"M{x - 8 * s:.1f} {y:.1f} L{x - 7 * s:.1f} {y - 13 * s:.1f} L{x + 7 * s:.1f} {y - 13 * s:.1f} L{x + 8 * s:.1f} {y:.1f} "
-         f"M{x - 5 * s:.1f} {y - 19 * s:.1f} A {5 * s:.1f} {5 * s:.1f} 0 1 1 {x + 5 * s:.1f} {y - 19 * s:.1f} A {5 * s:.1f} {5 * s:.1f} 0 1 1 {x - 5 * s:.1f} {y - 19 * s:.1f}")
-    return [art.path(d, 1.1, PENCIL, extra='stroke-dasharray="3 2.4"', op=0.9)]
+# The player's page is shown smaller than the game's 1600 x 900: about 0.6 on the user's screen, the drawing's unit then 0.62 px. What must be seen
+# at once is sized for a scale of 0.5: a line of CREW_LINE units is 1.5 px there, the tag's text of CREW_TEXT units 11 px.
+CREW_LINE, CREW_TEXT = 2.9, 21.5
+CREW_TAG = (478, 352, 150, 36)          # the tag over the waist, between the two nets: x, y, w, h
+LIGHT = "#f3dfb4"                       # clean light parchment: an empty place cut out of the drawing's tone
 
 
-def crew_note(x, y, text, size=11):
-    """A draughtsman's note in pencil, slanted, with a leader's dot."""
-    return [f'<text x="{x}" y="{y}" font-family="Segoe Script, Comic Sans MS, cursive" font-size="{size}" fill="{PENCIL}" opacity="0.85" transform="rotate(-3 {x} {y})">{text}</text>']
+def crew_ghost(x, y, s=0.9, variant="fill"):
+    """A place nobody stands at: the outline of a dwarf at the rail. fill: a light parchment cut-out under a firm dashed ink line, seen at any scale;
+    pencil: the first version, thin dashed graphite (too faint on the user's screen)."""
+    body = f"M{x - 8 * s:.1f} {y:.1f} L{x - 7 * s:.1f} {y - 13 * s:.1f} L{x + 7 * s:.1f} {y - 13 * s:.1f} L{x + 8 * s:.1f} {y:.1f} Z"
+    head = f"M{x - 5.5 * s:.1f} {y - 19 * s:.1f} A {5.5 * s:.1f} {5.5 * s:.1f} 0 1 1 {x + 5.5 * s:.1f} {y - 19 * s:.1f} A {5.5 * s:.1f} {5.5 * s:.1f} 0 1 1 {x - 5.5 * s:.1f} {y - 19 * s:.1f}"
+    if variant == "pencil":
+        return [art.path(body + " " + head, 1.1, PENCIL, extra='stroke-dasharray="3 2.4"', op=0.9)]
+    return [art.path(body + " " + head, CREW_LINE, art.INK, LIGHT, extra='stroke-dasharray="4.5 3"')]
 
 
-def crew_brackets(pad=0):
-    """Thin dashed frames round the two rows of places (the bow rail, the waist), as a dimensioned zone of a drawing."""
+def crew_brackets(pad=0, w=CREW_LINE, color=None, op=1.0):
+    """Dashed ink frames round the two rows of places (the bow rail, the waist), as a zone marked out on a drawing."""
     out = []
     for group in (CREW_PLACES[:2], CREW_PLACES[2:]):
         x0, x1 = min(x for x, _ in group) - 16 - pad, max(x for x, _ in group) + 16 + pad
         y0, y1 = min(y for _, y in group) - 30 - pad, max(y for _, y in group) + 5 + pad
-        out.append(art.path(art.poly([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], True), 0.9, art.INK_SOFT, extra='stroke-dasharray="5 3.5"', op=0.8))
+        out.append(art.path(art.poly([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], True), w, color or art.INK, extra='stroke-dasharray="9 6"', op=op))
     return out
 
 
-def crew_empty(variant="a"):
-    """The riflemen's place with nobody in it. a: dashed pencil outlines of the figures and a pencil note; b: dashed ink frames round the two rows
-    and the note; c: a small cross-in-circle station mark at each place and the note. a is the page's (see docs of the choice in the report)."""
-    note = crew_note(CREW_PLACES[2][0] + 18, CREW_PLACES[2][1] - 38, "стрелки: свободно")
+def crew_tag(sign="plus", light=False):
+    """The tag of the place, on a leader down to the waist: a slip of light parchment in an ink line with the group's name and a sign in a ring.
+    plus: nobody yet, the place waits for a choice (as an empty slot of the game); swap: a crew stands, it can be changed."""
+    x, y, w, h = CREW_TAG
+    fill = "#fff0cc" if light else LIGHT
+    out = [art.path(f"M{x + 74} {y + h} L{x + 71} {y + h + 30}", CREW_LINE * 0.8),          # the leader down to a place of the waist, clear of Malakai
+           art.dot(x + 71, y + h + 32, 3.2),
+           art.path(f"M{x + 6} {y} L{x + w} {y} L{x + w} {y + h} L{x + 6} {y + h} L{x} {y + h - 7} L{x} {y + 7} Z", CREW_LINE, art.INK, fill),
+           f'<text x="{x + 12}" y="{y + h - 10.5}" font-family="Palatino Linotype, Book Antiqua, Georgia, serif" font-weight="bold" font-size="{CREW_TEXT}" fill="{art.INK}">Стрелки</text>']
+    cx, cy, r = x + w - 19, y + h / 2, 11.5
+    out.append(art.circle(cx, cy, r, CREW_LINE * 0.8, art.INK, "#e9b96a"))
+    if sign == "plus":
+        out.append(art.path(f"M{cx - 6.5} {cy} L{cx + 6.5} {cy} M{cx} {cy - 6.5} L{cx} {cy + 6.5}", CREW_LINE))
+    else:       # two arrows, one each way: change
+        out.append(art.path(f"M{cx - 6.5} {cy - 3} L{cx + 5.5} {cy - 3} M{cx + 2} {cy - 6.5} L{cx + 6} {cy - 3} "
+                            f"M{cx + 6.5} {cy + 3.5} L{cx - 5.5} {cy + 3.5} M{cx - 2} {cy + 7} L{cx - 6} {cy + 3.5}", CREW_LINE * 0.75))
+    return out
+
+
+def crew_empty(variant="c"):
+    """The riflemen's place with nobody in it, three looks (build/web/shots/crew_spot_variants.png):
+    a: dashed ink frames of the zone and the tag; b: light cut-outs of the figures in a dashed ink line and the tag; c, the page's: b, and the warm
+    pulse round the tag until the first choice (crew_glow, the panel's timer)."""
+    figures = [g for x, y in CREW_PLACES for g in crew_ghost(x, y + 2)]
     if variant == "a":
-        return [g for x, y in CREW_PLACES for g in crew_ghost(x, y + 2)] + note
-    if variant == "b":
-        return crew_brackets() + note
-    out = []
-    for x, y in CREW_PLACES:
-        out.append(art.circle(x, y - 10, 6, 0.9, PENCIL, op=0.85))
-        out.append(art.path(f"M{x - 8} {y - 10} L{x + 8} {y - 10} M{x} {y - 18} L{x} {y - 2}", 0.7, PENCIL, op=0.85))
-    return out + note
+        return crew_brackets() + crew_tag("plus")
+    return figures + crew_tag("plus")
+
+
+def crew_glow(out_prefix="crew_glow"):
+    """The warm line round the tag while no crew was ever chosen: the same means and strength as the ring of Malakai's empty side (side_glow, variant a:
+    8 phases, alpha 0.45..0.85, the same orange), here a rounded frame hugging the tag. Returns its box in units of the drawing and the phases."""
+    import numpy as np
+    from PIL import Image
+    x, y, w, h = CREW_TAG
+    pad, k = 12, 2          # units round the tag, pixels a unit
+    W, H = (w + 2 * pad) * k, (h + 2 * pad) * k
+    yy, xx = np.mgrid[0:H, 0:W]
+    dx = np.maximum(np.abs(xx - W / 2 + 0.5) - (w * k / 2 - 6), 0)
+    dy = np.maximum(np.abs(yy - H / 2 + 0.5) - (h * k / 2 - 6), 0)
+    dist = np.hypot(dx, dy) - 6             # the distance from the tag's edge, rounded at the corners
+    ring = np.exp(-((dist - 5) / 4.2) ** 2)
+    phases, lo, hi, rgb = 8, 0.45, 0.85, (255, 160, 60)
+    for i in range(phases):
+        a = lo + (hi - lo) * (0.5 - 0.5 * math.cos(2 * math.pi * i / phases))
+        rgba = np.zeros((H, W, 4), np.uint8)
+        rgba[..., 0], rgba[..., 1], rgba[..., 2] = rgb
+        rgba[..., 3] = np.clip(ring * 255 * a, 0, 255).astype(np.uint8)
+        Image.fromarray(rgba, "RGBA").save(OUT / f"{out_prefix}_{i}.png", optimize=True)
+    return {"box": [x - pad, y - pad, w + 2 * pad, h + 2 * pad], "phases": phases}
 
 
 def crew_area(places):
-    """Layers of the riflemen's place: empty (pencil), the soft mark shown under the mouse, and the crew of each kind in ink."""
-    layer_plain("crew_rifles_empty", crew_empty("a"), places)
-    # under the mouse: the frames of the zone in thin soft ink, nothing brighter
-    layer_plain("crew_rifles_hover", crew_brackets(3), places)
+    """Layers of the riflemen's place: the empty figures, the tag in its two states and lit under the mouse, the frames shown under the mouse, the warm
+    pulse of the tag, and the crew of each kind in ink."""
+    layer_plain("crew_rifles_empty", [g for x, y in CREW_PLACES for g in crew_ghost(x, y + 2)], places)
+    layer_plain("crew_rifles_tag_plus", crew_tag("plus"), places)
+    layer_plain("crew_rifles_tag_swap", crew_tag("swap"), places)
+    # under the mouse: the frames of the zone in soft ink and the tag's slip lighter; nothing brighter than the drawing
+    layer_plain("crew_rifles_hover", crew_brackets(3, CREW_LINE * 0.8, art.INK_SOFT, 0.9), places)
+    layer_plain("crew_rifles_tag_plus_hover", crew_tag("plus", True), places)
+    layer_plain("crew_rifles_tag_swap_hover", crew_tag("swap", True), places)
     for kind in ("pirates", "quarrellers", "thunderers", "rakers", "torpedoes"):
         layer("crew_rifles_" + kind, [g for x, y in CREW_PLACES for g in crew_figure(kind, x, y + 2)], places)
-    return {"area": [min(x for x, _ in CREW_PLACES) - 20, min(y for _, y in CREW_PLACES) - 36, max(x for x, _ in CREW_PLACES) - min(x for x, _ in CREW_PLACES) + 40,
-                     max(y for _, y in CREW_PLACES) - min(y for _, y in CREW_PLACES) + 46]}
+    glow = crew_glow()
+    tx, ty, tw, th = CREW_TAG
+    x0, y0 = min(min(x for x, _ in CREW_PLACES) - 20, tx - 4), min(min(y for _, y in CREW_PLACES) - 36, ty - 4)
+    x1, y1 = max(max(x for x, _ in CREW_PLACES) + 20, tx + tw + 4), max(y for _, y in CREW_PLACES) + 10
+    return {"area": [x0, y0, x1 - x0, y1 - y0], "glow": glow, "step_ms": 110}
 
 
-def crew_area_variants():
-    """build/web/shots/crew_area_variants.png: the three looks of the empty place and the two crews on the base drawing, to choose from."""
-    from PIL import Image, ImageDraw
+def crew_area_variants(user_scale=0.6):
+    """build/web/shots/crew_spot_variants.png: the three looks of the empty place on the base drawing, at the page's scale 1 and at the user's."""
+    from PIL import Image, ImageDraw, ImageFont
     S = art.SCALE
     base = Image.open(OUT / "blueprint_base.png").convert("RGBA")
-    box = (round(250 * S), round(330 * S), round(680 * S), round(500 * S))
+    box = (round(230 * S), round(320 * S), round(700 * S), round(500 * S))
     w, h = round(art.DRAW_W * S), round(art.DRAW_H * S)
-    cells = [("А: карандашные контуры фигур (выбран)", crew_empty("a"), False), ("Б: пунктирные рамки зоны", crew_empty("b"), False), ("В: метки мест", crew_empty("c"), False),
-             ("А под мышью", crew_empty("a") + crew_brackets(3), False),
-             ("Мстители-пираты", [g for x, y in CREW_PLACES for g in crew_figure("pirates", x, y + 2)], True),
-             ("Арбалетчики", [g for x, y in CREW_PLACES for g in crew_figure("quarrellers", x, y + 2)], True)]
-    cw, ch = box[2] - box[0], box[3] - box[1]
-    sheet = Image.new("RGB", (cw * 2 + 30, (ch + 34) * 3 + 10), (20, 18, 15))
+    place = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]["malakai_near"]
+    mal = Image.open(OUT / "malakai_near.png").convert("RGBA").resize((round(place[2] * S), round(place[3] * S)))
+    glow = Image.open(OUT / "crew_glow_4.png").convert("RGBA")
+    gb = crew_glow()["box"]
+    cells = [("А: пунктирная рамка зоны и бирка", crew_empty("a"), False), ("Б: светлые силуэты в чернильном пунктире и бирка", crew_empty("b"), False),
+             ("В (выбран): Б и тёплое свечение бирки до первого выбора", crew_empty("c"), True)]
+    one = 1.029 / S         # the drawing's picture is drawn at 1.6 px a unit, the page at scale 1 shows a unit as 1.029 px
+    cw, ch = round((box[2] - box[0]) * one), round((box[3] - box[1]) * one)
+    font = ImageFont.truetype("arial.ttf", 15)
+    sheet = Image.new("RGB", (cw + round(cw * user_scale) + 40, (ch + 30) * 3 + 10), (20, 18, 15))
     d = ImageDraw.Draw(sheet)
-    from PIL import ImageFont
-    font = ImageFont.truetype("arial.ttf", 16)
-    for i, (title, parts, ink) in enumerate(cells):
+    for i, (title, parts, lit) in enumerate(cells):
         im = base.copy()
-        im.alpha_composite(art.paint(f"web_crew_variant_{i}", art.svg_page(parts, filtered=ink), w, h))
-        mal = Image.open(OUT / "malakai_near.png").convert("RGBA")
-        place = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]["malakai_near"]
-        im.alpha_composite(mal.resize((round(place[2] * S), round(place[3] * S))), (round(place[0] * S), round(place[1] * S)))
-        x, y = 10 + (i % 2) * (cw + 10), 10 + (i // 2) * (ch + 34)
-        d.text((x, y), title, fill=(235, 189, 124), font=font)
-        sheet.paste(im.crop(box).convert("RGB"), (x, y + 22))
+        if lit:
+            im.alpha_composite(glow.resize((round(gb[2] * S), round(gb[3] * S))), (round(gb[0] * S), round(gb[1] * S)))
+        im.alpha_composite(art.paint(f"web_crew_variant_{i}", art.svg_page(parts, filtered=False), w, h))
+        im.alpha_composite(mal, (round(place[0] * S), round(place[1] * S)))
+        crop = im.crop(box).convert("RGB")
+        y = 10 + i * (ch + 30)
+        d.text((10, y), title + "   |   масштаб 1 и масштаб пользователя " + str(user_scale), fill=(235, 189, 124), font=font)
+        sheet.paste(crop.resize((cw, ch), Image.LANCZOS), (10, y + 22))
+        sheet.paste(crop.resize((round(cw * user_scale), round(ch * user_scale)), Image.LANCZOS), (cw + 26, y + 22))
     target = REPO / "build" / "web" / "shots"
     target.mkdir(parents=True, exist_ok=True)
-    sheet.save(target / "crew_area_variants.png")
+    sheet.save(target / "crew_spot_variants.png")
 
 
 def tree_line():

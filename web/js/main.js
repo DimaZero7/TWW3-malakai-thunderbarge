@@ -90,7 +90,7 @@ async function main() {
     M.on_change(update);
     // The page's state lives through a reload: localStorage, one key per stage; the buttons of the bar: build up to the selected building, forget all.
     const saveKey = 'mtb_web_state_' + stageName;
-    const save = () => { try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected, crew: M.crew_snapshot()})); } catch (e) { /* no storage: the page still works */ } };
+    const save = () => { try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected, crew: M.crew_snapshot(), crew_chosen: !M.crew_hint()})); } catch (e) { /* no storage: the page still works */ } };
     M.on_change(save);
     panel.view.onSelect = save;
     try {
@@ -100,6 +100,7 @@ async function main() {
             if (saved.side) M.set_side_silently(saved.side);
             M.set_side_chosen_silently(saved.side_chosen);
             M.set_crew_silently(saved.crew);
+            M.set_crew_chosen_silently(saved.crew_chosen);
             if (saved.selected && M.level(saved.selected)) panel.view.selected = saved.selected;
         }
     } catch (e) { /* a broken or missing save: start fresh */ }

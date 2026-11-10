@@ -192,10 +192,15 @@ export function makeBuildings(data, game, parts) {
         if (game.treasury() < o.hire) { message = `Не хватает золота на «${o.name}»: найм ${o.hire}.`; fire(); return {ok: false, why: message}; }
         game.gold -= o.hire;        // GAME: cm:treasury_mod(faction, -hire)
         crew[group] = option;
+        crewChosen = true;
         message = o.empty ? 'Стрелки сошли с бортов.' : `«${o.name}» встают к бортам: найм ${o.hire}, содержание ${o.upkeep} за ход.`;
         fire();
         return {ok: true};
     };
+    // The hint: the place's tag glows until the player chooses a crew once (as the side's hint; GAME: cm:set_saved_value('mtb_crew_chosen', true)).
+    let crewChosen = false;
+    M.crew_hint = () => !crewChosen;
+    M.set_crew_chosen_silently = v => { crewChosen = !!v; };
     M.crew_snapshot = () => ({...crew});
     M.set_crew_silently = saved => { for (const [g, o] of Object.entries(saved || {})) if (data.groups[g] && data.groups[g].options[o]) crew[g] = o; };
     // a building that no longer stands takes its crew away
