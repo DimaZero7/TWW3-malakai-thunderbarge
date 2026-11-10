@@ -201,6 +201,108 @@ function slotUnitCard(parent, id, x, y, uc, colour, outline) {
     return card;
 }
 
+// The game's building information window, shown while the mouse is over a node of the tree, as over any building of the game.
+// Laid out after ui/campaign ui/building_information.twui.xml, 400 wide, every block as tall as its text (the template's lists size to content):
+//   building_information_holder   tooltip_frame.png, margins 15
+//   dy_title                      at 0, 1; 400 x 38; header_14 centred, text offsets 10 / 10 across, 12 above, 8 below
+//   hbar                          separator_skull2.png 380 x 14 at 10, 33
+//   dy_secondary_title            the chain's name: at 39, 30 tall; body_12 centred, 12 above, 2 below
+//   description_window            body_12_italic centred, 14 / 14 across, 20 above, 16 below, at least 52 tall
+//   effects_list                  building_info_generic_entry.twui.xml per effect: icon 24 x 24 at 10, 0 (effects.icon); text from 36 to 8 before the edge,
+//                                 6 above, 8 below, at least 30 tall
+//   building_info_recruitment_effects.twui.xml ("Unlocks recruitment of:"; here what the building opens in the crew): title row 24: icon 24 x 24 at 10, 0,
+//                                 text at 38, 6 above; unit_entry 50 tall: unit_cat_holder_round.png 26 x 26 at 24, 4, the category icon 22 x 22 in it,
+//                                 the name at 52, 11 above
+//   bottom_padding                17
+//   instruction_window            a window of its own under the first, overlapping it by 8 (the list's spacing 0, -8): tooltip_frame.png, margins 16
+//                                 and 20; body_12, 13 / 10 across, 13 above, 10 below; the reason why the building cannot be built, red
+// The game's window has no cost and no time: they stand by the slot (the cost banner; the turns in the panel's line of the selected building).
+const INFO_W = 400, INFO_EFFECTS = 10, INFO_UNITS = 4;
+function makeInfoTip(parent, id) {
+    const D = 'ui/skins/default/';
+    const tip = make(parent, id, 'tooltip_frame');
+    size(tip, INFO_W, 100);
+    const t = {tip, w: INFO_W};
+    t.title = text(tip, 'dy_title', 'text_info_title', 10, 1 + 2, INFO_W - 20, 38, '');      // 12 above and 8 below the text: its middle 2 under the box's
+    t.hbar = make(tip, 'hbar', 'separator_skull');
+    size(t.hbar, 380, 14);
+    at(t.hbar, 10, 33);
+    t.chain = text(tip, 'dy_secondary_title', 'text_info_centre', 8, 39 + 12 - 4, INFO_W - 16, 22, '');   // 30 tall with 12 above and 2 below: 16 left for a line of 22, it sits 4 higher
+    t.description = text(tip, 'description_window', 'text_info_italic', 14, 0, INFO_W - 28, 16, '');
+    t.effects = [];
+    for (let i = 0; i < INFO_EFFECTS; i++) {
+        t.effects.push({icon: image(tip, 'effect_icon_' + i, D + 'replenishement_positive.png', 10, 0, 24, 24), text: text(tip, 'effect_' + i, 'text_info', 36, 0, INFO_W - 36 - 8, 16, '')});
+    }
+    t.opensIcon = image(tip, 'effect_icon', D + 'replenishement_positive.png', 10, 0, 24, 24);
+    t.opensTitle = text(tip, 'tx_enables', 'text_info', 38, 0, INFO_W - 38 - 10, 16, 'Открывает в экипаже:');
+    t.units = [];
+    for (let i = 0; i < INFO_UNITS; i++) {
+        const holder = image(tip, 'unit_cat_frame_' + i, D + 'unit_cat_holder_round.png', 24, 0, 26, 26);
+        t.units.push({holder, icon: image(holder, 'unit_category_icon', D + 'replenishement_positive.png', 2, 2, 22, 22), name: text(tip, 'unit_name_' + i, 'text_info', 52, 0, INFO_W - 52 - 10, 16, '')});
+    }
+    t.instruction = make(parent, id + '_instruction', 'tooltip_instruction');
+    t.reason = text(t.instruction, 'reason', 'text_info', 13, 13, INFO_W - 23, 16, '');
+    tip.SetVisible(false);
+    t.instruction.SetVisible(false);
+    return t;
+}
+
+// Fills the window and stacks its blocks as the template's lists do. content: {title, chain, description, effects: [{icon, text, good}],
+// opens: [{category, text}], reason}. Returns the height of the whole (with the instruction window).
+function fillInfoTip(t, content) {
+    const tall = c => c.TextDimensions()[1];
+    const put = (c, x, y) => { at(c, x, y); size(c, c.Width(), Math.max(22, tall(c))); };
+    t.title.SetStateText(content.title || '');
+    t.chain.SetStateText(content.chain || '');
+    let y = 39 + 30;
+    t.description.SetStateText(content.description || '');
+    t.description.SetVisible(!!content.description);
+    if (content.description) {
+        put(t.description, 14, y + 20);
+        y += Math.max(52, 20 + tall(t.description) + 16);
+    }
+    t.effects.forEach((row, i) => {
+        const e = (content.effects || [])[i];
+        row.icon.SetVisible(!!e); row.text.SetVisible(!!e);
+        if (!e) return;
+        if (e.icon) row.icon.SetImagePath(e.icon, 0);
+        row.text.SetStateText(`[[col:${e.good === false ? 'game_red' : 'game_green'}]]${e.text}[[/col]]`);
+        at(row.icon, 10, y);
+        put(row.text, 36, y + 6);
+        y += Math.max(30, 6 + tall(row.text) + 8);
+    });
+    const opens = content.opens || [];
+    t.opensIcon.SetVisible(!!opens.length); t.opensTitle.SetVisible(!!opens.length);
+    if (opens.length) {
+        at(t.opensIcon, 10, y);
+        put(t.opensTitle, 38, y + 6);
+        y += 24;
+    }
+    t.units.forEach((row, i) => {
+        const o = opens[i];
+        row.holder.SetVisible(!!o); row.name.SetVisible(!!o);
+        if (!o) return;
+        if (o.category) row.icon.SetImagePath(o.category, 0);
+        row.name.SetStateText(o.text);
+        at(row.holder, 24, y + 4);
+        put(row.name, 52, y + 11);
+        y += Math.max(50, 11 + tall(row.name) + 4);
+    });
+    y += 17;
+    size(t.tip, t.w, y);
+    t.h = y;
+    t.reason.SetStateText(content.reason ? `[[col:game_red]]${content.reason}[[/col]]` : '');
+    t.has_reason = !!content.reason;
+    t.reason_h = 0;
+    if (content.reason) {
+        size(t.reason, t.reason.Width(), Math.max(22, tall(t.reason)));
+        t.reason_h = 13 + t.reason.Height() + 10;
+        size(t.instruction, t.w, t.reason_h);
+        t.h = y - 8 + t.reason_h;
+    }
+    return t.h;
+}
+
 function demoTip(parent, id, x, bottom, spec) {
     const tw = 300, pad = 14, vw = tw - 2 * pad, vh = Math.round(vw * 9 / 16), th = pad + vh + 12 + 24 + 44 + pad;
     const tip = image(parent, id, LAYOUTS + 'backdrop.png', x, bottom - th, tw, th);
@@ -357,6 +459,11 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         v.costText = text(v.cost, 'value', 'text_line', 22, -1, 40, 20, '');
         return v;
     });
+    // the game's building information window of every node, shown while the mouse is over its slot (not over its unit cards: they are siblings)
+    if (flags.tree !== 'demo') for (const [i, v] of view.tree.entries()) {
+        v.info = makeInfoTip(parent.parent, 'building_information_' + i);
+        v.button.AddHoverChild(v.info.tip);
+    }
     // the construction's clock-wipe, frame by frame (constructing_1 .. 12), as the game animates it
     view.wipe = 1;
     setInterval(() => {
@@ -428,7 +535,35 @@ function refreshTree(view, M) {
         // the game's red state adds a dark shadow behind the number (red_text_banner_shadow.png); the red of the number itself is the page's guess, to check in the game
         v.costText.SetStateText(row ? (poor ? `[[col:red]]${row.cost}[[/col]]` : String(row.cost)) : '');
         const state = poor ? `не хватает золота: нужно ${row.cost}` : {built: 'построено', building: `строится, ${turnsText(st.turns || 0)}`, open: 'можно заказать', locked: st.why || 'недоступно', demo: 'пример, не из данных'}[st.state] || '';
-        v.button.SetTooltipText(`${v.node.name}\n${state}`, true);
+        if (!v.info) { v.button.SetTooltipText(`${v.node.name}\n${state}`, true); continue; }
+        // The building information window: what the game writes about a building, and under it, red, why it cannot be built now.
+        const card = view.cards[v.node.key];
+        const opens = ((card && card.opens) || []).filter(o => o.panel !== false && !o.mount);
+        const reason = st.state === 'locked' ? (poor ? `Не хватает золота: нужно ${row.cost}.` : (st.why || 'Недоступно') + '.') : '';
+        fillInfoTip(v.info, {
+            title: v.node.name, chain: (card && card.chain_title) || '', description: firstPart(row.text || (card && card.text)),
+            // a line of the mod that only names what the crew block below shows is not repeated
+            effects: (card ? card.effects.filter(e => !e.hidden && !e.off && !opens.some(o => (e.text || '').includes(o.name))) : row.lines.map(l => ({text: l})))
+                .map(e => ({icon: e.icon, text: e.text || `${e.effect} = ${e.value}`, good: e.good})),
+            opens: opens.map(o => {
+                const option = view.data.groups[o.group].options[o.option], money = [o.hire ? `найм ${o.hire}` : '', o.upkeep ? `содержание ${o.upkeep} за ход` : ''].filter(Boolean).join(', ');
+                return {category: option.unit_card && option.unit_card.category, text: o.name + (money ? ` (${money})` : '')};
+            }),
+            reason,
+        });
+        // Beside the slot as the game puts it (docs/feedback/01-building-tooltip.png): right of the slot and of its unit cards (17 beyond the slot), the
+        // lower edge 28 under the slot's; on the left of the slot when the screen ends, and kept inside the screen. Offsets from the panel's frame.
+        const frame = v.info.tip.parent, col = v.button.parent, root = frame.parent;
+        const sx = col.x + v.button.x, sy = col.y + v.button.y;
+        let x = sx + NODE + 17;
+        if (frame.x + x + INFO_W > root.Width() - 4) x = sx - 8 - INFO_W;
+        const y = Math.max(4 - frame.y, Math.min(root.Height() - 4 - frame.y, sy + NODE + 28) - v.info.h);
+        at(v.info.tip, x, y);
+        at(v.info.instruction, x, y + v.info.h - v.info.reason_h);
+        if (!v.info.hooked) { v.info.hooked = true; v.button.AddHoverChild(v.info.instruction); }
+        if (!v.info.has_reason) v.info.instruction.SetVisible(false);
+        v.info.instruction.el.style.visibility = v.info.has_reason ? '' : 'hidden';
+        v.button.SetTooltipText('', true);
     }
 }
 
@@ -581,8 +716,9 @@ function refresh(view, M) {
         view.selName.SetVisible(!!node);
         view.selMeta.SetVisible(!!node);
         if (node) {
-            at(view.selName, 14, view.detail_top);
-            at(view.selMeta, 14, view.detail_top + 28);
+            // the name and one line of state right over the commands; what the building gives is in its information window, on hover
+            at(view.selName, 14, view.order.button.y - 56);
+            at(view.selMeta, 14, view.order.button.y - 28);
             view.selName.SetStateText(node.node.name);
         }
     }
@@ -596,6 +732,7 @@ function refresh(view, M) {
     if (view.tree) view.demolish.button.SetVisible(!!(view_flags.full || view.demolishShown));
     const sel = view.selected && M.level(view.selected);
     for (const c of [view.detail, view.lines, view.order.button, view.cancel.button]) c.SetVisible(!!sel);
+    if (view.tree) { view.detail.SetVisible(false); view.lines.SetVisible(false); }
     if (!sel) {
         view.demolish.button.SetVisible(false);
         view.message.SetStateText(M.message() || '');

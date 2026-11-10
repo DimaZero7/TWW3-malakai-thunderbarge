@@ -54,7 +54,10 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/turns_banner_queued.png", "ui/skins/default/turns_banner.png", "ui/skins/default/1x1_transparent_white.png",
            # the small unit cards beside a slot of the game's building browser (ui/templates/building_frame.twui.xml, units_list): the frame over the unit's
            # picture; the pictures of the units themselves come with export_data (unit_card_of)
-           "ui/skins/default/unit_card_build_frame.png"]
+           "ui/skins/default/unit_card_build_frame.png",
+           # the game's building information window (ui/campaign ui/building_information.twui.xml and its entries)
+           "ui/skins/default/tooltip_frame.png", "ui/skins/default/separator_skull2.png", "ui/skins/default/unit_cat_holder_round.png",
+           "ui/skins/default/replenishement_positive.png"]
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
@@ -119,6 +122,28 @@ def campaign_text():
     return json.loads((REPO / "data" / "campaign_text.json").read_text(encoding="utf-8"))
 
 
+def unit_group_icons():
+    """{ui unit group: icon} of the game's ui_unit_groupings table, whose icon is not always the key (missile_infantry_crossbow: missile_infantry_bow_dwf).
+    The table has no layout in data/db_layouts.json: its rows are read as they lie, strings with a u16 length."""
+    out = {}
+    for _, blob in gamepack.entries(gamepack.DATA / "db.pack", lambda n: n.lower().startswith("db" + chr(92) + "ui_unit_groupings_tables")):
+        strings, pos = [], 0
+        for m in re.finditer(rb"[a-z0-9_]{4,}", blob):
+            start, text = m.start(), m.group()
+            if start >= 2 and struct.unpack_from("<H", blob, start - 2)[0] == len(text):
+                strings.append((start, text.decode()))
+        # a row is icon, key, parent group, one after another: runs of strings that follow each other at once, taken three at a time
+        run = []
+        for start, text in strings + [(-1, "")]:
+            if run and start == run[-1][0] + len(run[-1][1]) + 2:
+                run.append((start, text))
+                continue
+            for i in range(0, len(run) - 2, 3):
+                out.setdefault(run[i + 1][1], run[i][1])
+            run = [(start, text)]
+    return out
+
+
 def export_data():
     """The barge's building levels as tools/build.py makes them: build.derive + build.derive_campaign (crew_buildings.add_rows), the green lines of crew_ui.building_lines,
     the hire and upkeep of crew_ui. Nothing is copied by hand from data/crew_options.json, so a change there shows on the page after this export."""
@@ -180,6 +205,7 @@ def export_data():
     # the category icon of main_units.ui_unit_group_land, the number of men aboard. Copies of the game's pictures go to build/web/game only.
     variant_card = {r["unit"]: r["unit_card"] for r in stock["unit_variants"]}
     unit_group = {r["unit"]: r["ui_unit_group_land"] for r in stock["main_units"]}
+    group_icons = unit_group_icons()
     unit_pictures = []
 
     def unit_card_of(option):
@@ -187,7 +213,7 @@ def export_data():
         unit = source.get("unit")
         if not unit or unit not in variant_card or option.get("stock"):
             return None
-        card = {"picture": f"ui/units/icons/{variant_card[unit]}.png", "category": f"ui/common ui/unit_category_icons/{unit_group[unit]}.png", "men": source["count"]}
+        card = {"picture": f"ui/units/icons/{variant_card[unit]}.png", "category": f"ui/common ui/unit_category_icons/{group_icons.get(unit_group[unit], unit_group[unit])}.png", "men": source["count"]}
         unit_pictures.extend([card["picture"], card["category"]])
         return card
 
@@ -532,6 +558,8 @@ def export_overview():
             changed.add(key)
         effects[key] = r
     priority = {r["effect"]: r["priority"] for r in stock["effects"]} | {r["effect"]: r["priority"] for r in t["effects"]}
+    # the icon of an effect in the game's lists (effects.icon, a file of ui/campaign ui/effect_bundles) and whether a positive value is good (green)
+    effect_rows = {r["effect"]: r for r in stock["effects"]} | {r["effect"]: r for r in t["effects"]}
     required = {}
     for r in stock["building_level_required_buildings"] + t["building_level_required_buildings"]:
         if r["building_level"].startswith(prefix):
@@ -584,6 +612,8 @@ def export_overview():
                 template = texts.get(f"effects_description_{e}")
                 effs.append({"effect": e, "scope": scope, "value": row["value"], "text": effect_text(template, row["value"]) if template else None,
                              "ours": e.startswith("mtb_"), "changed": (b, e, scope) in changed, "off": (b, e, scope) in changed and not row["value"],
+                             "icon": "ui/campaign ui/effect_bundles/" + effect_rows[e]["icon"] if effect_rows.get(e, {}).get("icon") else None,
+                             "good": (row["value"] >= 0) == bool(effect_rows.get(e, {}).get("is_positive_value_good", True)),
                              # hidden in the game's lists: priority 0, as the game's own hidden effects (the mod's hidden_effects too)
                              "hidden": "(HIDDEN" in (template or "") or priority.get(e) == 0})
             opens = []
@@ -613,6 +643,7 @@ def export_overview():
                                ("effect text not in Russian", any(e["text"] and not re.search("[а-яА-Я]", e["text"]) for e in effs))):
                 if bad:
                     missing.add(field)
+            icons.extend(x["icon"] for x in effs if x["icon"])
             cards.append(card)
         crew = sorted({o["group_name"] for c in cards for o in c["opens"]})
         out.append({"chain": chain, "category": chains_info.get(chain, {}).get("chain_category"), "hull": chain == hull_chain,

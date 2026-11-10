@@ -29,7 +29,7 @@ async function main() {
     const game = new GameSim(data, {...sim, ...(stage.built ? {built: stage.built} : {}), ...(stage.demolish_mode ? {demolish: stage.demolish_mode} : {})});
     // the cards of the overview (tools/web_export.py, export_overview) by key: every effect of a level with the game's text, the description, the game's name
     const cards = {};
-    for (const chain of overview.chains) for (const c of chain.cards) cards[c.key] = c;
+    for (const chain of overview.chains) for (const c of chain.cards) cards[c.key] = {...c, chain_title: chain.title};
     const M = makeBuildings(data, game, blueprint.parts);
     const treeSpec = blueprint.tree || {};
     for (const [k, needs] of Object.entries(treeSpec.requires || {})) M.extra_requires[data.prefix + k] = needs.map(n => data.prefix + n);

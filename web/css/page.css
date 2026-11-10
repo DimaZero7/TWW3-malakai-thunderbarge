@@ -43,6 +43,15 @@ main { position: absolute; top: 41px; bottom: 0; left: 0; right: 0; display: fle
 .t.top { align-items: flex-start; display: block; }
 .t.nowrap { white-space: nowrap; }
 .t.header { font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif; letter-spacing: 0.2px; }
+/* the game's tooltip window (building_information.twui.xml: tooltip_frame.png, margins 15; its instruction window: margins 16 and 20) and the title's
+   separator (separator_skull2.png, 380 x 14, margins 50 left and right) */
+.tooltip_frame { border: 15px solid transparent; border-image: url(/build/game/ui/skins/default/tooltip_frame.png) 15 fill round; pointer-events: none; }
+.tooltip_frame > .c { margin: -15px 0 0 -15px; }
+.tooltip_instruction { border-style: solid; border-color: transparent; border-width: 20px 16px; border-image: url(/build/game/ui/skins/default/tooltip_frame.png) 20 16 fill round; pointer-events: none; }
+.tooltip_instruction > .c { margin: -20px 0 0 -16px; }
+.separator_skull { border-style: solid; border-color: transparent; border-width: 0 50px; border-image: url(/build/game/ui/skins/default/separator_skull2.png) 0 50 fill stretch; }
+.col_game_green { color: #91E732; }
+.col_game_red { color: #E22828; }
 .col_yellow { color: #ffd65a; }
 .col_green { color: #9bd36a; }
 .col_red { color: #ff5a4a; }

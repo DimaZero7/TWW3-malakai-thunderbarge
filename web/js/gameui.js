@@ -22,6 +22,15 @@ const TEXT = {
     // a button's label, centred: a layout the mod does not have yet (tools/crew_ui.py: text_layout(..., "Center", "Never split"))
     // the number of men on a unit card (land_unit_card, unit_strength_number): small, centred
     text_card_number: {size: 11, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true},
+    // the game's building information window (ui/campaign ui/building_information.twui.xml): the title header_14 centred, the chain's name and the
+    // description body_12 centred (the description italic), the entries body_12. Colours as the game draws them (docs/feedback/01-building-tooltip.png):
+    // the title #FFF8D7, the chain's name and the description dimmer, effects green, a reason red.
+    // Sizes: the game's font sizes are points, 12 is 16 px and 14 is 19 px on the screen, lines 22 px apart (measured on that screenshot, which is 1:1:
+    // its window is 400 wide as the template's). The page's older layouts above use the number as px and are smaller than the game's.
+    text_info_title: {size: 19, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
+    text_info_centre: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top'},
+    text_info_italic: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top', italic: true},
+    text_info: {size: 16, line: 22, colour: '#FFF8D7', valign: 'top'},
     text_button: {size: 14, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
     text_name_grey: {size: 14, colour: '#8E8A80', nowrap: true, font: 'header'},
     text_body: {size: 12, colour: '#FFF8D7', valign: 'top'},
@@ -95,6 +104,11 @@ export class Component {
     // the game's uic:TextDimensions(): width, height and lines of the text as laid out in the component's width
     TextDimensions() {
         if (!this.textEl) return [0, 0, 0];
+        const hidden = [];      // a component not shown has no layout: shown for the measure, in the same frame
+        for (let c = this; c; c = c.parent) if (c.el.style.display === 'none') { hidden.push(c); c.el.style.display = ''; }
+        try { return this.measureText(); } finally { for (const c of hidden) c.el.style.display = 'none'; }
+    }
+    measureText() {
         const r = document.createRange();
         r.selectNodeContents(this.textEl);
         const rect = r.getBoundingClientRect(), scale = this.el.getBoundingClientRect().width / (this.w || 1) || 1;
@@ -162,6 +176,8 @@ export class Component {
         p.textContent = placeholder;
         this.el.appendChild(p);
     }
+    // More children shown while the mouse is over this component, beside the one of SetHoverChild (a tooltip window of the component's own)
+    AddHoverChild(child) { (this.hoverChildren ||= []).push(child); child.SetVisible(!!this.hovered); }
     // the hover state's brighten_t0 shader (0.40 on the slot): brightness raised while the mouse is over
     SetHoverBrighten(k) { this.hoverBrighten = k; }
 
@@ -169,7 +185,7 @@ export class Component {
     makeText(spec) {
         this.textEl = document.createElement('div');
         this.textEl.className = 't' + (spec.nowrap ? ' nowrap' : '') + (spec.valign === 'top' ? ' top' : '') + (spec.font === 'header' ? ' header' : '');
-        Object.assign(this.textEl.style, {fontSize: spec.size + 'px', color: spec.colour, fontWeight: spec.bold ? 'bold' : 'normal', textAlign: spec.align || 'left',
+        Object.assign(this.textEl.style, {fontSize: spec.size + 'px', color: spec.colour, fontWeight: spec.bold ? 'bold' : 'normal', fontStyle: spec.italic ? 'italic' : 'normal', lineHeight: spec.line ? spec.line + 'px' : '', textAlign: spec.align || 'left',
                                           justifyContent: spec.align === 'center' ? 'center' : 'flex-start'});
         this.el.appendChild(this.textEl);
     }
@@ -202,6 +218,7 @@ export class Component {
         if (this.skin && ON_ENTER[this.state]) this.SetState(ON_ENTER[this.state]);
         this.hovered = true;
         if (this.hoverChild) this.hoverChild.SetVisible(true);
+        for (const c of this.hoverChildren || []) c.SetVisible(true);
         if (this.hoverBrighten) { this.hoverFilter = `brightness(${1 + this.hoverBrighten})`; this.paintFilter(); }
         if (this.tooltip) { tooltipOwner = this; showTooltip(this.tooltip, e); }
     }
@@ -210,6 +227,7 @@ export class Component {
         if (this.skin && ON_LEAVE[this.state]) this.SetState(ON_LEAVE[this.state]);
         this.hovered = false;
         if (this.hoverChild) this.hoverChild.SetVisible(false);
+        for (const c of this.hoverChildren || []) c.SetVisible(false);
         if (this.hoverBrighten) { this.hoverFilter = ''; this.paintFilter(); }
         if (tooltipOwner === this) { tooltipOwner = null; hideTooltip(); }
     }
