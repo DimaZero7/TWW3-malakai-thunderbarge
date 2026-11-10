@@ -21,7 +21,7 @@ function grey(c, on) { c.ShaderTechniqueSet(on ? 'set_greyscale_t0' : 'normal_t0
 
 export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view_flags = flags;
-    const view = {rows: [], layers: {}, selected: null};
+    const view = {rows: [], layers: {}, selected: null, crew: [], data};
     const W = root.Width(), H = root.Height();
     const panel_w = Math.min(W - 40, 1560), panel_h = Math.min(H - 30, 870);
     const title_h = 66, pad = 16;
@@ -161,27 +161,6 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     text(column, 'foot', 'text_note', 14, scheme_h - foot_h + 2, column_w - 28, foot_h - 6,
         'Постройка идёт через очередь игры: цена списывается при заказе, отмена в том же ходу возвращает всё. Готовая часть встаёт на модель и на чертёж в начале хода.');
 
-    // The crew a building opens (blueprint.json, crew_cards), in the details of that building, before and after it is built. Laid out after the game's
-    // building information (ui/campaign ui/building_information.twui.xml: effects_list, then building_info_recruitment_effects.twui.xml): under the effects
-    // a separator (the template names h_line.png, a file the game does not have: the tree's brass line stands in), the icon at 10 and the title at 38 ("Unlocks recruitment of:"), then an entry per unit. The game's entry is a round category
-    // icon and the unit's name; here it is the name and the unit's own card of the army panel (unitCard) at the right of the details, in the frame of the
-    // crew aboard. On hover of the card the same demo window as Malakai's side, opening to the card's left.
-    view.crew = [];
-    view.text_w = column_w - 28;
-    for (const spec of blueprint.crew_cards || []) {
-        const group = data.groups[spec.group], option = group && group.options[spec.option], uc = option && option.unit_card;
-        if (!uc) continue;
-        const card = unitCard(column, 'mtb_crew_card_' + spec.option, column_w - 14 - CARD_W, 0, uc, group.card_frame || 'gold');
-        const line = image(column, 'crew_line_' + spec.option, WEB_ART + 'tree_line.png', 14, 0, column_w - 28 - CARD_W - 12, 1);
-        const icon = image(column, 'crew_icon_' + spec.option, 'ui/skins/default/replenishement_positive.png', 14 + 10 - 8, 0, 18, 18);
-        const title = text(column, 'crew_title_' + spec.option, 'text_line', 14 + 38 - 12, 0, 240, 16, 'Открывает в экипаже:');
-        const money = [option.hire ? `найм ${option.hire}` : '', option.upkeep ? `содержание ${option.upkeep}/ход` : ''].filter(Boolean).join(' · ');
-        const name = text(column, 'crew_name_' + spec.option, 'text_line', 14 + 38 - 12, 0, column_w - 28 - CARD_W - 38, 16, `[[col:yellow]]${option.name}[[/col]]${money ? ' · ' + money : ''}`);
-        const demo = demoTip(column, 'crew_demo_tip_' + spec.option, column_w - 14 - CARD_W - 12 - 300, 0, {movie: spec.movie, head: spec.head || option.name, text: spec.text || ''});
-        card.SetHoverChild(demo.tip);
-        view.crew.push({card, line, icon, title, name, tip: demo.tip, tip_h: demo.h, building: M.prefix + spec.building, option_name: option.name});
-    }
-
     // which levels show: the first of the chain now, all of it behind ?full=1
     view.levels = [];
     for (const key of blueprint.chains) {
@@ -203,20 +182,15 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
 // picture), the video, a brass head and light text with even margins, the panel's frame edge over it all. x: its left, bottom: its lower edge.
 // The clip is web/art/<movie>.webm or .mp4, taken when the file is there; until then a placeholder.
 // In the game: a frame layout with a movie component (the spell browser's MoviePlayer callback, its loop property).
-// A unit as the army panel shows it (ui/common ui/land_unit_card.twui.xml: 60 x 130, the unit's picture, the frame, the plate with the number of men over
-// the bar, the half round with the unit's category), inside a frame of the crew group's colour (tools/web_art.py, aboard_frames) that says the unit stands
-// on the ship and not in the army's line. uc: unit_card of build/web/data.json (tools/web_export.py).
-const CARD_B = 6, CARD_W = 60 + 2 * CARD_B, CARD_H = 130 + 2 * CARD_B;
-function unitCard(parent, id, x, y, uc, colour) {
-    const D = 'ui/skins/default/', B = CARD_B;
-    const card = image(parent, id, WEB_ART + `aboard_frame_${colour}.png`, x, y, CARD_W, CARD_H);
-    image(card, 'picture', uc.picture, B, B, 60, 130);
-    image(card, 'frame', D + 'unit_card_frame_plain.png', B, B, 60, 130);
-    image(card, 'health_back', D + 'unit_card_back.png', B + 4, B + 3, 52, 11);
-    image(card, 'health_fill', D + 'bar_white.png', B + 4, B + 11, 52, 3).SetImageColour(60, 190, 40, 255);      // full strength: the game's green bar
-    text(card, 'unit_strength_number', 'text_card_number', B + 4, B + 1, 52, 12, String(uc.men));
-    image(card, 'unit_cat_frame', D + 'unit_card_semicircle.png', B + 3, B + 95, 55, 35);
-    image(card, 'unit_category_icon', uc.category, B + 19, B + 106, 22, 22);
+// The small unit card beside a building's slot in the game's building browser (ui/templates/building_frame.twui.xml: units_list docked to the slot's top
+// right corner, entries unit_context of 23 x 50: the unit's picture squeezed into it under unit_card_build_frame.png, the entries overlapping by 10),
+// inside a thin frame of the crew group's colour (tools/web_art.py, aboard_frames) that says the unit stands on the ship and not in the army's line.
+const CARD_B = 3, CARD_W = 23, CARD_H = 50, CARD_STEP = CARD_W + 2 * CARD_B - 10;
+function slotUnitCard(parent, id, x, y, uc, colour) {
+    const B = CARD_B;
+    const card = image(parent, id, WEB_ART + `aboard_frame_${colour}.png`, x, y, CARD_W + 2 * B, CARD_H + 2 * B);
+    image(card, 'picture', uc.picture, B, B, CARD_W, CARD_H);
+    image(card, 'frame', 'ui/skins/default/unit_card_build_frame.png', B, B, CARD_W, CARD_H);
     card.SetHoverBrighten(0.25);
     return card;
 }
@@ -368,6 +342,27 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         view.wipe = view.wipe % 12 + 1;
         for (const v of view.tree || []) if (v.constructing.Visible()) v.constructing.SetImagePath(D + `constructing_${view.wipe}.png`, 0);
     }, 120);
+    // The crew a building opens (blueprint.json, crew_cards): small unit cards beside its slot, as the game's building browser shows the units a building
+    // unlocks. Always in colour, whatever the slot's state (in the game too: the slot is a sibling, its grey does not reach them). The game hangs them
+    // from 22 above the slot and 19 inside it; here the slots stand closer (the cost banner of the slot above comes down to 8 over this one) and the slot's
+    // corner holds the check or the padlock, so the cards start 7 above the slot and 8 inside it. On hover the demo window, the same as Malakai's side:
+    // it opens left of the slot, over the drawing's edge, level with the card, and covers neither the slot nor the cards nor the tree's other nodes.
+    view.crew = [];
+    const count = {};
+    const frame = parent.parent;
+    for (const spec of (!flags.tree && blueprint.crew_cards) || []) {
+        const group = view.data.groups[spec.group], option = group && group.options[spec.option], uc = option && option.unit_card;
+        const v = view.tree.find(t => t.node.key === M.prefix + spec.building);
+        if (!uc || !v) continue;
+        const n = count[v.node.key] = (count[v.node.key] || 0) + 1;
+        const cx = v.button.x + NODE - 8 + (n - 1) * CARD_STEP, cy = v.button.y - 7;
+        const card = slotUnitCard(parent, 'mtb_crew_card_' + spec.option, cx, cy, uc, group.card_frame || 'gold');
+        const centre = parent.y + cy + (CARD_H + 2 * CARD_B) / 2, tip_h = 261;
+        const bottom = Math.min(frame.Height() - 12, Math.max(70 + tip_h, centre + tip_h / 2));
+        const demo = demoTip(frame, 'crew_demo_tip_' + spec.option, parent.x + v.button.x - 8 - 300, bottom, {movie: spec.movie, head: spec.head || option.name, text: spec.text || ''});
+        card.SetHoverChild(demo.tip);
+        view.crew.push({card, tip: demo.tip, building: v.node.key});
+    }
     view.selected = nodes.length ? nodes[0].key : null;
     return height + 20;      // the cost banner under the lowest row
 }
@@ -458,11 +453,10 @@ function effectLines(row, card) {
 // The green lines with what the level opens in the crew panel (the overview's card, opens): hire and upkeep from the mod's data, as the overview writes them.
 // The money goes on the green line that names the option (the mod's line "Открывает в экипаже: ..."), else on a line of its own.
 // Not the groups the panel does not list (the pub: buildings set it) and not the bare mounts, whose green line says it already.
-function detailLines(row, card, shown = []) {
-    // a crew shown with its card under the lines (shown: its names) is not repeated as a line
-    const lines = effectLines(row, card).filter(l => !shown.some(n => l.includes(n)));
+function detailLines(row, card) {
+    const lines = [...effectLines(row, card)];
     for (const o of (card && card.opens) || []) {
-        if (o.panel === false || o.mount || shown.includes(o.name)) continue;
+        if (o.panel === false || o.mount) continue;
         const money = [o.hire ? `найм ${o.hire}` : '', o.upkeep ? `содержание ${o.upkeep}/ход` : ''].filter(Boolean).join(', ');
         const i = lines.findIndex(l => l.includes(o.name));
         if (i >= 0) { if (money) lines[i] += ` [[col:yellow]](${money})[[/col]]`; }
@@ -579,11 +573,6 @@ function refresh(view, M) {
     if (view.tree) view.demolish.button.SetVisible(!!(view_flags.full || view.demolishShown));
     const sel = view.selected && M.level(view.selected);
     for (const c of [view.detail, view.lines, view.order.button, view.cancel.button]) c.SetVisible(!!sel);
-    // the crew the selected building opens: its card at the right of the details, the texts beside it narrower
-    const crew = view.crew.filter(c => sel && c.building === sel.key && !demo);
-    for (const c of view.crew) if (!crew.includes(c)) { for (const part of [c.card, c.line, c.icon, c.title, c.name, c.tip]) part.SetVisible(false); c.card.SetHoverChild(null); }
-    const text_w = view.text_w - (crew.length ? CARD_W + 12 : 0);
-    for (const c of [view.detail, view.lines, ...(view.selMeta ? [view.selMeta, view.selName] : [])]) size(c, text_w, c.Height());
     if (!sel) {
         view.demolish.button.SetVisible(false);
         view.message.SetStateText(M.message() || '');
@@ -595,8 +584,7 @@ function refresh(view, M) {
     if (view.selMeta) {
         const s0 = M.status(sel.key);
         const state = {built: 'Построено', building: `Строится: осталось ${turnsText(s0.turns || 0)}`, open: 'Можно заказать', locked: s0.why || 'Недоступно'}[s0.state] || '';
-        const label = crew.length ? '' : 'Цена: ';      // beside a crew's card the line is narrower
-        const price = s0.poor ? `[[col:red]]${label}${sel.cost} золота[[/col]]` : `${label}${sel.cost} золота`;
+        const price = s0.poor ? `[[col:red]]Цена: ${sel.cost} золота[[/col]]` : `Цена: ${sel.cost} золота`;
         view.selMeta.SetStateText(`${price} · ${turnsText(sel.turns)} · ${state}`);
     }
     view.detail.SetStateText(firstPart(sel.text || (card && card.text)));
@@ -604,20 +592,7 @@ function refresh(view, M) {
     const lines_y = view.tree ? y + Math.max(1, view.detail.TextDimensions()[2]) * 15 + 4 : y + 46;
     at(view.lines, 14, lines_y);
     size(view.lines, view.lines.Width(), Math.max(80, view.order.button.y - lines_y - 4));
-    view.lines.SetStateText(detailLines(sel, card, crew.map(c => c.option_name)).join('\n'));
-    let crew_y = lines_y + view.lines.TextDimensions()[1] + 3;
-    for (const c of crew) {
-        for (const part of [c.card, c.line, c.icon, c.title, c.name]) part.SetVisible(true);
-        at(c.line, 14, crew_y);
-        at(c.icon, c.icon.x, crew_y + 2);
-        at(c.title, c.title.x, crew_y + 2);
-        at(c.name, c.name.x, crew_y + 16);
-        const card_y = view.order.button.y - 6 - CARD_H;
-        at(c.card, c.card.x, card_y);
-        at(c.tip, c.tip.x, card_y + CARD_H - c.tip_h);
-        c.card.SetHoverChild(c.tip);
-        crew_y += 34;
-    }
+    view.lines.SetStateText(detailLines(sel, card).join('\n'));
     const st = M.status(sel.key);
     view.order.button.SetState(st.state === 'open' ? 'active' : 'inactive');
     view.order.button.SetTooltipText(st.state === 'open' ? `Заказать «${sel.name}»: ${sel.cost} золота, ${turnsText(sel.turns)}` : (st.why || (st.state === 'building' ? 'Уже строится' : 'Уже построено')), true);
