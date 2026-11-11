@@ -7,11 +7,19 @@
 //                          with the game's slot, its price, its crew's small cards and its name in up to three lines; every link its own way
 //                          through the corridors between the cards, an arrow at the building that needs it. Pan, zoom, select, move, link, menu.
 //                          The status line under it: the zoom, a hint of what the mouse does where it is, the checks.
-//   the properties (right) every field of the selected node, applied at once; a group, a link, or the tree as a whole when nothing is selected
+//   the properties (right) every field of the selected node, applied at once; a group, a link, or the tree as a whole when nothing is selected.
+//                          The lines of effects come from a catalogue (web/js/effects_model.mjs: the crew's shooting by group, the ship, the game's own
+//                          effects of build/web/catalog.json) or are free text; the army units a building opens for recruitment (catalog.json); what
+//                          appears on the ship with it (web/data/blueprint.json parts, or a new detail described for the developer)
 //   the bar                undo, redo, delete, copy, show all, the file's menu, the keys, and the state of saving
+// The file has a version (tools/web_serve.py): a write names the version it was made on, so it never goes over a change made from outside. The
+// constructor asks for the version every two seconds; a change from outside is taken at once when nothing of the author's waits to be written, merged
+// building by building when something does (tree_model.mjs, merge3), and only a building changed on both sides asks which to keep, the other kept
+// as a copy beside the file.
 // Both side panels fold away ([ and ], \ both) for a large tree on a small screen.
 
 import * as T from './tree_model.mjs';
+import * as FX from './effects_model.mjs';
 import {url} from './gameui.js';
 
 const D = 'ui/skins/default/';
@@ -69,7 +77,7 @@ function wrapName(text) {
     return lines.length ? lines : [''];
 }
 
-export function makeConstructor(host, {data, cards, design, problems = [], onChange = () => {}}) {
+export function makeConstructor(host, {data, cards, design, problems = [], onChange = () => {}, catalog = {}, blueprint = {}, art = {}, version = null}) {
     const hist = new T.History(design);
     const cur = () => hist.current;
     let sel = new Set(), selEdge = null, hotEdge = null;       // selected nodes (ids), one selected link {from, to}, the link under the mouse
@@ -86,6 +94,15 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     const groupOrder = ['rifles', 'cannons', 'cupolas', 'bombs', 'harpoon', 'pub', 'deck'].filter(g => data.groups[g]).concat(Object.keys(data.groups).filter(g => !['rifles', 'cannons', 'cupolas', 'bombs', 'harpoon', 'pub', 'deck'].includes(g)));
     const crewCard = c => { const g = data.groups[c.group], o = g && g.options[c.option]; return o && o.unit_card && c.option !== g.mount ? {uc: o.unit_card, colour: g.card_frame || 'gold'} : null; };
     const unitsOf = n => n.crew.filter(crewCard).length;
+    // the catalogue of effects (web/js/effects_model.mjs) over the export's game effects; the dwarfs' army units; the ship's details
+    const fxCtx = {groups: data.groups, gameEffects: Object.fromEntries((catalog.game_effects || []).map(g => [g.key, g]))};
+    const armyUnits = Object.fromEntries((catalog.army_units || []).map(u => [u.key, u]));
+    const unitName = k => (armyUnits[k] ? armyUnits[k].name : k);
+    const partsInfo = T.shipParts(blueprint, {...(art.places || {}), ...((data.art && data.art.layers) || {})});
+    const partName = k => (partsInfo[k] ? partsInfo[k].name : k);
+    const checkCtx = {modKeys, units: unitsOf, unitName, partKnown: k => !!partsInfo[k], partDrawn: k => !!(partsInfo[k] && partsInfo[k].drawn), partName};
+    const CASTES = {melee_infantry: 'Пехота ближнего боя', missile_infantry: 'Стрелки', warmachine: 'Боевые машины', monster: 'Чудовища', cavalry: 'Кавалерия'};
+    const VARIANT = {malakai: 'версия Малакая', grudge: 'награда за обиду'};
     let icons = null;
     const loadIcons = () => (icons ||= fetch('/api/tree_icons').then(r => r.json()).catch(() => ({buildings: [], effects: []})));
     // an icon's name for people: the buildings that use it (the mod's levels, the game's cards of the overview)
@@ -270,6 +287,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                         h('img', {src: url(D + 'icon_hourglass.png'), alt: '', class: 'hg'}), h('span', {class: 'tu'}, String(n.turns)))),
                 crew.length ? h('div', {class: 'thumbs'}, crew.map((k, i) => h('div', {class: 'card', style: `top:${i * Math.min(16, 46 / Math.max(1, crew.length - 1))}px`},
                     h('img', {src: url(k.uc.picture), alt: ''}), h('img', {src: url(`ui/skins/tww3_mtb/unit_card_build_frame_${k.colour}.png`), alt: ''})))) : null,
+                army(n),
                 h('div', {class: 'name' + (n.name.trim() ? '' : ' empty')}, ...lines.flatMap((l, i) => (i ? [h('br'), l] : [l]))),
                 warned.has(n.id) ? h('div', {class: 'warn'}, '!') : null,
                 h('div', {class: 'hd up', title: 'Тяните к постройке, которая строится ПОСЛЕ этой'}),
@@ -278,11 +296,20 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         }
         renderEdges(over);
     }
+    // the army units a node opens: the game's small cards in the game's own frame, left of the slot (the crew's, in the crew's colour, are right of it)
+    function army(n) {
+        const list = (n.units || []).map(k => armyUnits[k]).filter(Boolean);
+        return list.length ? h('div', {class: 'army'}, list.map((u, i) => h('div', {class: 'card', style: `top:${i * Math.min(16, 46 / Math.max(1, list.length - 1))}px`},
+            h('img', {src: url(u.card.picture), alt: ''}), h('img', {src: url(D + 'unit_card_build_frame.png'), alt: ''})))) : null;
+    }
     function nodeTitle(n) {
         const d = cur();
         const req = n.requires.map(p => T.byId(d, p)).filter(Boolean).map(T.label);
         return [n.name || 'без названия', `${n.cost} золота, ${n.turns} ${turnsWord(n.turns)}${n.tier ? `, тир корпуса ${n.tier}` : ''}`,
-            req.length ? 'Требует: ' + req.join(', ') : 'Ничего не требует', n.mod_key ? 'Мод: ' + n.mod_key : 'Новая постройка (нет в моде)', n.note ? 'Заметка: ' + n.note : ''].filter(Boolean).join('\n');
+            req.length ? 'Требует: ' + req.join(', ') : 'Ничего не требует', n.mod_key ? 'Мод: ' + n.mod_key : 'Новая постройка (нет в моде)',
+            (n.units || []).length ? 'Открывает найм: ' + n.units.map(unitName).join(', ') : '',
+            (n.parts || []).length ? 'На корабле: ' + n.parts.map(p => (p.part ? partName(p.part) : p.name || 'новая деталь')).join(', ') : '',
+            n.note ? 'Заметка: ' + n.note : ''].filter(Boolean).join('\n');
     }
     let tempLink = null;        // {a: {x, y}, b: {x, y}, bad}
     function renderEdges(over = null) {
@@ -327,12 +354,13 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         const d = cur();
         sel = new Set([...sel].filter(id => T.byId(d, id)));
         if (selEdge && !(T.byId(d, selEdge.to) && T.byId(d, selEdge.to).requires.includes(selEdge.from))) selEdge = null;
-        warnList = T.warnings(d, {modKeys, units: unitsOf});
+        warnList = T.warnings(d, checkCtx);
         renderCanvas();
         renderWarnings();
         renderPalette();
         updateTools();
         if (p) renderProps(); else refreshPropsLive();
+        if (modalRedraw) modalRedraw();
         scheduleSave();
         onChange(d);
     }
@@ -705,7 +733,14 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     window.addEventListener('keydown', e => {
         if (!shown) return;
         const k = e.key, ctrl = e.ctrlKey || e.metaKey, inField = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
-        if (document.querySelector('.cx-shade')) { if (k === 'Escape') closeModal(); return; }
+        if (document.querySelector('.cx-shade')) {
+            if (document.querySelector('.cx-shade.sticky')) return;
+            if (k === 'Escape') { e.preventDefault(); closeModal(); return; }
+            // undo and redo inside a picker: the picker shows the state after it
+            if (ctrl && (k === 'z' || k === 'Z' || k === 'я' || k === 'Я') && !e.shiftKey && !inField) { e.preventDefault(); undo(); return; }
+            if (ctrl && (k === 'y' || k === 'Y' || k === 'н' || k === 'Н') && !inField) { e.preventDefault(); redo(); return; }
+            return;
+        }
         if (!['Shift', 'Control', 'Alt', 'Meta'].includes(k)) hideToast();
         if (ctrl && (k === 'z' || k === 'Z' || k === 'я' || k === 'Я') && !e.shiftKey) { e.preventDefault(); flushField(); undo(); return; }
         if (ctrl && ((k === 'y' || k === 'Y' || k === 'н' || k === 'Н') || ((k === 'z' || k === 'Z' || k === 'я' || k === 'Я') && e.shiftKey))) { e.preventDefault(); redo(); return; }
@@ -898,8 +933,10 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                 h('div', {}, h('button', {onclick: () => iconGallery(n.id)}, 'Выбрать…'), ' ',
                     n.icon ? h('button', {onclick: () => commit('Значок', x => T.updateNode(x, n.id, {icon: null}))}, 'Убрать') : null,
                     h('div', {class: 'help'}, n.icon ? iconLabel(n.icon) : 'нет значка')))),
-            field('Строки эффектов (зелёные)', effectsEditor(n)),
+            field('Эффекты (строки в окне сведений)', effectsEditor(n)),
             field('Открывает в экипаже', crewEditor(n)),
+            field('Открывает найм отрядов (армия)', unitsEditor(n)),
+            field('Что появляется на корабле', partsEditor(n)),
             field('Цвет ветки (рамка и линии к ней)', swatches(n.branch, b => commit('Цвет ветки', x => T.updateNode(x, n.id, {branch: b})))),
             field('Заметка для разработчика', bind(n, 'note', h('textarea', {rows: 3, placeholder: 'Что эта постройка должна делать, идеи, сомнения. Её читает агент'}))),
             h('div', {class: 'cx-field'}, h('label', {}, 'Ключ постройки мода'), h('div', {class: 'cx-row2', style: 'align-items:center'}, keyInput, fill), keyHelp),
@@ -934,24 +971,241 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         return h('div', {class: 'cx-swatches'}, BRANCHES.map(([b, name]) => h('button', {class: current === b ? 'on' : '', onclick: () => fn(b)},
             h('i', {style: `background:${LINE[b || 'trunk']}`}), name)));
     }
-    // a line: its icon and its text on one row, its buttons under it (the panel is narrow on a small screen)
+    // An effect: its icon and its line on one row (the line as the game's window shows it, green or red), under it what it is. An effect of the
+    // catalogue: its kind and target, the value, what the mod has for it; the line follows the value until the author writes his own (↺ gives the
+    // pattern back). A free line: when it reads as an effect of the catalogue, a button proposes it; nothing changes without the click.
+    const STATUS_SHORT = {have: 'есть в моде', dev: 'нужна разработка', unknown: 'не проверено'};
+    // the proposals the author waved away: a convenience of this browser, not of the file
+    const DISMISS = 'mtb_cx_no_propose';
+    const dismissedSet = () => { try { return new Set(JSON.parse(localStorage.getItem(DISMISS) || '[]')); } catch (e) { return new Set(); } };
+    const dismissed = (id, text) => dismissedSet().has(id + '|' + text);
+    const dismiss = (id, text) => { try { const s = dismissedSet(); s.add(id + '|' + text); localStorage.setItem(DISMISS, JSON.stringify([...s].slice(-500))); } catch (e) { /* no storage */ } };
+    const statusBadge = st => h('span', {class: 'cx-status-badge ' + st[0], title: `${FX.STATUS[st[0]]}: ${st[1]}`}, STATUS_SHORT[st[0]]);
     function effectsEditor(n) {
         const box = h('div', {class: 'cx-effects'});
+        const setFx = (i, label, fn, merge = null, opt) => commit(label, d => { const fx = T.byId(d, n.id).effects; fn(fx[i]); fx[i] = FX.complete(fx[i], fxCtx); }, merge, opt);
         n.effects.forEach((e, i) => {
-            const input = h('input', {value: e.text, placeholder: 'Текст строки', 'data-field': `effect_${i}`});
-            input.addEventListener('input', () => commit('Строка эффекта', d => { T.byId(d, n.id).effects[i].text = input.value; }, `fx:${n.id}:${i}`, {props: false}));
-            input.addEventListener('blur', flushField);
-            box.append(h('div', {class: 'e' + (e.good ? '' : ' badfx')},
-                h('img', {src: url(e.icon || D + 'replenishement_positive.png'), alt: '', title: 'Значок строки', onclick: () => effectIconGallery(n.id, i)}),
-                input,
-                h('div', {class: 'ebtns'},
-                    h('button', {class: 'mini', title: e.good ? 'Полезная (зелёная). Щёлкните — вредная (красная)' : 'Вредная (красная). Щёлкните — полезная', onclick: () => commit('Строка эффекта', d => { T.byId(d, n.id).effects[i].good = !e.good; })}, e.good ? 'зелёная' : 'красная'),
-                    h('button', {class: 'mini', title: 'Выше', disabled: i === 0, onclick: () => commit('Порядок строк', d => { const fx = T.byId(d, n.id).effects; [fx[i - 1], fx[i]] = [fx[i], fx[i - 1]]; })}, '↑'),
-                    h('button', {class: 'mini', title: 'Ниже', disabled: i === n.effects.length - 1, onclick: () => commit('Порядок строк', d => { const fx = T.byId(d, n.id).effects; [fx[i + 1], fx[i]] = [fx[i], fx[i + 1]]; })}, '↓'),
-                    h('button', {class: 'mini', title: 'Удалить строку', onclick: () => commit('Удаление строки', d => { T.byId(d, n.id).effects.splice(i, 1); })}, '×'))));
+            const structured = FX.isStructured(e);
+            const row = h('div', {class: 'e' + (e.good ? '' : ' badfx') + (structured ? ' fx' : '')});
+            const input = h('input', {value: e.text, placeholder: 'Текст строки', 'data-field': `effect_${i}`, title: structured ? 'Текст строки: можно переписать своими словами, эффект останется' : 'Свободная строка'});
+            input.addEventListener('input', () => {
+                if (structured) setFx(i, 'Текст эффекта', x => { x.text = input.value; x.own_text = true; }, `fx:${n.id}:${i}`, {props: false});
+                else commit('Строка эффекта', d => { T.byId(d, n.id).effects[i].text = input.value; }, `fx:${n.id}:${i}`, {props: false});
+                if (proposalEl) proposalEl.remove();
+            });
+            input.addEventListener('blur', () => { flushField(); if (structured && !input.value.trim()) setFx(i, 'Текст по образцу', x => { x.own_text = false; }); });
+            row.append(h('img', {src: url(e.icon || D + 'replenishement_positive.png'), alt: '', title: 'Значок строки', onclick: () => effectIconGallery(n.id, i)}), input);
+            let proposalEl = null;
+            if (structured) {
+                const value = h('input', {type: 'number', step: 'any', value: e.value, 'data-field': `fxv_${i}`, class: 'v', title: 'Значение'});
+                value.addEventListener('input', () => {
+                    if (value.value === '' || !Number.isFinite(Number(value.value))) return;
+                    setFx(i, 'Значение эффекта', x => { x.value = Number(value.value); }, `fxv:${n.id}:${i}`, {props: false});
+                    const x = T.byId(cur(), n.id).effects[i];
+                    if (!x.own_text) input.value = x.text;
+                    row.classList.toggle('badfx', !x.good);
+                    goodBtn.textContent = x.good ? 'зелёная' : 'красная';
+                });
+                value.addEventListener('blur', () => { value.value = T.byId(cur(), n.id).effects[i].value; flushField(); });
+                const isCrew = FX.CREW_KINDS.includes(e.kind);
+                const target = isCrew ? h('select', {'data-field': `fxt_${i}`, title: 'На кого действует', onchange: ev => setFx(i, 'Эффект: на кого', x => { x.target = ev.target.value; })},
+                    ['all', ...FX.SHOOTING(data.groups)].map(t => h('option', {value: t, selected: e.target === t}, t === 'all' ? 'все команды' : data.groups[t].name))) : null;
+                row.append(h('div', {class: 'fxmeta'},
+                    h('span', {class: 'kind', title: FX.labelOf(e, fxCtx)}, isCrew ? FX.KINDS[e.kind].name : FX.labelOf(e, fxCtx)), target, value,
+                    h('span', {class: 'unit'}, FX.KINDS[e.kind].percent || /%\+?n%/.test(((fxCtx.gameEffects[e.effect || (FX.KINDS[e.kind] || {}).game] || {}).text) || '') ? '%' : ''),
+                    statusBadge(FX.statusOf(e, fxCtx))));
+            } else {
+                const prop = FX.proposal(e, fxCtx);
+                if (prop && !dismissed(n.id, e.text)) {
+                    // one line under the field across the row: what it would become, «Сделать» and «×» (not to propose this line again, in this browser)
+                    proposalEl = h('div', {class: 'propose', title: `${prop.say}\nСтрока читается как эффект каталога. Текст останется вашим, страница будет знать, что он делает`},
+                        h('span', {class: 'ptxt'}, `→ ${prop.say}${prop.colour ? (prop.effects[0].good ? ' · зелёная' : ' · красная') : ''}`),
+                        h('button', {class: 'mini', 'data-propose': i, onclick: () => commit('Строка → эффект', d => { const fx = T.byId(d, n.id).effects; fx.splice(i, 1, ...prop.effects); })}, 'Сделать'),
+                        h('button', {class: 'mini', title: 'Не предлагать для этой строки', onclick: () => { dismiss(n.id, e.text); proposalEl.remove(); }}, '×'));
+                    row.append(proposalEl);
+                }
+            }
+            const goodBtn = h('button', {class: 'mini', title: e.good ? 'Полезная (зелёная). Щёлкните — вредная (красная)' : 'Вредная (красная). Щёлкните — полезная',
+                onclick: () => (structured ? setFx(i, 'Цвет строки', x => { x.good = !e.good; x.own_good = x.good !== FX.goodOf(x, fxCtx); })
+                    : commit('Строка эффекта', d => { T.byId(d, n.id).effects[i].good = !e.good; }))}, e.good ? 'зелёная' : 'красная');
+            row.append(h('div', {class: 'ebtns'},
+                structured && e.own_text ? h('button', {class: 'mini', title: 'Вернуть текст по образцу игры', onclick: () => setFx(i, 'Текст по образцу', x => { x.own_text = false; })}, '↺ текст') : null,
+                goodBtn,
+                h('button', {class: 'mini', title: 'Выше', disabled: i === 0, onclick: () => commit('Порядок строк', d => { const fx = T.byId(d, n.id).effects; [fx[i - 1], fx[i]] = [fx[i], fx[i - 1]]; })}, '↑'),
+                h('button', {class: 'mini', title: 'Ниже', disabled: i === n.effects.length - 1, onclick: () => commit('Порядок строк', d => { const fx = T.byId(d, n.id).effects; [fx[i + 1], fx[i]] = [fx[i], fx[i + 1]]; })}, '↓'),
+                h('button', {class: 'mini', title: 'Удалить строку', onclick: () => commit('Удаление строки', d => { T.byId(d, n.id).effects.splice(i, 1); })}, '×')));
+            box.append(row);
         });
-        box.append(h('button', {onclick: () => { commit('Новая строка', d => { T.byId(d, n.id).effects.push({text: '', icon: null, good: true}); }); const el = props.querySelector(`[data-field="effect_${n.effects.length}"]`); if (el) el.focus(); }}, '+ Строка'));
+        box.append(h('div', {class: 'cx-actions', style: 'margin:0'},
+            h('button', {onclick: () => effectPicker(n.id), title: 'Эффект из каталога: экипаж, корабль, эффекты игры — с поиском'}, '+ Эффект…'),
+            h('button', {onclick: () => { commit('Новая строка', d => { T.byId(d, n.id).effects.push({text: '', icon: null, good: true}); }); const el = props.querySelector(`[data-field="effect_${n.effects.length}"]`); if (el) el.focus(); }, title: 'Свободная строка текста'}, '+ Строка')));
         return box;
+    }
+    // The catalogue: a list in sections with a search; the crew's kinds a row each with its targets as buttons. The arrows move between the choices,
+    // Enter takes one, Escape closes; the search's Enter takes the first shown.
+    function effectPicker(id) {
+        const all = FX.catalogue(fxCtx);
+        const body = h('div', {class: 'body cx-fxlist', role: 'listbox'});
+        const search = h('input', {type: 'search', placeholder: 'Поиск: боезапас, стрелки, найм, опыт…'});
+        const take = (entry, target) => {
+            closeModal();
+            const n0 = T.byId(cur(), id);
+            const e = entry.kind === 'text' ? {text: '', icon: null, good: true} : FX.newEffect(entry.kind, {target, effect: entry.effect}, fxCtx);
+            commit(entry.kind === 'text' ? 'Новая строка' : `Эффект: ${FX.labelOf(e, fxCtx)}`, d => { T.byId(d, id).effects.push(e); });
+            const el = props.querySelector(`[data-field="${entry.kind === 'text' ? 'effect' : 'fxv'}_${n0.effects.length}"]`);
+            if (el) { el.focus(); if (el.select) el.select(); }
+            toast(entry.kind === 'text' ? 'Новая строка. Ctrl+Z — убрать' : `Добавлен эффект «${FX.labelOf(e, fxCtx)}». Ctrl+Z — убрать`);
+        };
+        const draw = () => {
+            const q = search.value.trim().toLowerCase().replace(/ё/g, 'е');
+            const words = q.split(/\s+/).filter(Boolean);
+            const hit = x => words.every(w => x.search.includes(w));
+            body.innerHTML = '';
+            for (const sec of ['crew', 'ship', 'game', 'text']) {
+                let list = all.filter(x => x.section === sec && hit(x));
+                if (!list.length) continue;
+                body.append(h('h4', {}, FX.SECTIONS[sec] + (sec === 'game' ? ` (${list.length})` : '')));
+                if (sec === 'crew') {
+                    for (const kind of FX.CREW_KINDS) {
+                        const rows = list.filter(x => x.kind === kind);
+                        if (!rows.length) continue;
+                        body.append(h('div', {class: 'fxrow'}, h('img', {src: url(rows[0].icon), alt: ''}),
+                            h('div', {class: 'tx'}, h('b', {}, FX.KINDS[kind].name), h('div', {class: 'm'}, rows[0].sample)),
+                            h('div', {class: 'targets'}, rows.map(x => h('button', {class: 'pick', title: `${x.title}: ${x.sub}. ${FX.STATUS[x.status[0]]}: ${x.status[1]}`, onclick: () => take(x, x.target)},
+                                x.sub, ' ', h('span', {class: 'dot ' + x.status[0]}))))));
+                    }
+                    continue;
+                }
+                if (sec === 'game') list = list.sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, q ? 200 : 60);
+                for (const x of list) {
+                    body.append(h('div', {class: 'fxrow pick', tabIndex: 0, role: 'option', onclick: () => take(x), onkeydown: ev => { if (ev.key === 'Enter') { ev.preventDefault(); take(x); } }},
+                        h('img', {src: url(x.icon), alt: ''}), h('div', {class: 'tx'}, h('b', {}, x.title), h('div', {class: 'm'}, x.sample || x.sub)),
+                        statusBadge(x.status)));
+                }
+                if (sec === 'game' && !q) body.append(h('div', {class: 'help'}, 'Показаны частые эффекты игры; поиск найдёт любой из ' + all.filter(x => x.section === 'game').length + '.'));
+            }
+            if (!body.children.length) body.append(h('div', {class: 'help', style: 'padding:8px'}, 'Ничего не нашлось'));
+        };
+        search.addEventListener('input', draw);
+        search.addEventListener('keydown', ev => {
+            if (ev.key === 'Enter') { ev.preventDefault(); const f = body.querySelector('.pick'); if (f) f.click(); }
+            if (ev.key === 'ArrowDown') { ev.preventDefault(); const f = body.querySelector('.pick'); if (f) f.focus(); }
+        });
+        body.addEventListener('keydown', ev => {
+            if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+            ev.preventDefault();
+            const picks = [...body.querySelectorAll('.pick')], k = picks.indexOf(document.activeElement);
+            const next = ev.key === 'ArrowDown' ? picks[k + 1] : k <= 0 ? search : picks[k - 1];
+            if (next) next.focus();
+        });
+        modal([h('div', {class: 'top'}, h('h3', {}, 'Эффект из каталога'), search, h('button', {onclick: () => closeModal()}, 'Закрыть')),
+            h('div', {class: 'cx-legend'}, h('span', {class: 'dot have'}), ' есть в моде  ', h('span', {class: 'dot dev'}), ' нужна разработка  ', h('span', {class: 'dot unknown'}), ' не проверено'), body]);
+        draw();
+        search.focus();
+    }
+    // The army units a building opens for recruitment: the game's small cards, a picker with a search by name and kind
+    function unitsEditor(n) {
+        const box = h('div');
+        const chips = h('div', {class: 'cx-chips'});
+        for (const k of n.units || []) {
+            const u = armyUnits[k], others = cur().nodes.filter(x => x.id !== n.id && (x.units || []).includes(k));
+            chips.append(h('span', {class: 'cx-chip army' + (others.length ? ' dup' : ''), title: `${u ? u.name : k}\n${k}${others.length ? '\nЕго же открывают: ' + others.map(T.label).join(', ') : ''}`},
+                u ? h('img', {src: url(u.card.picture), alt: ''}) : null, u ? u.name : k, others.length ? h('span', {class: 'dupmark'}, '×2') : null,
+                h('button', {class: 'mini', title: 'Убрать', onclick: () => commit('Найм отряда', d => { const x = T.byId(d, n.id); x.units = x.units.filter(y => y !== k); })}, '×')));
+        }
+        box.append((n.units || []).length ? chips : h('div', {class: 'help'}, 'ничего'), h('button', {onclick: () => unitsPicker(n.id)}, 'Выбрать…'),
+            h('div', {class: 'help'}, 'Обычные отряды армии гномов: в игре — блок «Открывает найм» и карточки в обычной рамке. Найм армии страница не моделирует.'));
+        return box;
+    }
+    function unitsPicker(id) {
+        const body = h('div', {class: 'body cx-crewlist'});
+        const search = h('input', {type: 'search', placeholder: 'Поиск: пушки, громобои, wh_main_dwf…'});
+        const draw = () => {
+            const q = search.value.trim().toLowerCase().replace(/ё/g, 'е'), n = T.byId(cur(), id);
+            if (!n) { closeModal(); return; }
+            body.innerHTML = '';
+            const units = Object.values(armyUnits);
+            for (const caste of [...new Set(units.map(u => u.caste))]) {
+                const list = units.filter(u => u.caste === caste && (!q || `${u.name} ${u.key} ${CASTES[u.caste] || ''} ${VARIANT[u.variant] || ''}`.toLowerCase().replace(/ё/g, 'е').includes(q)));
+                if (!list.length) continue;
+                body.append(h('h4', {}, CASTES[caste] || caste));
+                for (const u of list) {
+                    const on = (n.units || []).includes(u.key), others = cur().nodes.filter(x => x.id !== id && (x.units || []).includes(u.key));
+                    const box = h('input', {type: 'checkbox', checked: on, onchange: () => {
+                        commit('Найм отряда', d => { const x = T.byId(d, id); x.units = box.checked ? [...(x.units || []), u.key] : (x.units || []).filter(k => k !== u.key); });
+                    }});
+                    body.append(h('label', {title: u.key}, box, h('img', {src: url(u.card.picture), alt: ''}), h('img', {class: 'cat', src: url(u.card.category), alt: ''}),
+                        h('span', {}, h('b', {}, u.name), h('div', {class: 'm'}, `найм ${u.hire}, содержание ${u.upkeep} · ${u.stats.men} ${u.stats.engines ? '+ ' + u.stats.engines + ' машины' : 'бойцов'}`
+                            + (u.variant ? ' · ' + VARIANT[u.variant] : '') + (others.length ? ` · уже открывает «${others.map(T.label).join('», «')}»` : '')))));
+                }
+            }
+            if (!body.children.length) body.append(h('div', {class: 'help', style: 'padding:8px'}, Object.keys(armyUnits).length ? 'Ничего не нашлось' : 'Нет списка отрядов: py -3.14 tools/web_export.py --catalog'));
+        };
+        search.addEventListener('input', draw);
+        modal([h('div', {class: 'top'}, h('h3', {}, 'Открывает найм отрядов'), search, h('button', {onclick: () => closeModal()}, 'Готово')), body]);
+        modalRedraw = draw;
+        draw();
+        search.focus();
+    }
+    // What appears on the ship with the building: a detail of web/data/blueprint.json (drawn or not, in 3D or not), or a new one described for the
+    // developer. No price, no hire, no choice of the player: it is there while the building stands.
+    const partBadges = k => {
+        const p = partsInfo[k];
+        if (!p) return [h('span', {class: 'cx-status-badge unknown'}, 'нет в чертеже')];
+        return [h('span', {class: 'cx-status-badge ' + (p.drawn ? 'have' : 'dev'), title: p.drawn ? 'Слой на чертеже есть' : 'Рисунка на чертеже нет'}, p.drawn ? 'на чертеже' : 'рисунок не готов'),
+                h('span', {class: 'cx-status-badge ' + (p.model ? 'have' : 'dev'), title: p.model ? 'Модель есть (build/web/models)' : 'Модели нет'}, p.model ? 'в 3D' : 'нет 3D')];
+    };
+    function partsEditor(n) {
+        const box = h('div', {class: 'cx-parts'});
+        (n.parts || []).forEach((p, i) => {
+            const del = h('button', {class: 'mini', title: 'Убрать', onclick: () => commit('Вид на корабле', d => { T.byId(d, n.id).parts.splice(i, 1); })}, '×');
+            if (p.part) { box.append(h('div', {class: 'part'}, h('b', {}, partName(p.part)), ...partBadges(p.part), del)); return; }
+            const set = (key, label, parse = v => v) => el => {
+                el.dataset.field = `part_${key}_${i}`;
+                el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => commit(label, d => { T.byId(d, n.id).parts[i][key] = parse(el.value); }, `part:${n.id}:${i}:${key}`, {props: false}));
+                el.addEventListener('blur', flushField);
+                return el;
+            };
+            box.append(h('div', {class: 'part new'},
+                h('div', {class: 'cx-row2', style: 'align-items:center'}, set('name', 'Название детали')(h('input', {value: p.name, placeholder: 'Название: Дозорные в гнёздах'})), h('span', {class: 'cx-status-badge dev'}, 'рисунок не готов'), del),
+                field('Где на корабле', set('zone', 'Где на корабле')(h('select', {}, Object.entries(T.ZONES).map(([k, v]) => h('option', {value: k, selected: p.zone === k}, v))))),
+                field('Что это', set('what', 'Что это')(h('select', {}, Object.entries(T.WHAT).map(([k, v]) => h('option', {value: k, selected: p.what === k}, v))))),
+                p.what === 'figures' ? field('Сколько фигур', set('figures', 'Сколько фигур', v => Math.max(0, Math.round(Number(v) || 0)))(h('input', {type: 'number', min: 0, step: 1, value: p.figures}))) : null,
+                field('Описание для разработчика', set('note', 'Описание детали')(h('textarea', {rows: 2, placeholder: 'Какие фигуры или модель нужны, где стоят, что делают', value: p.note})))));
+        });
+        box.append(h('button', {onclick: () => partsPicker(n.id)}, 'Добавить…'),
+            h('div', {class: 'help'}, 'Вид на корабле вместе с постройкой: без цены, найма и выбора. Готовые детали встают на чертёж и в 3D; новые ждут рисунка.'));
+        return box;
+    }
+    function partsPicker(id) {
+        const body = h('div', {class: 'body cx-crewlist'});
+        const draw = () => {
+            const n = T.byId(cur(), id);
+            if (!n) { closeModal(); return; }
+            body.innerHTML = '';
+            body.append(h('h4', {}, 'Детали чертежа'));
+            for (const p of Object.values(partsInfo)) {
+                const on = (n.parts || []).some(x => x.part === p.key);
+                const box = h('input', {type: 'checkbox', checked: on, onchange: () => commit('Вид на корабле', d => {
+                    const x = T.byId(d, id);
+                    x.parts = box.checked ? [...(x.parts || []), {part: p.key}] : (x.parts || []).filter(y => y.part !== p.key);
+                })});
+                const others = cur().nodes.filter(x => x.id !== id && (x.parts || []).some(y => y.part === p.key)).map(T.label);
+                body.append(h('label', {title: p.key}, box, h('span', {}, h('b', {}, p.name), ' ', ...partBadges(p.key),
+                    h('div', {class: 'm'}, [p.building ? `в моде её даёт ${byShort[p.building] ? '«' + byShort[p.building].name + '»' : p.building}` : 'в моде её пока не даёт ни одна постройка',
+                        p.planned ? `задумано: ${p.planned}` : '', others.length ? `уже у «${others.join('», «')}»` : ''].filter(Boolean).join(' · ')))));
+            }
+            body.append(h('h4', {}, 'Новая деталь'), h('button', {onclick: () => {
+                closeModal();
+                const k = (T.byId(cur(), id).parts || []).length;
+                commit('Новая деталь вида', d => { const x = T.byId(d, id); (x.parts ||= []).push({part: null, name: '', zone: 'deck', what: 'figures', figures: 0, note: ''}); });
+                const el = props.querySelector(`[data-field="part_name_${k}"]`);
+                if (el) el.focus();
+            }}, '+ Новая деталь: название, где, что это, сколько фигур'));
+        };
+        modal([h('div', {class: 'top'}, h('h3', {}, 'Что появляется на корабле'), h('span', {style: 'flex:1'}), h('button', {onclick: () => closeModal()}, 'Готово')), body]);
+        modalRedraw = draw;
+        draw();
     }
     function crewEditor(n) {
         const box = h('div');
@@ -986,14 +1240,18 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     host.append(h('datalist', {id: 'cx_mod_keys'}, modLevels.map(r => h('option', {value: r.short}, r.name))));
 
     // ---- pop-ups ----
-    function modal(content, cls = 'cx-pop') {
-        closeModal();
+    function modal(content, cls = 'cx-pop', {sticky = false} = {}) {
+        closeModal(true);
         const box = h('div', {class: cls}, content);
-        const shade = h('div', {class: 'cx-shade', onpointerdown: e => { if (e.target === shade) closeModal(); }}, box);
+        const shade = h('div', {class: 'cx-shade' + (sticky ? ' sticky' : ''), onpointerdown: e => { if (e.target === shade && !sticky) closeModal(); }}, box);
         document.body.append(shade);
         return box;
     }
-    function closeModal() { for (const s of document.querySelectorAll('.cx-shade')) s.remove(); }
+    let modalRedraw = null;
+    function closeModal(force = false) {
+        for (const s of document.querySelectorAll('.cx-shade')) if (force || !s.classList.contains('sticky')) s.remove();
+        if (!document.querySelector('.cx-shade')) modalRedraw = null;
+    }
     async function iconGallery(id) {
         const list = (await loadIcons()).buildings;
         const n = T.byId(cur(), id);
@@ -1018,7 +1276,10 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     async function effectIconGallery(id, i) {
         const list = (await loadIcons()).effects;
         const cur0 = T.byId(cur(), id).effects[i].icon;
-        const name = p => EFFECT_NAMES[p.split('/').pop().replace(/\.png$/, '')] || 'значок';
+        // a name for people: the page's own for the common ones, else the first words of a game effect that has this icon (build/web/catalog.json)
+        const byIcon = {};
+        for (const g of Object.values(fxCtx.gameEffects)) if (g.icon && !byIcon[g.icon]) byIcon[g.icon] = g.text.replace(/[:(].*$/, '').replace(/%\+?n%?/g, '').trim().split(/\s+/).slice(0, 2).join(' ');
+        const name = p => EFFECT_NAMES[p.split('/').pop().replace(/\.png$/, '')] || (/^[А-ЯЁ]/.test(byIcon[p] || '') ? byIcon[p] : 'Значок');
         const grid = h('div', {class: 'cx-gallery small'},
             h('div', {class: 'g' + (!cur0 ? ' on' : ''), onclick: () => { closeModal(); commit('Значок строки', d => { T.byId(d, id).effects[i].icon = null; }); }}, h('img', {src: url(D + 'replenishement_positive.png'), alt: ''}), 'Обычный'),
             list.map(p => h('div', {class: 'g' + (cur0 === p ? ' on' : ''), title: name(p), onclick: () => { closeModal(); commit('Значок строки', d => { T.byId(d, id).effects[i].icon = p; }); }},
@@ -1079,8 +1340,9 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         document.body.append(a); a.click(); a.remove();
         toast('Дерево выгружено в tree_design.json');
     }
-    async function backup() {
-        const r = await fetch('/api/tree_design/backup', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    // a copy beside the file: of the file on disk, or (text) of a state of the canvas that is not written
+    async function backup(text = null) {
+        const r = await fetch('/api/tree_design/backup', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: text || '{}'});
         if (!r.ok) throw new Error('копия не сделана: ' + r.status);
         return (await r.json()).name;
     }
@@ -1113,9 +1375,10 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     }
     async function revertToFile() {
         try {
-            const text = await fetch('/data/tree_design.json', {cache: 'no-store'}).then(r => { if (!r.ok) throw new Error(r.status); return r.text(); });
+            const {text, version: v} = await readFile();
             const read = T.normalize(JSON.parse(text));
-            if (T.serialize(read.design) === T.serialize(cur())) { toast('Полотно уже совпадает с файлом на диске'); return; }
+            version = v; lastSaved = T.serialize(read.design); base = read.design;
+            if (T.serialize(read.design) === T.serialize(cur())) { setSave('ok'); toast('Полотно уже совпадает с файлом на диске'); return; }
             commit('Возврат к файлу', d => { d.nodes = read.design.nodes; });
             select([]);
             toast('Взято дерево из файла на диске. Ctrl+Z — вернуть как было');
@@ -1133,13 +1396,21 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     }
 
     // ---- saving: the file at once, a copy in the browser; a failure is retried by itself every few seconds ----
+    // lastSaved: the text of the file as this page last wrote or read it; base: that state as a tree (merge3's base); version: its version on the server
     let lastSaved = T.serialize(design), saving = false, again = false, saveTimer = null, saveState = 'ok', retryTimer = null;
+    let base = JSON.parse(JSON.stringify(design)), conflictOpen = false, extTimer = null;
+    const readFile = async () => {
+        const r = await fetch('/data/tree_design.json', {cache: 'no-store'});
+        if (!r.ok) throw new Error('ответ ' + r.status);
+        return {text: await r.text(), version: r.headers.get('X-Tree-Version')};
+    };
+    const pending = () => T.serialize(cur()) !== lastSaved || !!saveTimer || saving;
     const keepLocal = fileOk => { try { localStorage.setItem(STORE, JSON.stringify({text: T.serialize(cur()), file_ok: fileOk, at: Date.now()})); } catch (e) { /* no storage */ } };
     function setSave(state, err = '') {
         saveState = state;
         const t = new Date().toLocaleTimeString('ru-RU');
         saveEl.className = state;
-        saveEl.textContent = state === 'ok' ? `✓ Сохранено · ${t}` : state === 'busy' ? 'Сохраняю…' : '✗ Не сохранено';
+        saveEl.textContent = state === 'ok' ? `✓ Сохранено · ${t}` : state === 'busy' ? 'Сохраняю…' : state === 'conflict' ? '⚠ Файл изменён извне' : '✗ Не сохранено';
         saveEl.title = state === 'bad' ? `Файл не записан: ${err}. Изменения хранятся в браузере; страница пробует снова каждые 5 секунд.` : 'web/data/tree_design.json';
         retryBtn.style.display = state === 'bad' ? '' : 'none';
         clearTimeout(retryTimer);
@@ -1156,27 +1427,102 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         if (saving) { again = true; return; }
         const text = T.serialize(cur());
         if (text === lastSaved) { keepLocal(true); setSave('ok'); return; }
+        if (conflictOpen) return;
         saving = true;
         try {
-            const r = await fetch('/api/tree_design', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: text, keepalive: text.length < 60000});
+            const r = await fetch('/api/tree_design' + (version ? '?base=' + encodeURIComponent(version) : ''), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: text, keepalive: text.length < 60000});
             const j = await r.json().catch(() => ({}));
+            if (r.status === 409 && j.error === 'conflict') {
+                // the file was changed from outside since this page read it: nothing was written; its state now comes back with the answer
+                saving = false;
+                await fromOutside(j.text, j.version);
+                return;
+            }
             if (!r.ok) throw new Error(j.error || 'ответ ' + r.status);
             lastSaved = text;
+            base = JSON.parse(JSON.stringify(T.normalize(JSON.parse(text)).design));
+            if (j.version) version = j.version;
             if (T.serialize(cur()) === text) { keepLocal(true); setSave('ok'); }
         } catch (e) {
             setSave('bad', e.message === 'Failed to fetch' ? 'сервер не отвечает' : e.message);
         } finally {
             saving = false;
-            if (again || (T.serialize(cur()) !== lastSaved && saveState !== 'bad')) { again = false; saveNow(); }
+            if (!conflictOpen && (again || (T.serialize(cur()) !== lastSaved && saveState !== 'bad'))) { again = false; saveNow(); }
         }
     }
+    // ---- the file changed from outside (another program, an agent, another page): asked for every two seconds while the constructor is shown ----
+    async function checkOutside() {
+        if (!shown || saving || conflictOpen || document.hidden) return;
+        const v = await fetch('/api/tree_design/version', {cache: 'no-store'}).then(r => r.json()).catch(() => null);
+        if (!v || !v.version || v.version === version || saving || conflictOpen) return;
+        try {
+            const f = await readFile();
+            if (f.version === version) return;
+            await fromOutside(f.text, f.version);
+        } catch (e) { /* the server is down: the next ask */ }
+    }
+    // A state of the file this page did not make: nothing of the author's waits to be written, the canvas takes it at once (the view and the
+    // selection stay, a step of the history, Ctrl+Z gives the canvas back as it was); something waits, merged building by building; a building
+    // changed on both sides, the author chooses, and the side not chosen is kept as a copy beside the file.
+    async function fromOutside(text, v) {
+        let read;
+        try { read = T.normalize(JSON.parse(text)); } catch (e) { toast('Файл изменён извне, но не читается как JSON: изменения здесь не тронуты', true); return; }
+        const theirs = read.design, mine = cur();
+        const same = T.serialize(theirs) === T.serialize(mine);
+        if (same) { version = v; lastSaved = T.serialize(theirs); base = theirs; keepLocal(true); setSave('ok'); return; }
+        const changedIds = T.changedNodes(base, theirs);
+        const say = ids => ids.map(id => '«' + T.label(T.byId(theirs, id) || T.byId(base, id) || {id, name: ''}) + '»').slice(0, 6).join(', ') + (ids.length > 6 ? ` и ещё ${ids.length - 6}` : '');
+        if (!pending()) {
+            version = v; lastSaved = T.serialize(theirs); base = theirs;
+            commit('Изменение файла извне', d => { d.nodes = JSON.parse(JSON.stringify(theirs.nodes)); });
+            toast(`Файл изменён извне — изменения взяты: ${say(changedIds) || 'порядок построек'}. Ctrl+Z — вернуть как было`);
+            return;
+        }
+        const m = T.merge3(base, theirs, mine);
+        if (!m.clashes.length) {
+            version = v; lastSaved = T.serialize(theirs); base = theirs;
+            commit('Соединено с изменениями извне', d => { d.nodes = m.design.nodes; });
+            toast(`Файл изменён извне (${say(changedIds)}) — соединено с вашими правками`);
+            return;
+        }
+        // a building changed on both sides: the choice
+        conflictOpen = true;
+        clearTimeout(saveTimer); saveTimer = null;
+        setSave('conflict');
+        const mineText = T.serialize(mine);
+        const resolve = async keepMine => {
+            closeModal(true);
+            try {
+                // the side not chosen, whole, as a copy beside the file
+                const name = await backup(keepMine ? text : mineText);
+                const nodes = m.design.nodes.map(n => (m.clashes.includes(n.id) && keepMine && T.byId(mine, n.id) ? JSON.parse(JSON.stringify(T.byId(mine, n.id))) : n));
+                // a building deleted here and changed there: kept as the file has it unless the author keeps his side
+                const finalNodes = keepMine ? nodes.filter(n => !(m.clashes.includes(n.id) && !T.byId(mine, n.id))) : nodes;
+                version = v; lastSaved = T.serialize(theirs); base = theirs;
+                conflictOpen = false;
+                commit(keepMine ? 'Конфликт: оставлены мои правки' : 'Конфликт: взято из файла', d => { d.nodes = finalNodes; });
+                if (T.serialize(cur()) === lastSaved) setSave('ok'); else scheduleSave();
+                toast(`${keepMine ? 'Оставлены ваши правки' : 'Взято из файла'}; другая сторона целиком — в копии ${name || ''}`);
+            } catch (e) { conflictOpen = false; toast('Не решено: ' + e.message, true); setSave('bad', e.message); }
+        };
+        const list = m.clashes.map(id => h('li', {}, T.label(T.byId(mine, id) || T.byId(theirs, id) || {id, name: ''}),
+            !T.byId(mine, id) ? ' — здесь удалена, в файле изменена' : !T.byId(theirs, id) ? ' — в файле удалена, здесь изменена' : ''));
+        const box = modal([h('h3', {}, 'Файл изменён извне'),
+            h('p', {}, 'Пока здесь были несохранённые правки, файл web/data/tree_design.json изменили извне. Всё, что менялось только с одной стороны, уже соединено. С обеих сторон изменены постройки:'),
+            h('ul', {}, list),
+            h('p', {class: 'help'}, 'Что не выберете — не пропадёт: оно сохранится целиком копией рядом с файлом (tree_design.backup-…json).'),
+            h('div', {class: 'btns'}, h('button', {onclick: () => resolve(false)}, 'Взять из файла'), h('button', {class: 'danger', onclick: () => resolve(true)}, 'Оставить мои правки'))],
+        'cx-dialog', {sticky: true});
+        box.querySelector('.btns button').focus();
+    }
+    const startWatch = () => { if (!extTimer) extTimer = setInterval(checkOutside, 2000); };
     // Leaving the page (F5, closing): what is not in the file yet goes with the page's last request (sendBeacon); the question «Покинуть сайт?»
     // only when that cannot go (the server did not answer before)
     window.addEventListener('beforeunload', e => {
         const text = T.serialize(cur());
         if (text === lastSaved) return;
         keepLocal(false);
-        const sent = saveState !== 'bad' && navigator.sendBeacon && navigator.sendBeacon('/api/tree_design', new Blob([text], {type: 'application/json'}));
+        const sent = saveState !== 'bad' && !conflictOpen && navigator.sendBeacon && navigator.sendBeacon('/api/tree_design' + (version ? '?base=' + encodeURIComponent(version) : ''), new Blob([text], {type: 'application/json'}));
         if (!sent) { e.preventDefault(); e.returnValue = ''; }
     });
 
@@ -1188,7 +1534,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     }
 
     // ---- start ----
-    warnList = T.warnings(cur(), {modKeys, units: unitsOf});
+    warnList = T.warnings(cur(), checkCtx);
     renderCanvas(); renderPalette(); renderWarnings(); renderProps(); updateTools(); setSave('ok');
     new ResizeObserver(() => { if (shown) renderRows(); }).observe(cv);
     // a narrow status line keeps the zoom and the checks; the hint goes when it would wrap into more than two lines
@@ -1207,11 +1553,12 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     if (problems.length) toast('Файл дерева прочитан с поправками: ' + problems.join('; '), true);
     let first = true;
     return {
-        show() { shown = true; paintFolds(); if (first) { first = false; requestAnimationFrame(() => showAll(1)); } else applyView(); },
+        show() { shown = true; paintFolds(); startWatch(); checkOutside(); if (first) { first = false; requestAnimationFrame(() => showAll(1)); } else applyView(); },
         hide() { shown = false; hideMenu(); closeModal(); },
         design: () => cur(),
         // for checks from the console and the test scripts
         api: {hist, select, view, showAll, toast, fold, get folded() { return {...folded}; }, get sel() { return [...sel]; }, get selEdge() { return selEdge; },
-              saveState: () => saveState, saveNow, lastSaved: () => lastSaved, cardOf: id => cardOf(T.byId(cur(), id)), applyView},
+              saveState: () => saveState, saveNow, lastSaved: () => lastSaved, cardOf: id => cardOf(T.byId(cur(), id)), applyView, checkOutside,
+              version: () => version, conflictOpen: () => conflictOpen},
     };
 }

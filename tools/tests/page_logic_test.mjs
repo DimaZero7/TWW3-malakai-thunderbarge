@@ -136,5 +136,33 @@ const cost = (M, k) => M.level(k).cost;
     check('the order of the crew came back with the child gone', M2.crew_order('rifles') === null);
     check('treasury matches the ledger', game2.treasury() === ledger, `${game2.treasury()} vs ${ledger}`);
 }
+// the constructor's tree in the game: a detail of the ship shows with the node that brings it; the crew's bonus of a node acts once it stands
+{
+    const {crewSources} = await import('../../web/js/crew_model.mjs');
+    const FX = await import('../../web/js/effects_model.mjs');
+    const start = T.normalize(json('tools/tests/tree_design_start.json')).design;
+    const d = JSON.parse(JSON.stringify(start));
+    const hull2 = d.nodes.find(n => n.mod_key === 'airship_hull_2');
+    const nid = T.addNode(d, {name: 'Гнёзда с дозорными', cost: 300, turns: 1, col: 5, row: 2, requires: [hull2.id],
+        effects: [{kind: 'ammo', target: 'rifles', value: 25, text: 'Боезапас стрелков: +25 %', icon: null, good: true}],
+        units: ['wh_main_dwf_art_cannon'], parts: [{part: 'pub'}, {part: null, name: 'Дозорные', zone: 'balloon', what: 'figures', figures: 2, note: ''}]});
+    const levels = T.gameData(d, data);
+    const parts = {...stage.parts, pub: {...stage.parts.pub, building: null}};
+    const game = new GameSim(levels, {...sim, gold: 50000, built: []});
+    const M = makeBuildings(levels, game, parts);
+    const key = levels.key_of[nid];
+    check('the detail waits while its node does not stand', M.stage('pub') === 'pencil');
+    for (const n of ['airship_hull_1', 'airship_hull_2']) { M.order(data.prefix + n); game.end_turn(); }
+    M.order(key);
+    check('the detail is being built with its node', M.stage('pub') === 'build');
+    const before = FX.crewBonuses(crewSources(levels, k => game.has_building(k), k => game.standing(k)), 'rifles').ammo.pct;
+    game.end_turn();
+    check('the detail stands with its node', M.stage('pub') === 'ink');
+    const after = FX.crewBonuses(crewSources(levels, k => game.has_building(k), k => game.standing(k)), 'rifles');
+    check('the node\'s ammo of the riflemen acts once it stands: 0 -> +25 %', before === 0 && after.ammo.pct === 25 && after.ammo.from[0].name === 'Гнёзда с дозорными');
+    check('the level carries the army unit it opens', levels.tree_rows.find(r => r.key === key).units[0] === 'wh_main_dwf_art_cannon');
+    M.demolish(key);
+    check('demolished: the detail goes, the bonus goes', M.stage('pub') === 'pencil' && FX.crewBonuses(crewSources(levels, k => game.has_building(k), k => game.standing(k)), 'rifles').ammo.pct === 0);
+}
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

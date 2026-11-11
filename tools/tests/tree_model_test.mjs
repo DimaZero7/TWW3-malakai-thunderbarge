@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import * as T from '../../web/js/tree_model.mjs';
+import * as FX from '../../web/js/effects_model.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const json = p => JSON.parse(readFileSync(join(root, p), 'utf-8'));
@@ -190,12 +191,93 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     // tools/tests/tree_design_start.json) also have no warning and keep the mod's keys in the game
     const work = T.normalize(json('web/data/tree_design.json'));
     check('the working file reads without problems', !work.problems.length, work.problems.join('; '));
-    check('the working file is in its own text', T.serialize(work.design) === readFileSync(join(root, 'web/data/tree_design.json'), 'utf-8'));
+    // format 2 is written in its own text; a format 1 file (the author's before this version) reads with every field it had, and its text written
+    // again as format 2 reads back the same
+    const workText = readFileSync(join(root, 'web/data/tree_design.json'), 'utf-8');
+    if (json('web/data/tree_design.json').format >= 2) check('the working file is in its own text', T.serialize(work.design) === workText);
+    else check('the working file (format 1) reads into format 2 and back the same', work.from === 1 && T.serialize(T.normalize(JSON.parse(T.serialize(work.design))).design) === T.serialize(work.design)
+        && work.design.nodes.every((n, i) => JSON.stringify(n.effects) === JSON.stringify(json('web/data/tree_design.json').nodes[i].effects)));
     const start = T.normalize(json('tools/tests/tree_design_start.json'));
     check('the start file: no warnings', !T.warnings(start.design, {modKeys: new Set(all.map(r => r.short))}).length, JSON.stringify(T.warnings(start.design)));
     const g = T.gameData(start.design, data);
     check('game levels keep the mod keys', g.chains.map(c => c.key).join() === start.design.nodes.map(n => data.prefix + n.mod_key).join());
     check('hull tiers from the nodes', g.hull_tiers[data.prefix + 'airship_hull_2'] === 2);
+}
+// 9. format 2: effects of the catalogue, army units, the ship's details; format 1 read as it was
+{
+    const data = json('build/web/data.json');
+    let catalog = {game_effects: [], army_units: []};
+    try { catalog = json('build/web/catalog.json'); } catch (e) { /* run tools/web_export.py --catalog */ }
+    const ctx = {groups: data.groups, gameEffects: Object.fromEntries(catalog.game_effects.map(g => [g.key, g]))};
+    check('the catalogue of the export: game effects and army units', catalog.game_effects.length > 50 && catalog.army_units.length > 10, `${catalog.game_effects.length} / ${catalog.army_units.length}`);
+    const old = {format: 1, nodes: [{id: 'a', name: 'Old', cost: 5, effects: [{text: 'Строка', icon: null, good: true}]}]};
+    const r = T.normalize(old);
+    check('format 1 reads: units and parts empty, the line as it was', r.from === 1 && r.design.format === 2 && !r.design.nodes[0].units.length && !r.design.nodes[0].parts.length && r.design.nodes[0].effects[0].text === 'Строка');
+    // the crew's effects by group
+    const ammo = FX.complete({kind: 'ammo', target: 'rifles', value: 25}, ctx);
+    check('ammo of the riflemen: the line after the mod\'s pattern, green', ammo.text === 'Боезапас стрелков: +25 %' && ammo.good, ammo.text);
+    const all = FX.complete({kind: 'ammo', target: 'all', value: 25}, ctx);
+    check('ammo of every crew', all.text === 'Боезапас каждой команды: +25 %');
+    const reload = FX.complete({kind: 'reload', target: 'cannons', value: -10}, ctx);
+    check('a shorter reload is green, a longer one red', reload.good && !FX.complete({kind: 'reload', target: 'cannons', value: 10}, ctx).good);
+    const slow = FX.complete({kind: 'battle_speed', value: -5}, ctx);
+    check('-5 % speed in battle is red', !slow.good && slow.text === 'Скорость барки на поле боя: -5 %', slow.text);
+    const cheap = FX.complete({kind: 'game', effect: 'wh_main_effect_force_all_campaign_recruitment_cost', value: -10}, ctx);
+    check('-10 % recruitment cost is green, the game\'s text and icon', cheap.good && cheap.text === 'Стоимость найма: -10%' && /treasury/.test(cheap.icon), JSON.stringify(cheap));
+    const own = FX.complete({kind: 'ammo', target: 'rifles', value: 30, own_text: true, text: 'Мой текст'}, ctx);
+    check('the author\'s own text stays, the structure with it', own.text === 'Мой текст' && own.kind === 'ammo' && own.value === 30);
+    // the author's lines read as effects (the typos of his tree too), never changed without the click
+    const rec = t => FX.recognize(t, ctx).map(e => `${e.kind}${e.target ? ':' + e.target : ''}${e.effect && e.kind === 'game' ? ':' + e.effect : ''}=${e.value}`).join(' ');
+    check('"Боезапас каждой команды: +25 %"', rec('Боезапас каждой команды: +25 %') === 'ammo:all=25', rec('Боезапас каждой команды: +25 %'));
+    check('"Меткость стрелков: +5 %"', rec('Меткость стрелков: +5 %') === 'accuracy:rifles=5');
+    check('"Дальность и меткость орудий: +10 %": two', rec('Дальность и меткость орудий: +10 %') === 'range:cannons=10 accuracy:cannons=10');
+    check('"Скорость бараки на поле боя -5%"', rec('Скорость бараки на поле боя -5%') === 'battle_speed=-5', rec('Скорость бараки на поле боя -5%'));
+    check('"Даотность пермешения пок арте компании +20%"', rec('Даотность пермешения пок арте компании +20%') === 'campaign_movement=20', rec('Даотность пермешения пок арте компании +20%'));
+    check('"Скорость на карте кмопании -5% скорость"', rec('Скорость на карте кмопании -5% скорость') === 'campaign_movement=-5');
+    check('"Обзор на карте кампании: +5%"', rec('Обзор на карте кампании: +5%') === 'sight=5');
+    check('"Стоимость найма: -10%" by the game\'s template', rec('Стоимость найма: -10%') === 'game:wh_main_effect_force_all_campaign_recruitment_cost=-10', rec('Стоимость найма: -10%'));
+    check('"Опыт за ход: +250"', /^game:.*=250$/.test(rec('Опыт за ход: +250')), rec('Опыт за ход: +250'));
+    check('"+10" alone does not read', rec('+10') === '');
+    const prop = FX.proposal({text: 'Скорость бараки на поле боя -5%', icon: null, good: true}, ctx);
+    check('the proposal keeps the author\'s text and turns it red', prop && prop.effects[0].text === 'Скорость бараки на поле боя -5%' && !prop.effects[0].good && prop.colour === 'станет красной', JSON.stringify(prop));
+    // the file keeps the structure
+    const d = T.emptyDesign();
+    const id = T.addNode(d, {name: 'Трюм', cost: 100, effects: [ammo, {text: 'Своя', icon: null, good: false}], units: ['wh_main_dwf_art_cannon'],
+        parts: [{part: 'pub'}, {part: null, name: 'Дозорные', zone: 'balloon', what: 'figures', figures: 2, note: 'фигуры'}]});
+    const back = T.normalize(JSON.parse(T.serialize(d))).design;
+    const n = T.byId(back, id);
+    check('the file keeps an effect of the catalogue whole', JSON.stringify(n.effects[0]) === JSON.stringify(T.normalizeEffect(ammo)) && n.effects[0].kind === 'ammo' && n.effects[0].target === 'rifles');
+    check('the file keeps a free line as three fields', JSON.stringify(n.effects[1]) === JSON.stringify({text: 'Своя', icon: null, good: false}));
+    check('the file keeps units and parts', n.units.join() === 'wh_main_dwf_art_cannon' && n.parts.length === 2 && n.parts[1].figures === 2 && n.parts[1].zone === 'balloon');
+    // the checks: one army unit by two buildings, a detail without a picture
+    T.addNode(d, {name: 'Кузня', cost: 100, units: ['wh_main_dwf_art_cannon']});
+    const w = T.warnings(d, {unitName: k => k, partKnown: k => k === 'pub', partDrawn: () => true, partName: k => k});
+    check('a unit opened by two buildings is warned of', w.some(x => x.kind === 'dup_unit'));
+    check('a new detail is warned of as not drawn', w.some(x => x.kind === 'ship_part' && /рисунок не готов/.test(x.text) && /Дозорные/.test(x.text)));
+    // the game's levels carry them
+    const g = T.gameData(d, data);
+    check('the game\'s level carries units, parts and the effects', g.tree_rows[0].units[0] === 'wh_main_dwf_art_cannon' && g.tree_rows[0].parts.length === 2 && g.tree_rows[0].effects[0].kind === 'ammo');
+}
+// 10. merge3: the author's state and the file's changed apart
+{
+    const base = T.emptyDesign();
+    for (const [nm, c] of [['A', 0], ['B', 1], ['C', 2]]) T.addNode(base, {name: nm, cost: 1, col: c, row: 0});
+    const theirs = JSON.parse(JSON.stringify(base)), mine = JSON.parse(JSON.stringify(base));
+    T.byId(theirs, 'n1').note = 'из файла';
+    T.byId(mine, 'n2').cost = 7;
+    let m = T.merge3(base, theirs, mine);
+    check('merge3: changes on different buildings join', !m.clashes.length && T.byId(m.design, 'n1').note === 'из файла' && T.byId(m.design, 'n2').cost === 7);
+    T.byId(mine, 'n1').note = 'моё';
+    m = T.merge3(base, theirs, mine);
+    check('merge3: one building changed on both sides is a clash, the file\'s kept', m.clashes.join() === 'n1' && T.byId(m.design, 'n1').note === 'из файла');
+    const added = JSON.parse(JSON.stringify(mine));
+    T.addNode(added, {name: 'D', cost: 1, col: 3, row: 0});
+    m = T.merge3(base, theirs, added);
+    check('merge3: a building added here comes in', !!T.byId(m.design, 'n4'));
+    const gone = JSON.parse(JSON.stringify(base));
+    T.deleteNodes(gone, ['n3']);
+    m = T.merge3(base, gone, mine);
+    check('merge3: a building deleted in the file and untouched here goes', !T.byId(m.design, 'n3'));
 }
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

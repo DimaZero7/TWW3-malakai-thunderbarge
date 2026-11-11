@@ -120,13 +120,19 @@ export function makeBuildings(data, game, parts) {
 
     // The stage of a part of the drawing and the model: pencil (not built), build (under construction), ink (built); none for a part not connected yet
     // (web/data/blueprint.json, enabled). M.all_parts (?parts=all): every part as built, to look at the whole ship.
+    // A node of the constructor's tree may bring a detail too (web/data/tree_design.json, parts: {part}): it shows with any building that brings it,
+    // the detail's own building of blueprint.json or a node's. The stage of the most advanced of them.
     M.all_parts = false;
+    const partOpeners = {};
+    for (const row of Object.values(levels)) for (const p of row.parts || []) if (p.part) (partOpeners[p.part] ||= []).push(row.key);
+    M.part_openers = part => partOpeners[part] || [];
     M.stage = part => {
         const p = parts[part];
         if (M.all_parts) return 'ink';
-        if (!p.enabled || !p.building) return 'none';
-        const s = M.status(prefix + p.building);
-        return s.state === 'built' ? 'ink' : s.state === 'building' ? 'build' : 'pencil';
+        const keys = [...(p.building ? [prefix + p.building] : []), ...(partOpeners[part] || [])];
+        if (!p.enabled || !keys.length) return 'none';
+        const states = keys.map(k => M.status(k).state);
+        return states.includes('built') ? 'ink' : states.includes('building') ? 'build' : 'pencil';
     };
 
     M.message = () => message;

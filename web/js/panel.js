@@ -4,6 +4,8 @@
 
 import {turnsText} from './barge_buildings.js';
 import {linkSegments, slotsBlock, GRID} from './tree_model.mjs';
+import * as FX from './effects_model.mjs';
+import {crewSources} from './crew_model.mjs';
 
 const LAYOUTS = 'ui/tww3_mtb/';
 const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they would be ui/tww3_mtb/<name>.png like the others
@@ -339,7 +341,8 @@ function unitCard(parent, id, x, y, uc, colour) {
 const CARD_W = 23, CARD_H = 50, CARD_OVERLAP = 10;
 function slotUnitCard(parent, id, x, y, uc, colour, outline) {
     const card = image(parent, id, uc.picture, x, y, CARD_W, CARD_H);
-    if (outline) {
+    if (colour === null) image(card, 'frame', 'ui/skins/default/unit_card_build_frame.png', 0, 0, CARD_W, CARD_H);      // an army unit: the game's own frame
+    else if (outline) {
         image(card, 'frame', 'ui/skins/default/unit_card_build_frame.png', 0, 0, CARD_W, CARD_H);
         image(card, 'aboard', WEB_ART + `aboard_outline_${colour}.png`, 0, 0, CARD_W, CARD_H);
     } else image(card, 'frame', `ui/skins/tww3_mtb/unit_card_build_frame_${colour}.png`, 0, 0, CARD_W, CARD_H);
@@ -378,6 +381,10 @@ function makeInfoTip(parent, id) {
     t.description = text(tip, 'description_window', 'text_info_italic', 14, 0, INFO_W - 28, 16, '');
     t.opensIcon = image(tip, 'effect_icon', 'ui/skins/default/replenishement_positive.png', 10, 0, 24, 24);
     t.opensTitle = text(tip, 'tx_enables', 'text_info', 38, 0, INFO_W - 38 - 10, 16, 'Открывает в экипаже:');
+    // the game's own block of a building that unlocks units (building_info_recruitment_effects.twui.xml): «Открывает найм:» and the units
+    t.armyIcon = image(tip, 'army_effect_icon', 'ui/skins/default/replenishement_positive.png', 10, 0, 24, 24);
+    t.armyTitle = text(tip, 'tx_enables_army', 'text_info', 38, 0, INFO_W - 38 - 10, 16, 'Открывает найм:');
+    t.army = [];
     t.instruction = make(parent, id + '_instruction', 'tooltip_instruction');
     t.reason = text(t.instruction, 'reason', 'text_info', 13, 13, INFO_W - 23, 16, '');
     tip.SetLayer('hover');
@@ -386,8 +393,13 @@ function makeInfoTip(parent, id) {
     t.instruction.SetVisible(false);
     return t;
 }
-function infoRows(t, effects, units) {
+function infoRows(t, effects, units, army = 0) {
     const D = 'ui/skins/default/';
+    while (t.army.length < army) {
+        const i = t.army.length;
+        const holder = image(t.tip, 'army_cat_frame_' + i, D + 'unit_cat_holder_round.png', 24, 0, 26, 26);
+        t.army.push({holder, icon: image(holder, 'unit_category_icon', D + 'replenishement_positive.png', 2, 2, 22, 22), name: text(t.tip, 'army_name_' + i, 'text_info', 52, 0, INFO_W - 52 - 10, 16, '')});
+    }
     while (t.effects.length < effects) {
         const i = t.effects.length;
         t.effects.push({icon: image(t.tip, 'effect_icon_' + i, D + 'replenishement_positive.png', 10, 0, 24, 24), text: text(t.tip, 'effect_' + i, 'text_info', 36, 0, INFO_W - 36 - 8, 16, '')});
@@ -404,8 +416,8 @@ function infoRows(t, effects, units) {
 function fillInfoTip(t, content) {
     const tall = c => c.TextDimensions()[1];
     const put = (c, x, y) => { at(c, x, y); size(c, c.Width(), Math.max(22, tall(c))); };
-    const effects = content.effects || [], opens = content.opens || [];
-    infoRows(t, effects.length, opens.length);
+    const effects = content.effects || [], opens = content.opens || [], army = content.army || [];
+    infoRows(t, effects.length, opens.length, army.length);
     t.title.SetStateText(content.title || '');
     t.chain.SetStateText(content.chain || '');
     t.reason.SetStateText(content.reason ? `[[col:game_red]]${content.reason}[[/col]]` : '');
@@ -436,6 +448,22 @@ function fillInfoTip(t, content) {
         }
         t.units.forEach((row, i) => {
             const o = opens[i];
+            row.holder.SetVisible(!!o); row.name.SetVisible(!!o);
+            if (!o) return;
+            if (o.category) row.icon.SetImagePath(o.category, 0);
+            row.name.SetStateText(o.text);
+            at(row.holder, 24, y + 4);
+            put(row.name, 52, y + 11);
+            y += Math.max(50, 11 + tall(row.name) + 4);
+        });
+        t.armyIcon.SetVisible(!!army.length); t.armyTitle.SetVisible(!!army.length);
+        if (army.length) {
+            at(t.armyIcon, 10, y);
+            put(t.armyTitle, 38, y + 6);
+            y += 24;
+        }
+        t.army.forEach((row, i) => {
+            const o = army[i];
             row.holder.SetVisible(!!o); row.name.SetVisible(!!o);
             if (!o) return;
             if (o.category) row.icon.SetImagePath(o.category, 0);
@@ -551,18 +579,35 @@ function unitInfo(parent, id, spec, flags = {}) {
         row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', String(n.ammo), n.ammo / best(x => x.ammo));
         if (n.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${n.blast + n.blast_ap} · ${n.radius} м`, 1);
     }
+    // what the buildings that stand add, a line a kind with the buildings it comes from (green; red when it makes the crew worse)
     info.accuracy = text(panel, 'accuracy', 'text_unit_note', 14, y + 2, W - 28, 20, '');
     info.accuracy_y = y + 2;
     info.base_h = y + 12;
+    const base = {ammo: n.ammo, range: n.range, reload: n.reload};
     // additional_explanation: the crew's state, a window of its own under the panel
     info.state = make(parent, id + '_state', 'tooltip_instruction');
     info.stateText = text(info.state, 'text', 'text_info', 13, 10, W - 23, 22, '');
     for (const c of [panel, info.state]) { c.SetLayer('hover'); c.SetPassive(); c.SetVisible(false); }
     // what changes with the game: the ammunition with the cargo hold, the accuracy with the shooters' buildings, the state
     info.set = dyn => {
-        if (info.rows.ammo) info.rows.ammo.value.SetStateText(dyn.ammo_mult > 1 ? `[[col:game_green]]${Math.round(n.ammo * dyn.ammo_mult)}[[/col]]` : String(n.ammo));
-        info.accuracy.SetStateText(dyn.accuracy ? `[[col:game_green]]Меткость от построек: +${dyn.accuracy} %[[/col]]` : '');
-        info.h = info.base_h + (dyn.accuracy ? 20 : 0);
+        const bonus = dyn.bonus || {};
+        const better = (kind, pct) => (FX.KINDS[kind].positiveGood ? pct > 0 : pct < 0);
+        const colour = (kind, pct, t) => (pct ? `[[col:${better(kind, pct) ? 'game_green' : 'game_red'}]]${t}[[/col]]` : t);
+        for (const kind of ['ammo', 'range', 'reload']) {
+            const b = bonus[kind], r = info.rows[kind];
+            if (!r) continue;
+            r.value.SetStateText(colour(kind, b ? b.pct : 0, String(b && b.pct ? FX.applyPct(base[kind], b.pct, kind) : base[kind])));
+        }
+        if (info.rows.damage) {
+            const b = bonus.damage, d0 = (n.damage + n.ap) * n.shots * n.volley;
+            info.rows.damage.value.SetStateText(colour('damage', b ? b.pct : 0, String(b && b.pct ? FX.applyPct(d0, b.pct, 'damage') : d0)));
+        }
+        const lines = FX.CREW_KINDS.filter(k => bonus[k] && bonus[k].pct).map(k => colour(k, bonus[k].pct,
+            `${FX.KINDS[k].name} ${FX.signedPct(bonus[k].pct)}: ${bonus[k].from.map(f => f.name + (f.mod ? ' (как в моде)' : '')).join(', ')}`));
+        info.accuracy.SetStateText(lines.join('\n'));
+        const linesH = lines.length ? Math.max(20, info.accuracy.TextDimensions()[1] + 4) : 0;
+        size(info.accuracy, W - 28, Math.max(20, linesH));
+        info.h = info.base_h + linesH;
         size(panel, W, info.h);
         info.stateText.SetStateText(dyn.reason ? `[[col:game_red]]${dyn.reason}[[/col]]` : dyn.state || '');
         info.has_state = !!(dyn.reason || dyn.state);
@@ -578,15 +623,82 @@ function unitInfo(parent, id, spec, flags = {}) {
     return info;
 }
 
-// What the game changes in a crew's panel: the cargo hold that stands, the shooters' buildings that stand, where the crew is now.
+// What the game changes in a crew's panel: every effect of the crew of the buildings that stand (the tree's effects of the catalogue, and the mod's
+// own numbers of its buildings where the tree says nothing of that kind: web/js/crew_model.mjs, crewSources), where the crew is now.
 function unitDyn(M, data, group, option, opt) {
-    let ammo_mult = 1, spread = 1;
-    for (const [key, mult] of Object.entries(data.ammo_mod || {})) if (M.game.has_building(key)) ammo_mult = Math.max(ammo_mult, mult);
-    for (const b of data.groups[group].boost || []) if (M.game.has_building(b.building)) spread = Math.min(spread, b.spread);
     const now = M.crew(group), order = M.crew_order(group);
-    return {ammo_mult, accuracy: Math.round((1 - spread) * 100),
+    return {bonus: FX.crewBonuses(crewSources(data, key => M.game.has_building(key), key => M.game.standing(key)), group),
             reason: opt.unlocked ? '' : `Откроет постройка «${opt.building.name}»`,
             state: option === order ? 'В найме: встанут к бортам в начале хода' : option === now ? 'Стоят у бортов' : ''};
+}
+
+// The game's unit information panel of an army unit (ui/common ui/unit_information.twui.xml): here its numbers are true, it is an ordinary unit of the
+// game. The stats of the game's tables (build/web/catalog.json, tools/web_export.py export_catalog): the men's health, armour, leadership, speed, melee
+// attack and defence, charge; the missile weapon's damage, armour piercing, range, ammunition, reload. The weapon strength is not shown: the table of
+// melee weapons has no layout the export can read. The bar is the value against the best of the dwarfs' units.
+function armyInfo(parent, id, u, all, building) {
+    const D = 'ui/skins/default/', W = UNIT_INFO_W, st = u.stats;
+    const panel = make(parent, id, 'unit_parchment');
+    const info = {panel};
+    text(panel, 'tx_unit-type', 'text_unit_title', 12, 1 + 4, W - 24, 30, u.name);
+    const hbar = make(panel, 'hbar', 'separator_skull');
+    size(hbar, W - 20, 8);
+    at(hbar, 10, 31);
+    let y = 39;
+    image(panel, 'category', u.card.category, 12, y + 4, 26, 26);
+    text(panel, 'custom_name_display', 'text_unit', 48, y, W - 60, 34, {melee_infantry: 'Пехота ближнего боя', missile_infantry: 'Стрелковая пехота', warmachine: 'Боевая машина'}[u.caste] || u.caste);
+    y += 36;
+    image(panel, 'icon_men', D + 'icon_entity_small.png', 12, y + 2, 26, 26);
+    text(panel, 'dy_men', 'text_unit', 40, y, 60, 30, String(st.men) + (st.engines ? ` · ${st.engines}` : ''));
+    image(panel, 'icon_upkeep', D + 'icon_income.png', 104, y + 2, 26, 26).SetTooltipText('Содержание за ход', true);
+    text(panel, 'upkeep', 'text_unit', 132, y, 50, 30, String(u.upkeep));
+    image(panel, 'icon_cost', D + 'icon_treasury.png', 196, y + 2, 26, 26);
+    text(panel, 'cost', 'text_unit', 224, y, 56, 30, String(u.hire));
+    y += 32;
+    const head = make(panel, 'row_header_stats', 'unit_header');
+    size(head, W - 16, 34);
+    at(head, 8, y);
+    text(head, 'dy_title', 'text_unit_centre', 0, 0, W - 16, 34, 'Характеристики');
+    y += 38;
+    const units = Object.values(all);
+    const best = f => Math.max(1, ...units.map(x => x.stats[f] || 0));
+    const row = (key, icon, name, value, share) => {
+        image(panel, 'icon_' + key, icon, 10, y, 22, 22);
+        text(panel, 'name_' + key, 'text_unit', 36, y - 1, 130, 24, name);
+        image(panel, 'bar_back_' + key, D + 'bar_back.png', 166, y + 5, 60, 12);
+        image(panel, 'bar_' + key, D + 'bar_white.png', 168, y + 7, Math.max(2, Math.round(56 * Math.min(1, share))), 8).SetImageColour(235, 189, 124, 255);
+        text(panel, 'value_' + key, 'text_unit_right', 228, y - 1, W - 228 - 12, 24, value);
+        y += 24;
+    };
+    const stat = (key, icon, name) => { if (st[key] !== null && st[key] !== undefined) row(key, D + icon, name, String(st[key]), st[key] / best(key)); };
+    stat('health', 'icon_stat_health.png', 'Здоровье');
+    stat('armour', 'icon_stat_armour.png', 'Броня');
+    stat('leadership', 'icon_stat_morale.png', 'Боевой дух');
+    stat('speed', 'icon_stat_speed.png', 'Скорость');
+    stat('melee_attack', 'icon_stat_attack.png', 'Атака');
+    stat('melee_defence', 'icon_stat_defence.png', 'Защита');
+    stat('charge', 'icon_stat_charge_bonus.png', 'Бонус натиска');
+    if (st.range) {
+        row('missile', D + 'icon_stat_ranged_damage.png', 'Урон выстрела', String((st.missile_damage + st.missile_ap) * (st.shots || 1)), (st.missile_damage + st.missile_ap) / Math.max(1, ...units.map(x => (x.stats.missile_damage || 0) + (x.stats.missile_ap || 0))));
+        row('missile_ap', D + 'modifier_icon_armour_piercing.png', 'Бронебойный', String(st.missile_ap * (st.shots || 1)), st.missile_ap / Math.max(1, st.missile_damage + st.missile_ap));
+        stat('range', 'icon_stat_range.png', 'Дальность');
+        stat('ammo', 'icon_stat_ammo.png', 'Боезапас');
+        if (st.reload) row('reload', D + 'icon_stat_reload_time.png', 'Перезарядка, с', String(st.reload), Math.min(1, 4 / st.reload));
+    }
+    const note = text(panel, 'note', 'text_unit_note', 14, y + 2, W - 28, 20, st.health === null ? 'Сила оружия ближнего боя и здоровье машины не прочитаны: их таблиц страница не читает' : 'Сила оружия ближнего боя не прочитана: таблицы оружия страница не читает');
+    y += Math.max(20, note.TextDimensions()[1]) + 10;
+    info.h = y;
+    size(panel, W, y);
+    info.state = make(parent, id + '_state', 'tooltip_instruction');
+    const stateText = text(info.state, 'text', 'text_info', 13, 10, W - 23, 22, `Обычный отряд армии: открывает «${building}». Найм армии на этой странице не моделируется`);
+    info.state_h = 10 + Math.max(22, stateText.TextDimensions()[1]) + 10;
+    size(stateText, W - 23, info.state_h - 20);
+    size(info.state, W, info.state_h);
+    info.total = info.h + info.state_h - 8;
+    for (const c of [panel, info.state]) { c.SetLayer('hover'); c.SetPassive(); c.SetVisible(false); }
+    info.place = (x, top) => { at(panel, x, top); at(info.state, x, top + info.h - 8); };
+    info.hook = owner => { owner.SetHoverChild(panel); owner.AddHoverChild(info.state); };
+    return info;
 }
 
 function demoTip(parent, id, x, bottom, spec) {
@@ -855,11 +967,23 @@ function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide) {
     view.crew = [];
     const frame = parent.parent;
     const clips = Object.fromEntries((blueprint.crew_cards || []).map(c => [c.group + ':' + c.option, c]));
+    const armyAll = view.data.army_units || {};
     for (const v of view.tree) {
         const list = v.node.row.unlocks.map(u => ({...u, group_data: view.data.groups[u.group]})).map(u => ({...u, option_data: u.group_data && u.group_data.options[u.option]}))
             .filter(u => u.option_data && u.option_data.unit_card && u.option !== u.group_data.mount);
+        const army = (v.node.row.units || []).map(k => armyAll[k]).filter(Boolean);
+        const total = list.length + army.length;
+        // the army units after the crew in the same row, the game's own frame (the crew's frame is the crew group's colour)
+        army.forEach((u, j) => {
+            const i = list.length + j, row_w = CARD_W + (total - 1) * (CARD_W - CARD_OVERLAP);
+            const cx = v.button.x + NODE + 17 - row_w + i * (CARD_W - CARD_OVERLAP), cy = v.button.y - 22;
+            const card = slotUnitCard(holder, `mtb_army_card_${v.node.row.short}_${u.key}`, cx, cy, u.card, null, false);
+            const info = armyInfo(frame, `army_info_${v.node.row.short}_${u.key}`, u, armyAll, v.node.row.name);
+            info.hook(card);
+            view.crew.push({card, info, tip: info.panel, building: v.node.key, army: u.key, v, cardY: cy});
+        });
         list.forEach((u, i) => {
-            const row_w = CARD_W + (list.length - 1) * (CARD_W - CARD_OVERLAP);
+            const row_w = CARD_W + (total - 1) * (CARD_W - CARD_OVERLAP);
             const cx = v.button.x + NODE + 17 - row_w + i * (CARD_W - CARD_OVERLAP), cy = v.button.y - 22;
             const card = slotUnitCard(holder, `mtb_crew_card_${v.node.row.short}_${u.option}`, cx, cy, u.option_data.unit_card, u.group_data.card_frame || 'gold', flags.aboard === 'outline');
             const waiting = image(card, 'waiting', D + 'icon_hourglass.png', CARD_W - 15, CARD_H - 17, 16, 16);
@@ -979,11 +1103,19 @@ function fileInfo(view, row, card, reason) {
     const D = 'ui/skins/default/';
     return {
         title: row.name, chain: (card && card.chain_title) || '', description: row.text,
-        effects: (row.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good})),
+        // what appears on the ship with it: a line each, «(рисунок не готов)» where the drawing has nothing for it yet
+        effects: [...(row.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good})),
+                  ...(row.parts || []).map(p => {
+                      const spec = p.part && (view.data.parts_all || {})[p.part];
+                      const drawn = spec && spec.drawn;
+                      return {icon: 'ui/campaign ui/effect_bundles/general_ability.png', good: true,
+                              text: `Вид на корабле: ${p.part ? (spec ? spec.name : p.part) : p.name || 'новая деталь'}${drawn ? '' : ' (рисунок не готов)'}`};
+                  })],
         opens: row.unlocks.map(u => ({g: view.data.groups[u.group], u})).filter(({g, u}) => g && g.options[u.option] && g.options[u.option].unit_card && u.option !== g.mount).map(({g, u}) => {
             const o = g.options[u.option], money = [o.hire ? `найм ${o.hire}` : '', o.upkeep ? `содержание ${o.upkeep} за ход` : ''].filter(Boolean).join(', ');
             return {category: o.unit_card.category, text: o.name + (money ? ` (${money})` : '')};
         }),
+        army: (row.units || []).map(k => (view.data.army_units || {})[k]).filter(Boolean).map(u => ({category: u.card.category, text: u.name})),
         reason,
     };
 }
@@ -991,6 +1123,7 @@ function fileInfo(view, row, card, reason) {
 function refreshTree(view, M) {
     // the small unit cards: their marks and their panels (left of the tree's leftmost slot, level with the card, inside the screen)
     for (const c of view.crew || []) {
+        if (c.army) continue;           // an army unit's panel does not change with the game
         const o = M.crew_options(c.group).find(x => x.key === c.option);
         if (!o) continue;
         c.waiting.SetVisible(M.crew_order(c.group) === c.option);
@@ -1145,7 +1278,7 @@ function refresh(view, M) {
     for (const [part, layers] of Object.entries(view.layers)) {
         const stage = M.stage(part);
         for (const s of ['pencil', 'build', 'ink']) if (layers[s]) layers[s].SetVisible(s === stage);
-        const st = stage === 'build' ? M.status(M.prefix + M.parts[part].building) : {};
+        const st = stage === 'build' ? [...(M.parts[part].building ? [M.prefix + M.parts[part].building] : []), ...M.part_openers(part)].map(k => M.status(k)).find(x => x.state === 'building') || {} : {};
         if (stage === 'build' && !layers.build) layers.turns.SetVisible(false);
         layers.turns.SetVisible(stage === 'build');
         layers.turns.SetStateText(st.state === 'building' ? turnsText(st.turns) : '');

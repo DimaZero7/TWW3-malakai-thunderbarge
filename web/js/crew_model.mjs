@@ -59,6 +59,33 @@ export function lose(state, ctx) {
     return {state: {standing, order}, gold, lost};
 }
 
+// What acts on the crew's shooting now: the sources for effects_model.mjs crewBonuses. data: the game's levels (build/web/data.json, or the tree's of
+// tree_model.mjs gameData: tree_rows); has(key): the building stands (a lower level counts under a higher one); standing(key): it is the level in its slot.
+//   a node's effects of the catalogue for the crew (ammo, accuracy, range, reload, damage), from every building that stands
+//   the mod's own numbers of a mod building (data/crew_options.json: ammo_mod of the cargo hold, boost of a group: accuracy and range), as the mod
+//   has them today, from the level in its slot only (the levels of one chain are not added up, the mod takes the highest), and only where the
+//   building's node says nothing of that kind itself: the tree's own effect is what the author wants instead
+// -> [{effect: {kind, target, value}, from: the building's name, mod: true for the mod's own}]
+export function crewSources(data, has, standing = has) {
+    const rows = data.tree_rows || [...(data.hull || []), ...(data.chains || []).flatMap(c => c.levels)];
+    const crewKinds = ['ammo', 'accuracy', 'range', 'reload', 'damage'];
+    const out = [];
+    for (const r of rows) {
+        const own = (r.effects || []).filter(e => e && crewKinds.includes(e.kind));
+        if (has(r.key)) for (const e of own) out.push({effect: e, from: r.name});
+        if (!standing(r.key)) continue;
+        const says = (kind, g) => own.some(e => e.kind === kind && (e.target === 'all' || !e.target || e.target === g));
+        const mult = (data.ammo_mod || {})[r.key];
+        if (mult && !own.some(e => e.kind === 'ammo')) out.push({effect: {kind: 'ammo', target: 'all', value: Math.round((mult - 1) * 100)}, from: r.name, mod: true});
+        for (const [g, group] of Object.entries(data.groups || {})) for (const b of group.boost || []) {
+            if (b.building !== r.key) continue;
+            if (b.spread && b.spread < 1 && !says('accuracy', g)) out.push({effect: {kind: 'accuracy', target: g, value: Math.round((1 - b.spread) * 100)}, from: r.name, mod: true});
+            if (b.range && b.range > 1 && !says('range', g)) out.push({effect: {kind: 'range', target: g, value: Math.round((b.range - 1) * 100)}, from: r.name, mod: true});
+        }
+    }
+    return out;
+}
+
 // What is taken from the treasury for this state: the hire of the order that waits.
 export function held(state) {
     return state.order ? state.order.paid : 0;

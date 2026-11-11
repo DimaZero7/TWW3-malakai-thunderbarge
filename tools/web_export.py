@@ -5,6 +5,7 @@ Everything goes to build/web/ (outside git): the game's models, textures and UI 
   build/web/models/*.gltf   the base barge (build/solid_hull_hatches without the shields) and each removed detail as a model of its own, LOD 0,
                             game axes mirrored to three.js (export_models)
   build/web/tex/*.png       their textures, DDS turned into PNG by tools/web_textures.py (py -3.10, Pillow)
+  build/web/catalog.json    the game's effects of the dwarfs' buildings and the dwarfs' army units, for the constructor (export_catalog)
   build/web/overview.json   every chain of the barge with its levels, effects, crew options, units, model details (export_overview)
   build/web/game/...        the game's own UI pictures the panel uses (frames, icons), at their pack paths
   build/web/vendor/three/   three.js, a pinned version from the npm registry
@@ -690,6 +691,124 @@ def export_overview():
     print("overview:", len(out), "chains,", sum(len(c["cards"]) for c in out), "levels; incomplete:", {c["title"]: c["missing"] for c in out if c["missing"]})
 
 
+# ---------------- the constructor's catalogue: the game's effects and the dwarfs' army units (web/js/effects_model.mjs, constructor.js) ----------------
+# The stat icons of the game's unit information panel (ui/common ui/unit_information.twui.xml, dynamic_stats) for an army unit's panel on the page.
+UNIT_STAT_ICONS = ["ui/skins/default/icon_stat_health.png", "ui/skins/default/icon_stat_armour.png", "ui/skins/default/icon_stat_morale.png",
+                   "ui/skins/default/icon_stat_speed.png", "ui/skins/default/icon_stat_attack.png", "ui/skins/default/icon_stat_defence.png",
+                   "ui/skins/default/icon_stat_charge_bonus.png", "ui/skins/default/icon_stat_ranged_damage.png", "ui/skins/default/icon_stat_range.png",
+                   "ui/skins/default/icon_stat_ammo.png", "ui/skins/default/icon_stat_reload_time.png", "ui/skins/default/icon_stat_damage.png",
+                   "ui/skins/default/modifier_icon_armour_piercing.png", "ui/skins/default/icon_income.png", "ui/skins/default/icon_treasury.png",
+                   "ui/skins/default/icon_entity_small.png", "ui/skins/default/unit_card_build_frame.png", "ui/skins/default/icon_hourglass.png"]
+# The dwarfs' unit keys (the game's own and its DLCs'); the faction's roster of custom battles is wh_main_dwf_dwarfs, Malakai's own units end in _malakai
+DWARF_UNITS = ("wh_main_dwf_", "wh_dlc06_dwf_", "wh2_dlc10_dwf_", "wh3_dlc25_dwf_")
+
+
+def armour_values():
+    """{armour key: armour value} of unit_armour_types. Not in data/db_layouts.json; the layout of its version 6 read off the file: the value (i32), the key,
+    the audio material (optional string). dbtable.decode reads the whole file with it or raises, so a wrong guess cannot pass. {} when it does not read."""
+    sep = chr(92)
+    for _, blob in gamepack.entries(gamepack.DATA / "db.pack", lambda n: n.count(sep) == 2 and n.split(sep)[1] == "unit_armour_types_tables"):
+        if dbtable.header(blob)[1] != 6:
+            return {}
+        try:
+            return {r["key"]: r["value"] for r in dbtable.decode(blob, [("value", "I32"), ("key", "StringU8"), ("audio", "OptionalStringU8")])}
+        except ValueError:
+            return {}
+    return {}
+
+
+def export_catalog():
+    """build/web/catalog.json, for the constructor:
+      game_effects  every effect the dwarfs' buildings use in the game (building_effects_junction of dwarf and Spirit of Grungni buildings), not hidden,
+                    with its Russian text (%+n where the value goes), its icon (effects.icon), whether a positive value is good, its category, the scopes
+                    and values it is used with
+      army_units    the dwarfs' army units (main_units of the dwarf prefixes, no heroes, lords, renowned regiments, summoned or multiplayer ones): name,
+                    card picture, category icon, caste, men, recruitment and upkeep, and the stats the game's unit panel shows, from land_units,
+                    battle_entities, the missile weapon's projectile and unit_armour_types. Not read: the melee weapon (no layout of melee_weapons)."""
+    stock = build.game_tables()
+    names = crew_ui.game_text("land_units_onscreen_name_")
+    # the game's texts, the mod's own over them (data/campaign_text.json goes into the pack's .loc), as the game shows them
+    texts = crew_ui.game_text("effects_description_") | {k: v for k, v in campaign_text().items() if k.startswith("effects_description_")}
+    effect_rows = {r["effect"]: r for r in stock["effects"]}
+    uses = {}
+    # the effects the barge's buildings use as the mod builds them (build/web/overview.json, export_overview): the line of sight of the nests is a
+    # row of the mod's own table, not of the game's
+    overview = OUT / "overview.json"
+    if overview.exists():
+        for chain in json.loads(overview.read_text(encoding="utf-8"))["chains"]:
+            for card in chain["cards"]:
+                for e in card["effects"]:
+                    if not e["ours"] and not e["hidden"] and not e["off"]:
+                        uses.setdefault(e["effect"], []).append((e["scope"], e["value"]))
+    for r in stock["building_effects_junction"]:
+        if not re.search(r"dwf|dwarf", r["building"]) or "_chd_" in r["building"] or "chaos_dwarf" in r["building"] or r["effect"].startswith("mtb_"):
+            continue
+        uses.setdefault(r["effect"], []).append((r["effect_scope"], r["value"]))
+    effects = []
+    for key, used in sorted(uses.items()):
+        row, template = effect_rows.get(key), texts.get(f"effects_description_{key}")
+        if not row or not template or "(HIDDEN" in template or row["priority"] == 0:
+            continue
+        # the game's template with %+n / %n kept as the place of the value; picture tags out, replacements put in (effect_text does both)
+        text = effect_text(template.replace("%+n", "\x01").replace("%n", "\x02"), 0)
+        text = text.replace("\x01", "%+n").replace("\x02", "%n")
+        if not re.search("[а-яА-Я]", text):
+            continue
+        values = sorted({round(v, 2) for _, v in used})
+        effects.append({"key": key, "text": text, "icon": "ui/campaign ui/effect_bundles/" + row["icon"] if row.get("icon") else None,
+                        "positive_good": bool(row["is_positive_value_good"]), "category": row["category"],
+                        "scopes": sorted({s for s, _ in used}), "values": values[:12], "uses": len(used)})
+    icons = sorted({e["icon"] for e in effects if e["icon"]})
+    # army units
+    lands = {r["key"]: r for r in stock["land_units"]}
+    entities = {r["key"]: r for r in stock["battle_entities"]}
+    weapons = {r["key"]: r for r in stock["missile_weapons"]}
+    projectiles = {r["key"]: r for r in stock["projectiles"]}
+    variant_card = {r["unit"]: r["unit_card"] for r in stock["unit_variants"]}
+    group_icons = unit_group_icons()
+    armour = armour_values()
+    units, pictures = [], []
+    for m in sorted(stock["main_units"], key=lambda r: r["unit"]):
+        key = m["unit"]
+        if not key.startswith(DWARF_UNITS) or m["caste"] in ("hero", "lord") or m["is_renown"] or m["recruitment_cost"] <= 0:
+            continue
+        if re.search(r"_summoned|_mp$|thunderbarge|_ror$", key) or key not in variant_card or m["land_unit"] not in lands:
+            continue
+        lu = lands[m["land_unit"]]
+        entity = entities.get(lu["man_entity"], {})
+        # the missile weapon: the unit's own, or the war machine's (its engine has it; battlefield_engines is not read: the weapon named as the engine)
+        weapon_key = lu["primary_missile_weapon"] or (lu["engine"] and lu["engine"].replace("_art_", "_", 1))
+        weapon = weapons.get(weapon_key or "")
+        p = projectiles.get(weapon["default_projectile"]) if weapon else None
+        stats = {"men": m["num_men"], "engines": lu["num_engines"], "melee_attack": lu["melee_attack"], "melee_defence": lu["melee_defence"],
+                 "charge": lu["charge_bonus"], "leadership": lu["morale"], "speed": round(entity.get("run_speed", 0) * 10) if entity else None,
+                 "armour": armour.get(lu["armour"]),
+                 # the men's health; a war machine's or a mount's own health is in tables the page does not read
+                 "health": (entity.get("hit_points", 0) + lu["bonus_hit_points"]) * m["num_men"] if entity and not lu["num_engines"] and not lu["mount"] else None}
+        if p:
+            stats.update(missile_damage=round(p["damage"]), missile_ap=round(p["ap_damage"]), range=round(p["effective_range"]),
+                         reload=round(p["base_reload_time"], 1), ammo=lu["primary_ammo"], shots=p["projectile_number"])
+        card = {"picture": f"ui/units/icons/{variant_card[key]}.png",
+                "category": f"ui/common ui/unit_category_icons/{group_icons.get(m['ui_unit_group_land'], m['ui_unit_group_land'])}.png"}
+        pictures += [card["picture"], card["category"]]
+        units.append({"key": key, "name": names.get(f"land_units_onscreen_name_{m['land_unit']}", key), "caste": m["caste"], "group": m["ui_unit_group_land"],
+                      "variant": "malakai" if key.endswith("_malakai") else "grudge" if "grudge_reward" in key else None,
+                      "hire": m["recruitment_cost"], "upkeep": m["upkeep_cost"], "tier": m["tier"], "card": card, "stats": stats})
+    got = game_files(sorted(set(icons + pictures + UNIT_STAT_ICONS)))
+    for path, blob in got.items():
+        target = OUT / "game" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(blob)
+    have = set(got)
+    for e in effects:
+        if e["icon"] and e["icon"] not in have:
+            e["icon"] = None
+    data = {"_about": "Made by tools/web_export.py, export_catalog: the game's effects of the dwarfs' buildings and the dwarfs' army units, for the constructor. Do not edit.",
+            "game_effects": effects, "army_units": units, "stat_icons": sorted(p for p in UNIT_STAT_ICONS if p in have), "armour_read": bool(armour)}
+    (OUT / "catalog.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    print("catalog:", len(effects), "game effects,", len(units), "army units; pictures", len(got), "of", len(set(icons + pictures + UNIT_STAT_ICONS)))
+
+
 def recolour_card_frames(got):
     """The game's frames of a unit card (unit_card_build_frame.png of the small card, red; unit_card_frame_plain.png of the army panel's card) in each
     colour of the crew groups (data/crew_options.json, card_frames), for the crew aboard: build/web/game/ui/skins/tww3_mtb/<name>_<colour>.png. Same size,
@@ -758,12 +877,15 @@ def main():
     ap.add_argument("--vendor", action="store_true")
     ap.add_argument("--stock", action="store_true", help="also the stock hull, for ?hull=stock")
     ap.add_argument("--overview", action="store_true", help="only build/web/overview.json and its icons")
+    ap.add_argument("--catalog", action="store_true", help="only build/web/catalog.json (the constructor's game effects and army units) and its pictures")
     a = ap.parse_args()
-    everything = not (a.data or a.models or a.ui or a.vendor or a.overview)
+    everything = not (a.data or a.models or a.ui or a.vendor or a.overview or a.catalog)
     if everything or a.data:
         export_data()
     if everything or a.overview:
         export_overview()
+    if everything or a.catalog:
+        export_catalog()
     if everything or a.ui:
         export_game_ui()
     if everything or a.vendor:

@@ -24,8 +24,14 @@ async function json(url) {
 }
 
 async function main() {
-    const [data, sim, art, blueprint, overview, designFile] = await Promise.all([json('/build/data.json'), json('/data/sim.json'), json('/art/layers.json'), json('/data/blueprint.json'),
-        json('/build/overview.json').catch(() => ({chains: []})), flags.tree === 'blueprint' ? null : fetch('/data/tree_design.json').then(r => (r.ok ? r.text() : null)).catch(() => null)]);
+    // the tree's file with its version (tools/web_serve.py: a write names the version it was made on)
+    let fileVersion = null;
+    const [data, sim, art, blueprint, overview, designFile, catalog] = await Promise.all([json('/build/data.json'), json('/data/sim.json'), json('/art/layers.json'), json('/data/blueprint.json'),
+        json('/build/overview.json').catch(() => ({chains: []})),
+        flags.tree === 'blueprint' ? null : fetch('/data/tree_design.json', {cache: 'no-store'}).then(r => { fileVersion = r.headers.get('X-Tree-Version'); return r.ok ? r.text() : null; }).catch(() => null),
+        // the constructor's catalogue: the game's effects of the dwarfs' buildings, the dwarfs' army units (tools/web_export.py --catalog)
+        json('/build/catalog.json').catch(() => ({game_effects: [], army_units: []}))]);
+    const blueprintAll = JSON.parse(JSON.stringify(blueprint));      // before the stage's fields go over it: every part, for the constructor
     // ?stage=barge (or another name of blueprint.json, stages): what is shown; the stage's own fields over the common ones. parts: true the common ones,
     // false none, an object its own. built: what stands at the start of the stage, over web/data/sim.json.
     const stageName = flags.stage || blueprint.stage;
@@ -41,7 +47,19 @@ async function main() {
     // the base barge (build/solid_hull_hatches without the shields) and each detail as a model of its own; ?hull=stock shows the stock hull instead
     // model_when: the base barge is loaded at once but shown only when that part's building stands
     const hull = !(stage.model || stage.model_when) ? null : flags.hull === 'stock' ? 'hull_stock' : 'hull_base';
-    const parts = Object.entries(blueprint.parts).filter(([, spec]) => spec.model);     // the frame has a drawing only
+    // the details the tree's nodes bring (web/data/tree_design.json, parts): one of blueprint.json the stage does not show joins it, shown with its
+    // node's building (barge_buildings.js, M.stage); one without a layer or a model is only named in the building's window ("рисунок не готов")
+    const partsInfo = T.shipParts(blueprintAll, {...art.places, ...data.art.layers});
+    const joinParts = d => {
+        for (const p of (d ? d.nodes : []).flatMap(n => n.parts || [])) {
+            const info = p.part && partsInfo[p.part];
+            if (!info || (!info.drawn && !info.model)) continue;
+            if (!blueprint.parts[p.part]) blueprint.parts[p.part] = {...blueprintAll.parts[p.part], enabled: true};
+            else if (!blueprint.parts[p.part].enabled) blueprint.parts[p.part] = {...blueprint.parts[p.part], enabled: true};
+        }
+    };
+    try { joinParts(designFile ? JSON.parse(designFile) : null); } catch (e) { /* read again below */ }
+    let parts = Object.entries(blueprint.parts).filter(([, spec]) => spec.model);     // the frame has a drawing only
 
     // ---- the game's part: built from the tree, again whenever the tree changed in the constructor ----
     let G = null;           // {game, M, panel, root, designText}
@@ -84,7 +102,10 @@ async function main() {
 
     const buildGame = design => {
         // the levels: the file's nodes (web/js/tree_model.mjs, gameData), or the mod's data and blueprint.json's tree without a file
-        const levels = design ? T.gameData(design, data) : data;
+        joinParts(design);
+        parts = Object.entries(blueprint.parts).filter(([, spec]) => spec.model);
+        for (const [, spec] of parts) if (!viewer.models[spec.model.part] && !(viewer.pending ||= new Set()).has(spec.model.part) && viewer.pending.add(spec.model.part)) viewer.load(spec.model.part, `/build/models/${spec.model.part}.gltf`).then(() => { if (G) setParts(); }).catch(e => console.error(e));
+        const levels = design ? {...T.gameData(design, data), army_units: Object.fromEntries((catalog.army_units || []).map(u => [u.key, u])), parts_all: partsInfo} : data;
         const game = new GameSim(levels, {...sim, ...(stage.built ? {built: stage.built} : {}), ...(stage.demolish_mode ? {demolish: stage.demolish_mode} : {})});
         const M = makeBuildings(levels, game, blueprint.parts);
         if (!design) {
@@ -124,6 +145,7 @@ async function main() {
     };
 
     noShip.textContent = stage.no_ship || '';
+    viewer.pending = new Set(parts.map(([, spec]) => spec.model.part));
     Promise.all([hull ? viewer.load(hull, `/build/models/${hull}.gltf`) : null, ...parts.map(([, spec]) => viewer.load(spec.model.part, `/build/models/${spec.model.part}.gltf`))])
         .then(() => { setParts(); if (hull) viewer.setVisible(hull, hullShown()); loading.style.display = 'none'; document.body.dataset.ready = '1'; })
         .catch(e => { loading.textContent = 'Модель не загрузилась: ' + e.message; console.error(e); });
@@ -183,7 +205,7 @@ async function main() {
         for (const b of modeButtons) b.classList.toggle('on', b.dataset.mode === mode);
         try { localStorage.setItem('mtb_mode', mode); } catch (e) { /* no storage */ }
         if (mode === 'constructor') {
-            if (!editor) editor = makeConstructor(document.getElementById('constructor'), {data, cards, design, problems, onChange: d => { design = d; }});
+            if (!editor) editor = makeConstructor(document.getElementById('constructor'), {data, cards, design, problems, onChange: d => { design = d; }, catalog, blueprint: blueprintAll, art, version: fileVersion});
             editor.show();
         } else {
             if (editor) { editor.hide(); design = editor.design(); }

@@ -4,9 +4,15 @@
 // the page (web/js/constructor.js, web/js/main.js) and in the test (node tools/tests/tree_model_test.mjs).
 //
 // The file:
-//   {_about, format: 1, nodes: [node]}
-//   node {id, col, row, name, description, cost, turns, tier, icon, effects: [{text, icon, good}], crew: [{group, option}], branch, mod_key, note,
-//         requires: [id]}
+//   {_about, format: 2, nodes: [node]}
+//   node {id, col, row, name, description, cost, turns, tier, icon, effects: [effect], crew: [{group, option}], units: [unit key], parts: [part],
+//         branch, mod_key, note, requires: [id]}
+//     effects    the green and red lines: {text, icon, good} a free line, or an effect of the catalogue {kind, target, effect, value, text, icon, good,
+//                own_text, own_good} (web/js/effects_model.mjs)
+//     units      the army units of the game the building opens for recruitment (main_units keys, build/web/catalog.json army_units): shown only
+//     parts      what appears on the ship with the building, no hire, no choice: {part: a key of web/data/blueprint.json parts} or a new detail
+//                {part: null, name, zone, what, figures, note} (ZONES, WHAT)
+//   Format 1 (no units, no parts, free lines only) is read as it is and written as format 2.
 //     col, row   the place on the game's grid: a column and a row of 106 (a slot of 74 and 32 between, ui/campaign ui/building_browser.twui.xml);
 //                row 0 is the lowest, the tree grows up
 //     tier       the hull's tier the building needs (the mod's rule: tier N needs airship_hull_N), null: none
@@ -15,17 +21,45 @@
 //     mod_key    the level of the mod this node stands for, without the prefix (airship_hull_2), null for a new building
 //     requires   the nodes that must stand before this one (several: all of them)
 
-export const FORMAT = 1;
+export const FORMAT = 2;
 export const TURNS_MAX = 30;
 export const GRID = 106, NODE = 74;
 export const BRANCHES = [null, 'gold', 'blue', 'green', 'red'];
 export const ABOUT = 'The tree of the barge\'s buildings, made in the page\'s constructor (web/js/constructor.js, model web/js/tree_model.mjs). '
     + 'nodes: id; col, row: the place on the game\'s grid (106 px a step, row 0 the lowest, the tree grows up); name, description, cost, turns; '
-    + 'tier: the hull tier needed (null none); icon: pack path; effects: the green lines; crew: what the building opens in the crew (data/crew_options.json); '
+    + 'tier: the hull tier needed (null none); icon: pack path; effects: the lines, a free one {text, icon, good} or an effect of the catalogue {kind, target, effect, value, '
+    + 'text, icon, good, own_text, own_good} (web/js/effects_model.mjs); crew: what the building opens in the crew (data/crew_options.json); '
+    + 'units: the army units it opens for recruitment (main_units keys); parts: what appears on the ship with it, {part: a key of web/data/blueprint.json parts} or a new one '
+    + '{part: null, name, zone, what, figures, note}; '
     + 'branch: colour of the frame and lines (null the trunk); mod_key: the mod\'s building level without the prefix (null for a new one); '
     + 'note: what the author wants from this building; requires: ids of the nodes that must stand first (all of them).';
 
-const NODE_KEYS = ['id', 'col', 'row', 'name', 'description', 'cost', 'turns', 'tier', 'icon', 'effects', 'crew', 'branch', 'mod_key', 'note', 'requires'];
+const NODE_KEYS = ['id', 'col', 'row', 'name', 'description', 'cost', 'turns', 'tier', 'icon', 'effects', 'crew', 'units', 'parts', 'branch', 'mod_key', 'note', 'requires'];
+// a new detail of the ship: where it is and what it is (the constructor's choices)
+export const ZONES = {balloon: 'шар и вороньи гнёзда', deck: 'палуба', side: 'борт', bow: 'нос', stern: 'корма', hold: 'трюм', bottom: 'днище'};
+export const WHAT = {figures: 'фигуры гномов без оружия', item: 'предмет', hull: 'часть корпуса'};
+const EFFECT_KEYS = ['kind', 'target', 'effect', 'value', 'text', 'icon', 'good', 'own_text', 'own_good'];
+const EFFECT_KINDS = new Set(['ammo', 'accuracy', 'range', 'reload', 'damage', 'battle_speed', 'campaign_movement', 'sight', 'influence', 'game']);
+// an effect as read: a free line keeps only its three fields; an effect of the catalogue all of its own, each of its kind
+export function normalizeEffect(e) {
+    if (!e || typeof e !== 'object') return null;
+    const base = {text: str(e.text), icon: e.icon ? str(e.icon) : null, good: e.good !== false};
+    if (!EFFECT_KINDS.has(e.kind)) return base;
+    const out = {kind: e.kind};
+    if (['ammo', 'accuracy', 'range', 'reload', 'damage'].includes(e.kind)) out.target = e.target ? str(e.target) : 'all';
+    if (e.kind === 'game') { if (!e.effect) return base; out.effect = str(e.effect); }
+    out.value = Number.isFinite(Number(e.value)) && e.value !== null && e.value !== '' ? Number(e.value) : 0;
+    Object.assign(out, base);
+    if (e.own_text) out.own_text = true;
+    if (e.own_good) out.own_good = true;
+    return out;
+}
+export function normalizePart(p) {
+    if (!p || typeof p !== 'object') return null;
+    if (p.part) return {part: str(p.part)};
+    return {part: null, name: str(p.name), zone: ZONES[p.zone] ? p.zone : 'deck', what: WHAT[p.what] ? p.what : 'figures',
+            figures: Math.max(0, int(p.figures, 0)), note: str(p.note)};
+}
 const clone = x => JSON.parse(JSON.stringify(x));
 const int = (v, dflt) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.round(Number(v)) : dflt);
 const str = v => (v === null || v === undefined ? '' : String(v));
@@ -33,8 +67,8 @@ const str = v => (v === null || v === undefined ? '' : String(v));
 export function emptyDesign() { return {_about: ABOUT, format: FORMAT, nodes: []}; }
 
 export function blankNode(fields = {}) {
-    return {id: '', col: 0, row: 0, name: '', description: '', cost: 0, turns: 1, tier: null, icon: null, effects: [], crew: [], branch: null,
-            mod_key: null, note: '', requires: [], ...fields};
+    return {id: '', col: 0, row: 0, name: '', description: '', cost: 0, turns: 1, tier: null, icon: null, effects: [], crew: [], units: [], parts: [],
+            branch: null, mod_key: null, note: '', requires: [], ...fields};
 }
 
 // A design from anything read (the file, an import, the browser's copy): every field present and of its kind, ids unique, links only to nodes that
@@ -54,8 +88,10 @@ export function normalize(raw) {
             id, col: int(r.col, 0), row: int(r.row, 0), name: str(r.name), description: str(r.description),
             cost: Math.max(0, int(r.cost, 0)), turns: Math.min(TURNS_MAX, Math.max(1, int(r.turns, 1))), tier: r.tier === null || r.tier === undefined || r.tier === '' ? null : Math.max(0, int(r.tier, 0)) || null,
             icon: r.icon ? str(r.icon) : null,
-            effects: (Array.isArray(r.effects) ? r.effects : []).filter(e => e && typeof e === 'object').map(e => ({text: str(e.text), icon: e.icon ? str(e.icon) : null, good: e.good !== false})),
+            effects: (Array.isArray(r.effects) ? r.effects : []).map(normalizeEffect).filter(Boolean),
             crew: (Array.isArray(r.crew) ? r.crew : []).filter(c => c && c.group && c.option).map(c => ({group: str(c.group), option: str(c.option)})),
+            units: [...new Set((Array.isArray(r.units) ? r.units : []).filter(u => typeof u === 'string' && u.trim()).map(u => u.trim()))],
+            parts: (Array.isArray(r.parts) ? r.parts : []).map(normalizePart).filter(Boolean).filter((p, k, all) => !p.part || all.findIndex(q => q.part === p.part) === k),
             branch, mod_key: r.mod_key ? str(r.mod_key).trim() || null : null, note: str(r.note),
             requires: Array.isArray(r.requires) ? r.requires.map(str) : [],
         });
@@ -74,7 +110,7 @@ export function normalize(raw) {
         for (const x of n.crew) if (!c.some(y => y.group === x.group && y.option === x.option)) c.push(x);
         n.crew = c;
     }
-    return {design: {_about: ABOUT, format: FORMAT, nodes}, problems};
+    return {design: {_about: ABOUT, format: FORMAT, nodes}, problems, from: Number(src.format) || 1};
 }
 
 // The file's text: the keys always in one order, two spaces, a newline at the end, so a change shows in git as the lines it changed.
@@ -84,8 +120,10 @@ export function serialize(design) {
     const list = (items, pad) => (items.length ? '[\n' + items.map(x => pad + '  ' + J(x)).join(',\n') + '\n' + pad + ']' : '[]');
     const node = n => {
         const lines = NODE_KEYS.map(k => {
-            const v = k === 'effects' ? list(n.effects.map(e => ({text: e.text, icon: e.icon, good: e.good})), '      ')
+            const v = k === 'effects' ? list(n.effects.map(e => Object.fromEntries(EFFECT_KEYS.filter(f => e[f] !== undefined && ((f !== 'own_text' && f !== 'own_good') || e[f])).map(f => [f, e[f]]))), '      ')
                 : k === 'crew' ? list(n.crew.map(c => ({group: c.group, option: c.option})), '      ')
+                : k === 'units' ? J(n.units || [])
+                : k === 'parts' ? list((n.parts || []).map(p => (p.part ? {part: p.part} : {part: null, name: p.name, zone: p.zone, what: p.what, figures: p.figures, note: p.note})), '      ')
                 : J(n[k] === undefined ? null : n[k]);
             return `      ${J(k)}: ${v}`;
         });
@@ -272,12 +310,21 @@ export function warnings(d, ctx = {}) {
     const cells = {};
     for (const n of d.nodes) (cells[n.col + ':' + n.row] ||= []).push(n.id);
     for (const ids of Object.values(cells)) if (ids.length > 1) out.push({kind: 'overlap', text: `Узлы в одной клетке: ${ids.map(id => '«' + label(byId(d, id)) + '»').join(', ')}`, nodes: ids});
+    // an army unit opened by two buildings: the second adds nothing in the game
+    const byUnit = {};
+    for (const n of d.nodes) for (const u of n.units || []) (byUnit[u] ||= []).push(n.id);
+    for (const [u, ids] of Object.entries(byUnit)) if (ids.length > 1) out.push({kind: 'dup_unit', text: `Найм «${ctx.unitName ? ctx.unitName(u) : u}» открывают ${ids.length} постройки: ${ids.map(id => '«' + label(byId(d, id)) + '»').join(', ')}`, nodes: ids});
+    // what appears on the ship and has no picture yet: the author sees it is counted, the drawing does not invent it
+    for (const n of d.nodes) for (const p of n.parts || []) {
+        if (p.part && ctx.partKnown && !ctx.partKnown(p.part)) out.push({kind: 'ship_part', text: `«${label(n)}»: вид на корабле «${p.part}» — такой детали нет в web/data/blueprint.json`, nodes: [n.id]});
+        else if (!p.part || (ctx.partDrawn && !ctx.partDrawn(p.part))) out.push({kind: 'ship_part', text: `«${label(n)}»: вид на корабле: «${p.part ? (ctx.partName ? ctx.partName(p.part) : p.part) : p.name || 'новая деталь'}» (рисунок не готов)`, nodes: [n.id]});
+    }
     // what the game's building window would have to shorten (INFO, measured on the real window)
     for (const n of d.nodes) {
-        const units = ctx.units ? ctx.units(n) : n.crew.length;
+        const units = (ctx.units ? ctx.units(n) : n.crew.length) + (n.units || []).length;
         const bare = infoHeight({...n, description: ''}, units), max = infoDescMax(n, units);
         if (bare > INFO.SCREEN_H) {
-            const fit = Math.floor((INFO.SCREEN_H - INFO.HEAD - INFO.FOOT - INFO.REASON - (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0)) / INFO.EFFECT);
+            const fit = Math.floor((INFO.SCREEN_H - INFO.HEAD - INFO.FOOT - INFO.REASON - (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0)) / INFO.EFFECT) - (n.parts || []).length;
             out.push({kind: 'info_lines', text: `«${label(n)}»: строк ${n.effects.length}${units ? ` и отрядов ${units}` : ''} — в окне игры поместится строк не больше ${Math.max(0, fit)}`, nodes: [n.id]});
         } else if (n.description && max < INFO.DESC_CHARS_LINE) {
             out.push({kind: 'info_desc', text: `«${label(n)}»: при стольких строках и отрядах описанию нет места в окне игры`, nodes: [n.id]});
@@ -480,7 +527,10 @@ export function roundedPath(pts, r = 6) {
 export const INFO = {SCREEN_H: 892, DESC_CHARS_LINE: 44, DESC_LINE: 22, DESC_PAD: 36, EFFECT: 36, UNIT: 59, HEAD: 69, FOOT: 17, REASON: 81, OPENS_HEAD: 24};
 export function infoHeight(n, units = n.crew.length) {
     const desc = n.description ? Math.max(52, INFO.DESC_PAD + Math.ceil(n.description.length / INFO.DESC_CHARS_LINE) * INFO.DESC_LINE) : 0;
-    return INFO.HEAD + desc + n.effects.length * INFO.EFFECT + (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0) + INFO.FOOT + INFO.REASON;
+    // the lines: the effects, and one a detail of the ship (web/js/panel.js, fileInfo); a block of army units has its own title
+    const lines = n.effects.length + (n.parts || []).length;
+    const army = (n.units || []).length;
+    return INFO.HEAD + desc + lines * INFO.EFFECT + (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0) + (army ? INFO.OPENS_HEAD : 0) + INFO.FOOT + INFO.REASON;
 }
 // the longest description that still fits with the node's lines and crew (0: no room for one line)
 export function infoDescMax(n, units = n.crew.length) {
@@ -532,11 +582,63 @@ export function gameData(design, data) {
         key: keyOf[n.id], short: keyOf[n.id].slice(prefix.length), chain: keyOf[n.id], level: 0, name: label(n), game_name: null, text: n.description,
         cost: n.cost, turns: n.turns, dev: 0, tier: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
         icon: null, icon_path: n.icon, lines: n.effects.map(e => e.text), effects: n.effects, unlocks: n.crew.filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]),
+        units: n.units || [], parts: n.parts || [],
         branch: n.branch, node: n.id, col: n.col, row: n.row,
     }));
     const hull_tiers = {};
     for (const [id, t] of Object.entries(hullTiers(design))) hull_tiers[keyOf[id]] = t;
     return {...data, hull: [], chains: rows.map(r => ({key: r.key, levels: [r]})), hull_tiers, tree_rows: rows, key_of: keyOf};
+}
+
+// ---- two states of the file that went apart: the author's in the open constructor and one written from outside ----
+// Building by building against the state both began from (the same rule as merge3 of tools/web_serve.py): a building changed on one side only takes
+// that side; changed on both, differently, is a clash. Added on one side: it comes in; deleted on one side and not changed on the other: it goes.
+// -> {design, clashes: [id]}: in design a clash keeps the file's (theirs) state.
+export function merge3(base, theirs, mine) {
+    const key = d => new Map(d.nodes.map(n => [n.id, n]));
+    const b = key(base), t = key(theirs), m = key(mine), same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    const nodes = [], clashes = [];
+    for (const id of [...t.keys(), ...[...m.keys()].filter(i => !t.has(i))]) {
+        const tn = t.get(id), mn = m.get(id), bn = b.get(id);
+        if (tn && mn) {
+            if (same(tn, mn) || (bn && same(mn, bn))) nodes.push(tn);
+            else if (bn && same(tn, bn)) nodes.push(mn);
+            else { nodes.push(tn); clashes.push(id); }
+        } else if (tn) {
+            if (bn && same(tn, bn)) continue;
+            if (bn) clashes.push(id);
+            nodes.push(tn);
+        } else {
+            if (bn && same(mn, bn)) continue;
+            if (bn) clashes.push(id);
+            nodes.push(mn);
+        }
+    }
+    // a link to a building that went is dropped
+    const ids = new Set(nodes.map(n => n.id));
+    return {design: {...theirs, nodes: nodes.map(n => ({...clone(n), requires: n.requires.filter(p => ids.has(p))}))}, clashes};
+}
+// the nodes whose fields differ between two states (for the status line: what came from outside)
+export function changedNodes(a, b) {
+    const m = new Map(a.nodes.map(n => [n.id, JSON.stringify(n)]));
+    const out = b.nodes.filter(n => m.get(n.id) !== JSON.stringify(n)).map(n => n.id);
+    for (const id of m.keys()) if (!b.nodes.some(n => n.id === id)) out.push(id);
+    return out;
+}
+
+// ---- the details of the ship a building can bring (web/data/blueprint.json, parts; the stage's own parts over them) ----
+// -> {key: {key, name, building, drawn: a layer of it is drawn (web/art/layers.json places or data/crew_ui_art.json layers), model: a 3D model of
+//    it exists, shown: the page's stage shows it now}}
+export function shipParts(blueprint, places = {}) {
+    const stage = (blueprint.stages || {})[blueprint.stage] || {};
+    const own = stage.parts && typeof stage.parts === 'object' ? stage.parts : {};
+    const out = {};
+    for (const [key, spec] of [...Object.entries(blueprint.parts || {}), ...Object.entries(own)]) {
+        const layers = ['pencil', 'build', 'ink'].map(s => spec[s]).filter(Boolean);
+        out[key] = {key, name: spec.name, building: spec.building || null, drawn: layers.some(l => !!places[l]), model: !!(spec.model && spec.model.part),
+                    shown: !!(key in own ? own[key].enabled : stage.parts === true && spec.enabled), planned: spec.planned || null};
+    }
+    return out;
 }
 
 // ---- undo and redo: the whole design kept at every step (a tree of dozens of nodes is small) ----

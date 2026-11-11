@@ -138,6 +138,13 @@ const images = () => b.eval(`(async () => {
     return {bad, missing};
 })()`);
 
+// CAPS_ONLY=1: only part 4 (the new capabilities), for a quick walk
+if (process.env.CAPS_ONLY) {
+    try { await walkCaps(); const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e)); check("caps: the console is clean (the 409 of the conflict walked on purpose aside), no dialog", !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]); } catch (e) { failed++; console.log("FAIL walk stopped: " + e.stack); try { await b.shot(join(SHOTS, "caps_walk_error.png")); } catch (x) { /* no picture */ } }
+    await b.close(); server.kill();
+    check("the author's working file web/data/tree_design.json untouched, byte for byte", hash(WORK) === workBefore);
+    console.log(`checks: ${results.length}, failed: ${failed}`); process.exit(failed ? 1 : 0);
+}
 try {
     await b.open(URL0 + '?mode=constructor');
     await b.until('!!(window.mtb && window.mtb.editor && document.querySelector(".cx-node"))', 15000);
@@ -271,7 +278,7 @@ try {
     await typeInto('turns', '2');
     await b.eval(`document.querySelector('.cx-props [data-field="tier"]').focus()`); await b.key('ArrowDown'); await b.key('ArrowDown'); await b.key('ArrowDown');
     await typeInto('note', 'Хочу, чтобы погреб давал +15% боезапаса стрелкам и открывал громобоев. Риск: взрыв при попадании?');
-    const addLine = async t => { await clickText('.cx-props .cx-effects > button', '+ Строка'); await b.type(t); };
+    const addLine = async t => { await clickText('.cx-props .cx-effects .cx-actions button', '+ Строка'); await b.type(t); };
     await addLine('Боезапас стрелков: +15%');
     await addLine('Риск взрыва при попадании');
     let q = await at(`document.querySelectorAll('.cx-props .cx-effects .e')[1].querySelector('.ebtns button')`); await b.click(q.x, q.y);
@@ -664,7 +671,9 @@ try {
     check('21: and back into the column', await b.eval(`!document.querySelector('#screen [data-id="tree_window"]').classList.contains('open')`));
     im = await images();
     check('game at 1:1: every picture loaded', !im.bad.length && !im.missing.length, im);
-    check('the console is clean, no dialog', !b.errors.length && !b.dialogs.length, [...b.errors, ...b.dialogs]);
+    if (!process.env.SKIP_CAPS) await walkCaps();
+    const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e));
+    check('the console is clean (the 409 of the conflict walked on purpose aside), no dialog', !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]);
 } catch (e) {
     failed++;
     console.log('FAIL walk stopped: ' + e.stack);
@@ -674,6 +683,284 @@ try {
     server.kill();
     check('the author\'s working file web/data/tree_design.json untouched, byte for byte', hash(WORK) === workBefore);
     check('no copy of the tree file left in web/data', !readdirSync(join(ROOT, 'web/data')).some(f => f.startsWith('tree_design.backup-')));
+}
+// Part 4: the new capabilities, on the author's own tree (build/web/tree_design.user_before_caps.json, the copy of his file taken before the work):
+// an effect of the catalogue for one crew group and its number in the unit's panel of the game; the free lines read as effects (the proposal's
+// row measured at 1024, 1280, 1600); a detail of the ship, drawn and new, built and seen; an army unit opened for recruitment: its card, the
+// game's block and its panel; a change of the file from outside while the constructor is open; a conflict of versions. Pictures caps_*.png.
+async function walkCaps() {
+    let im;
+    const gameComp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, t: r.top, b: r.bottom, l: r.left, r: r.right}; })()`);
+    const design = () => b.eval('JSON.stringify(mtb.editor.design())').then(s => JSON.parse(s));
+    const nodeByName = async name => (await design()).nodes.find(n => n.name === name);
+    const pick = async key => {
+        const r = await at(`[...document.querySelectorAll('.cx-pal-item')].find(x => (x.title.split('\\n')[1] || '') === ${JSON.stringify(key)})`);
+        if (!r) throw new Error('no palette item ' + key);
+        await b.click(r.x, r.y); await sleep(250);
+    };
+    const savedOk = async () => { await b.until(`${E}.saveState() === 'ok'`, 8000).catch(() => {}); await sleep(200); };
+    const fileNode = name => JSON.parse(readFileSync(FILE, 'utf-8')).nodes.find(n => n.name === name);
+    const smallText = sel => b.eval(`[...document.querySelectorAll(${JSON.stringify(sel)})].filter(e => e.offsetParent !== null && [...e.childNodes].some(c => c.nodeType === 3 && c.textContent.trim())).map(e => [e.textContent.trim().slice(0, 30), parseFloat(getComputedStyle(e).fontSize)]).filter(([, px]) => px < 11)`);
+    const toConstructor = async () => { await clickText('#mode button', 'Конструктор'); await b.until('document.body.dataset.mode === "constructor"'); await sleep(300); };
+    const toGame = async () => { await clickText('#mode button', 'Игра'); await b.until('document.body.dataset.mode === "game" && !!mtb.panel.view.tree'); await sleep(500); };
+    const gm = 'mtb.panel.view';
+    const nodeOnScreen = async name => gameComp('mtb_tree_node_' + await b.eval(`${gm}.tree.findIndex(v => v.node.name === ${JSON.stringify(name)})`));
+    const inSight = async name => {
+        let n = await nodeOnScreen(name);
+        const win = await gameComp('tree_window');
+        for (let i = 0; i < 10 && (n.y < win.t + 40 || n.y > win.b - 40 || n.x < win.l + 40 || n.x > win.r - 40); i++) {
+            await b.drag(win.x, win.y, win.x + Math.max(-150, Math.min(150, win.x - n.x)), win.y + Math.max(-150, Math.min(150, win.y - n.y)), {steps: 6});
+            n = await nodeOnScreen(name);
+        }
+        return n;
+    };
+    const selectInGame = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(150); return n; };
+    const buildTo = async name => { await selectInGame(name); const r = await b.rect('#build_to'); await b.click(r.x, r.y); await sleep(200); };
+    // «Сбросить» reloads the page: the address still says ?mode=constructor, so the game is chosen again
+    const resetGame = async () => { const r = await b.rect('#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
+    const visibleText = id => b.eval(`(() => { const t = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); return t ? t.textContent : ''; })()`);
+    const infoText = () => b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); return t ? [...t.querySelectorAll('[data-id]')].filter(x => x.offsetParent !== null && x.querySelector('.t')).map(x => x.textContent).join(' | ') : ''; })()`);
+
+    writeFileSync(FILE, readFileSync(join(ROOT, 'build/web/tree_design.user_before_caps.json'), 'utf-8'));
+    await b.size(1280, 800);
+    await b.open(URL0 + '?mode=constructor');
+    await b.until('!!(window.mtb && mtb.editor && mtb.editor.design().nodes.length === 22)', 15000);
+    await sleep(1000);
+    check('caps: the author\'s tree (format 1) opens in the constructor, 22 buildings', (await design()).nodes.length === 22);
+
+    // ---- the proposals of the free lines: one row under the field, measured at three widths, on the two nodes of five lines with proposals ----
+    for (const w of [1024, 1280, 1600]) {
+        await b.size(w, 800); await sleep(400);
+        for (const [key, least] of [['cargo_hold_1', 5], ['engines_1', 2]]) {
+            await pick(key);
+            const m = await b.eval(`(() => { const pw = document.querySelector('.cx-props').clientWidth; return [...document.querySelectorAll('.cx-props .cx-effects .e')].filter(e => e.querySelector('.propose')).map(e => ({h: Math.round(e.getBoundingClientRect().height), w: Math.round(e.querySelector('.propose').getBoundingClientRect().width), panel: pw, lines: Math.round(e.querySelector('.propose .ptxt').getBoundingClientRect().height / 16)})); })()`);
+            check(`caps ${w}: ${key}: every free line read as an effect has its proposal in one row under the field (row ≤ 125 px, proposal ≥ half the panel, ≤ 3 lines of text)`,
+                m.length >= least && m.every(x => x.h <= 125 && x.w >= x.panel / 2 && x.lines <= 3), m);
+        }
+        const small = await smallText('.cx-props *');
+        check(`caps ${w}: no text in the properties smaller than 11 px`, !small.length, small.slice(0, 5));
+        // the new pickers fit the window: nothing out of it, nothing scrolled sideways, no text under 11 px
+        for (const [label, sel] of [['+ Эффект', '.cx-props .cx-effects .cx-actions button']]) {
+            await clickText(sel, label);
+            await b.until('!!document.querySelector(".cx-pop")');
+            await sleep(200);
+            const fit = await b.eval(`(() => { const p = document.querySelector('.cx-pop').getBoundingClientRect(), body = document.querySelector('.cx-pop .body');
+                const over = [...document.querySelectorAll('.cx-pop .fxrow')].filter(r => r.scrollWidth > r.clientWidth + 1).length;
+                return {inside: p.left >= 0 && p.top >= 0 && p.right <= innerWidth && p.bottom <= innerHeight, sideways: body.scrollWidth > body.clientWidth + 1, over}; })()`);
+            const tiny = await smallText('.cx-pop *');
+            check(`caps ${w}: the catalogue fits the window, no row cut, no text under 11 px`, fit.inside && !fit.sideways && !fit.over && !tiny.length, {fit, tiny: tiny.slice(0, 3)});
+            await b.key('Escape'); await sleep(150);
+        }
+        await pick('artillery_workshop_1');
+        await clickText('.cx-props .cx-parts > button', 'Добавить');
+        await b.until('!!document.querySelector(".cx-crewlist")');
+        const pf = await b.eval(`(() => { const p = document.querySelector('.cx-pop').getBoundingClientRect(), body = document.querySelector('.cx-pop .body'); return p.right <= innerWidth && p.bottom <= innerHeight && body.scrollWidth <= body.clientWidth + 1; })()`);
+        check(`caps ${w}: the picker of the ship's details fits the window`, pf);
+        await b.key('Escape'); await sleep(150);
+    }
+    await b.size(1280, 800); await sleep(400);
+
+    // ---- an effect of the catalogue for one group ----
+    await pick('cargo_hold_1');
+    await clickText('.cx-props .cx-effects .cx-actions button', '+ Эффект');
+    await b.until('!!document.querySelector(".cx-fxlist")');
+    await b.type('боезапас');
+    await sleep(500);
+    const small = await smallText('.cx-pop *');
+    check('caps: the catalogue: no text smaller than 11 px', !small.length, small.slice(0, 5));
+    im = await images();
+    check('caps: the catalogue: every icon loaded', !im.bad.length && !im.missing.length, im);
+    await b.shot(join(SHOTS, 'caps_effect_catalog.png'));
+    const tgt = await at(`[...document.querySelectorAll('.cx-fxlist .targets button')].find(x => x.textContent.trim().startsWith('Стрелки'))`);
+    await b.click(tgt.x, tgt.y);
+    await sleep(200);
+    let hold = await nodeByName('Трюм');
+    let fx = hold.effects[hold.effects.length - 1];
+    check('caps: the ammunition of the riflemen added from the catalogue', fx.kind === 'ammo' && fx.target === 'rifles' && fx.text === 'Боезапас стрелков: +5 %', fx);
+    await b.key('a', 'ctrl'); await b.type('30');
+    await sleep(300);
+    hold = await nodeByName('Трюм'); fx = hold.effects[hold.effects.length - 1];
+    check('caps: the value typed, the line follows it', fx.value === 30 && fx.text === 'Боезапас стрелков: +30 %', fx);
+    await savedOk();
+    check('caps: the file keeps the effect whole', JSON.stringify(fileNode('Трюм').effects.slice(-1)[0]) === JSON.stringify({kind: 'ammo', target: 'rifles', value: 30, text: 'Боезапас стрелков: +30 %', icon: fx.icon, good: true}), fileNode('Трюм').effects.slice(-1)[0]);
+    await b.key('z', 'ctrl'); await sleep(200);
+    hold = await nodeByName('Трюм');
+    check('caps: Ctrl+Z takes the value back', hold.effects.slice(-1)[0].value === 5, hold.effects.slice(-1)[0]);
+    await b.key('y', 'ctrl'); await sleep(200);
+    check('caps: Ctrl+Y gives it again', (await nodeByName('Трюм')).effects.slice(-1)[0].value === 30);
+    // the catalogue by the keys: the search's Enter takes the first shown, Escape closes, Ctrl+Z takes the effect away
+    await clickText('.cx-props .cx-effects .cx-actions button', '+ Эффект');
+    await b.until('!!document.querySelector(".cx-fxlist")');
+    await b.type('стоимость найма');
+    await sleep(200);
+    await b.key('Enter'); await sleep(250);
+    hold = await nodeByName('Трюм');
+    check('caps: Enter in the search takes the first: a game effect with the game\'s text', hold.effects.slice(-1)[0].kind === 'game' && /Стоимость найма/.test(hold.effects.slice(-1)[0].text) && !(await b.eval('!!document.querySelector(".cx-shade")')), hold.effects.slice(-1)[0]);
+    await clickText('.cx-props .cx-effects .cx-actions button', '+ Эффект');
+    await b.until('!!document.querySelector(".cx-fxlist")');
+    await b.key('ArrowDown'); await b.key('ArrowDown');
+    const focused = await b.eval('document.activeElement && document.activeElement.classList.contains("pick")');
+    await b.key('Escape'); await sleep(150);
+    check('caps: the arrows move over the choices, Escape closes', focused && !(await b.eval('!!document.querySelector(".cx-shade")')));
+    await clickCanvasEmpty(); await sleep(100); await pick('cargo_hold_1');
+    await b.eval(`document.querySelector('.cx-canvas').focus()`);
+    await b.key('z', 'ctrl'); await sleep(200);
+    check('caps: Ctrl+Z takes the game effect away', (await nodeByName('Трюм')).effects.slice(-1)[0].kind === 'ammo');
+    // a free line made an effect by its proposal, its text kept, red by its sense; Ctrl+Z gives the free line back
+    const prop = await at(`[...document.querySelectorAll('.cx-props .cx-effects .e')].find(e => e.querySelector('input').value === 'Скорость бараки на поле боя -5%').querySelector('.propose button')`);
+    await b.click(prop.x, prop.y); await sleep(200);
+    let sp = (await nodeByName('Трюм')).effects.find(e => e.text === 'Скорость бараки на поле боя -5%');
+    check('caps: «Сделать» turns the free line into an effect: battle speed -5, red, the author\'s text', sp && sp.kind === 'battle_speed' && sp.value === -5 && !sp.good && sp.own_text, sp);
+    await b.eval(`document.querySelector('.cx-canvas').focus()`);
+    await b.key('z', 'ctrl'); await sleep(200);
+    sp = (await nodeByName('Трюм')).effects.find(e => e.text === 'Скорость бараки на поле боя -5%');
+    check('caps: Ctrl+Z gives the free line back as it was', sp && !sp.kind && sp.good);
+    await savedOk();
+
+    // ---- in the game: the riflemen's panel counts the hold's ammunition, says where it comes from ----
+    await toGame();
+    await resetGame();
+    await buildTo('Трюм');
+    const card = await (async () => { await inSight('Пивной чертог'); return gameComp('mtb_crew_card_beer_hall_1_pirates'); })();
+    await b.move(card.x, card.y, 4); await sleep(350);
+    const ammo = await visibleText('value_ammo');
+    const lines = await visibleText('accuracy');
+    check('caps: game: the pirates\' ammunition 96 + 30 % = 125, green, from «Трюм»', ammo === '125' && /Боезапас \+30 %: Трюм/.test(lines), {ammo, lines});
+    await b.shot(join(SHOTS, 'caps_effect_group.png'));
+    const panelIn = await b.eval(`(() => { const p = [...document.querySelectorAll('#screen .unit_parchment')].find(x => x.offsetParent !== null); const r = p.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect(); return r.top >= root.top - 1 && r.bottom <= root.bottom + 1 && r.left >= root.left - 1 && r.right <= root.right + 1; })()`);
+    check('caps: game: the unit\'s panel inside the screen', panelIn);
+
+    // ---- a detail of the ship: one drawn and in 3D, one new; built and seen; the new one named «рисунок не готов» ----
+    await toConstructor();
+    await pick('mtb_nest_1');
+    await clickText('.cx-props .cx-parts > button', 'Добавить');
+    await b.until('!!document.querySelector(".cx-crewlist")');
+    const rings = await at(`document.querySelector('.cx-crewlist label[title="rings"] input')`);
+    await b.click(rings.x, rings.y); await sleep(200);
+    await clickText('.cx-crewlist button', '+ Новая деталь');
+    await sleep(200);
+    await b.type('Дозорные в гнёздах');
+    const zone = await at(`document.querySelector('.cx-props [data-field="part_zone_1"]')`);
+    await b.eval(`document.querySelector('.cx-props [data-field="part_zone_1"]').focus()`); await b.key('ArrowUp');
+    const figs = await at(`document.querySelector('.cx-props [data-field="part_figures_1"]')`);
+    await b.click(figs.x, figs.y); await b.key('a', 'ctrl'); await b.type('2');
+    const note = await at(`document.querySelector('.cx-props [data-field="part_note_1"]')`);
+    await b.click(note.x, note.y); await b.type('Два гнома без оружия смотрят вдаль, по одному в гнезде');
+    await sleep(300);
+    let nest = await nodeByName('Вороньи гнёзда');
+    check('caps: parts: the drawn rings and a new detail, with where, what, how many', nest.parts.length === 2 && nest.parts[0].part === 'rings' && nest.parts[1].name === 'Дозорные в гнёздах'
+        && nest.parts[1].zone === 'balloon' && nest.parts[1].figures === 2 && /гнома/.test(nest.parts[1].note), {nest: nest.parts, zone: !!zone});
+    const warnText = await b.eval(`mtb.editor.api.select && [...document.querySelectorAll('.cx-warnlist li')].map(l => l.textContent).join(' | ')`);
+    await b.eval(`document.querySelector('.cx-canvas').focus()`);
+    await b.key('z', 'ctrl'); await sleep(200);
+    check('caps: Ctrl+Z takes the note back', !(await nodeByName('Вороньи гнёзда')).parts[1].note);
+    await b.key('y', 'ctrl'); await sleep(200);
+    await b.eval(`document.querySelector('.cx-props [data-field="part_name_1"]').scrollIntoView({block: 'center'})`); await sleep(150);
+    await b.shot(join(SHOTS, 'caps_ship_parts.png'));
+    const checks = await b.eval(`(() => { document.querySelector('.cx-warnbtn').click(); return [...document.querySelectorAll('.cx-warnlist li')].map(l => l.textContent); })()`);
+    check('caps: the checks name the new detail «(рисунок не готов)»', checks.some(t => /Дозорные в гнёздах» \(рисунок не готов\)/.test(t)), checks.slice(0, 6));
+    await b.eval(`document.querySelector('.cx-warnbtn').click()`);
+    await savedOk();
+    await toGame();
+    await resetGame();
+    await buildTo('Прочный корпус');
+    await selectInGame('Вороньи гнёзда');
+    const ord = await gameComp('mtb_ship_order'); await b.click(ord.x, ord.y); await sleep(150);
+    check('caps: game: the rings are being built with the nests', await b.eval(`mtb.M.stage('rings')`) === 'build');
+    const et = await b.rect('#end_turn'); await b.click(et.x, et.y); await sleep(300);
+    await b.until(`!!mtb.viewer.models.part_rings`, 15000).catch(() => {});
+    check('caps: game: a turn later the rings stand: on the drawing and in 3D', await b.eval(`mtb.M.stage('rings') === 'ink' && !!mtb.viewer.models.part_rings && mtb.viewer.models.part_rings.visible`));
+    const nestOn = await inSight('Вороньи гнёзда');
+    await b.move(nestOn.x, nestOn.y, 4); await sleep(350);
+    const info = await infoText();
+    check('caps: game: the window names both details, the new one «(рисунок не готов)»', /Вид на корабле: Кольца вороньих гнёзд на шаре(?! \()/.test(info) && /Вид на корабле: Дозорные в гнёздах \(рисунок не готов\)/.test(info), info);
+    await b.shot(join(SHOTS, 'caps_ship_parts_game.png'));
+
+    // ---- an army unit opened for recruitment ----
+    await toConstructor();
+    await pick('artillery_workshop_1');
+    const unitsBtn = await at(`[...document.querySelectorAll('.cx-props .cx-field')].find(f => f.querySelector('label') && f.querySelector('label').textContent.startsWith('Открывает найм')).querySelector('button')`);
+    await b.click(unitsBtn.x, unitsBtn.y);
+    await b.until('!!document.querySelector(".cx-crewlist")');
+    await b.type('пушки');
+    await sleep(400);
+    await b.shot(join(SHOTS, 'caps_units_unlock.png'));
+    const cannon = await at(`document.querySelector('.cx-crewlist label[title="wh_main_dwf_art_cannon"] input')`);
+    await b.click(cannon.x, cannon.y); await sleep(200);
+    await b.key('Escape'); await sleep(150);
+    check('caps: the forge opens the dwarfs\' cannons for recruitment', (await nodeByName('Маленькая кузница')).units.join() === 'wh_main_dwf_art_cannon');
+    // the same unit on the beer hall too: the check names it; its node shows the crew's card and the army's side by side
+    await pick('beer_hall_1');
+    const ub2 = await at(`[...document.querySelectorAll('.cx-props .cx-field')].find(f => f.querySelector('label') && f.querySelector('label').textContent.startsWith('Открывает найм')).querySelector('button')`);
+    await b.click(ub2.x, ub2.y);
+    await b.until('!!document.querySelector(".cx-crewlist")');
+    const c2 = await at(`document.querySelector('.cx-crewlist label[title="wh_main_dwf_art_cannon"] input')`);
+    await b.click(c2.x, c2.y); await sleep(200);
+    await clickText('.cx-pop button', 'Готово');
+    const dupW = await b.eval(`[...document.querySelectorAll('.cx-warnlist li')].map(l => l.textContent).find(t => /Найм «Пушки» открывают 2/.test(t)) || ''`);
+    check('caps: one unit opened by two buildings is in the checks', !!dupW, dupW);
+    const beer = (await design()).nodes.find(n => n.mod_key === 'beer_hall_1');
+    const box = await b.rect(`.cx-node[data-id="${beer.id}"]`);
+    const both = await b.eval(`(() => { const n = document.querySelector('.cx-node[data-id="${beer.id}"]'); return {crew: n.querySelectorAll('.thumbs .card').length, army: n.querySelectorAll('.army .card').length}; })()`);
+    check('caps: the node shows the crew\'s cards and the army\'s, on two sides of the slot', both.crew >= 1 && both.army === 1, both);
+    await b.shot(join(SHOTS, 'caps_node_cards.png'), {x: Math.max(0, box.l - 40), y: Math.max(0, box.t - 30), width: box.w + 80, height: box.h + 50});
+    await savedOk();
+    await toGame();
+    await resetGame();
+    const forge = await inSight('Маленькая кузница');
+    await b.move(forge.x, forge.y, 4); await sleep(350);
+    const finfo = await infoText();
+    check('caps: game: the forge\'s window has the game\'s block «Открывает найм:» with the cannons', /Открывает найм:/.test(finfo) && /Пушки/.test(finfo), finfo);
+    const acard = await gameComp('mtb_army_card_artillery_workshop_1_wh_main_dwf_art_cannon');
+    await b.move(acard.x, acard.y, 4); await sleep(350);
+    const ap = await b.eval(`(() => { const p = [...document.querySelectorAll('#screen .unit_parchment')].find(x => x.offsetParent !== null); if (!p) return null; const r = p.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect();
+        return {text: p.textContent, inside: r.top >= root.top - 1 && r.bottom <= root.bottom + 1 && r.left >= root.left - 1 && r.right <= root.right + 1}; })()`);
+    check('caps: game: the army card\'s panel: the unit\'s name and its true stats (range 440, ammo, armour), inside the screen', ap && /Пушки/.test(ap.text) && /Дальность/.test(ap.text) && /440/.test(ap.text) && /Броня/.test(ap.text) && ap.inside, ap && ap.text.slice(0, 200));
+    im = await images();
+    check('caps: game: every picture loaded', !im.bad.length && !im.missing.length, im);
+    await b.shot(join(SHOTS, 'caps_unit_panel_army.png'));
+
+    // ---- the file changed from outside while the constructor is open, nothing waiting: taken, the view and the selection kept ----
+    await toConstructor();
+    await pick('cargo_hold_1');
+    await savedOk();
+    const view0 = await b.eval(`JSON.stringify([${E}.view.x, ${E}.view.y, ${E}.view.z, ${E}.sel])`);
+    const outside = JSON.parse(readFileSync(FILE, 'utf-8'));
+    outside.nodes.find(n => n.name === 'Верстак инженера').note = 'Изменено извне';
+    writeFileSync(FILE, JSON.stringify(outside, null, 2) + '\n');
+    await b.until(`mtb.editor.design().nodes.find(n => n.name === 'Верстак инженера').note === 'Изменено извне'`, 6000).catch(() => {});
+    const view1 = await b.eval(`JSON.stringify([${E}.view.x, ${E}.view.y, ${E}.view.z, ${E}.sel])`);
+    const said = await toast();
+    check('caps: a change from outside is taken by the open constructor, the view and the selection kept, a line in the status', (await nodeByName('Верстак инженера')).note === 'Изменено извне' && view0 === view1 && /изменён извне/.test(said), {said, view0, view1});
+    // a stale version is refused by the server and writes nothing
+    const before = readFileSync(FILE, 'utf-8');
+    const stale = await fetch(URL0 + 'api/tree_design?base=0000000000000000', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: before.replace('Изменено извне', 'старое')});
+    const sj = await stale.json();
+    check('caps: a write on an old version: 409 with the file as it is, nothing written', stale.status === 409 && sj.error === 'conflict' && sj.text === before && readFileSync(FILE, 'utf-8') === before);
+    // the conflict: the same building changed outside and here before it was written
+    let dialog = false;
+    for (let attempt = 0; attempt < 4 && !dialog; attempt++) {
+        await pick('cargo_hold_1');
+        await savedOk();
+        const o2 = JSON.parse(readFileSync(FILE, 'utf-8'));
+        o2.nodes.find(n => n.name === 'Трюм').description += ' ИЗВНЕ' + attempt;
+        writeFileSync(FILE, JSON.stringify(o2, null, 2) + '\n');
+        const d0 = await at(`document.querySelector('.cx-props [data-field="description"]')`);
+        await b.click(d0.x, d0.y); await b.key('End', 'ctrl'); await b.type(' мои' + attempt);
+        dialog = await b.until(`${E}.conflictOpen()`, 5000).then(() => true).catch(() => false);
+    }
+    check('caps: the same building changed outside and here: the choice is asked', dialog);
+    if (dialog) {
+        await sleep(200);
+        await b.shot(join(SHOTS, 'caps_conflict.png'));
+        const copies0 = readdirSync(DATA).filter(f => f.startsWith('tree_design.backup-')).length;
+        await clickText('.cx-dialog button', 'Оставить мои');
+        await savedOk();
+        const desc = fileNode('Трюм').description;
+        const copies = readdirSync(DATA).filter(f => f.startsWith('tree_design.backup-')).sort();
+        const kept = copies.length > copies0 && /ИЗВНЕ/.test(readFileSync(join(DATA, copies[copies.length - 1]), 'utf-8'));
+        check('caps: «Оставить мои»: the file has the author\'s text, the outside one is kept whole in a copy', / мои\d$/.test(desc) && !/ИЗВНЕ/.test(desc) && kept, {desc: desc.slice(-30), kept});
+    }
 }
 console.log(`checks: ${results.length}, failed: ${failed}`);
 console.log(failed ? `failed: ${failed}` : 'failed: 0');

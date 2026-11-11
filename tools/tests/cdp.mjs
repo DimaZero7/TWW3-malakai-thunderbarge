@@ -119,7 +119,7 @@ export async function launch({width = 1200, height = 800, port = 9333, profile =
         async key(key, mods = '') {
             const m = (mods.includes('alt') ? 1 : 0) | (mods.includes('ctrl') ? 2 : 0) | (mods.includes('shift') ? 8 : 0);
             const special = {Delete: [46, 'Delete'], Backspace: [8, 'Backspace'], Escape: [27, 'Escape'], Enter: [13, 'Enter'], Tab: [9, 'Tab'], F2: [113, 'F2'], F5: [116, 'F5'],
-                ArrowUp: [38, 'ArrowUp'], ArrowDown: [40, 'ArrowDown'], ArrowLeft: [37, 'ArrowLeft'], ArrowRight: [39, 'ArrowRight']};
+                End: [35, 'End'], Home: [36, 'Home'], ArrowUp: [38, 'ArrowUp'], ArrowDown: [40, 'ArrowDown'], ArrowLeft: [37, 'ArrowLeft'], ArrowRight: [39, 'ArrowRight']};
             const [vk, code] = special[key] || [key.toUpperCase().charCodeAt(0), /^[a-z]$/i.test(key) ? 'Key' + key.toUpperCase() : /^\d$/.test(key) ? 'Digit' + key : key];
             const text = !special[key] && !(m & 2) ? key : undefined;
             await send('Input.dispatchKeyEvent', {type: text ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, modifiers: m, text});

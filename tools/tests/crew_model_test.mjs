@@ -75,5 +75,24 @@ scenario('a treasury in debt: no hire, but the crew may be taken off', 'pirates'
     const d = lose({standing: 'pirates', order: {option: 'pirates', paid: 0}}, ctxOf(1000, new Set()));
     check('everything gone: nobody stands, no order', d.state.standing === 'empty' && d.state.order === null);
 }
+// the crew's bonuses: the tree's effects by group, the mod's own numbers where the node says nothing, a building that does not stand adds nothing
+{
+    const {crewSources} = await import('../../web/js/crew_model.mjs');
+    const FX = await import('../../web/js/effects_model.mjs');
+    const data = {ammo_mod: {K_cargo: 1.15}, groups: {rifles: {boost: [{building: 'K_dummy', spread: 0.95, range: null}]}, cannons: {boost: [{building: 'K_sig', spread: 0.9, range: 1.1}]}},
+        tree_rows: [{key: 'K_cargo', name: 'Трюм', effects: [{kind: 'ammo', target: 'cannons', value: 25}]},
+                    {key: 'K_dummy', name: 'Манекен', effects: [{text: 'Меткость стрелков: +5 %'}]},
+                    {key: 'K_sig', name: 'Сигналы', effects: [{kind: 'range', target: 'all', value: 20}]},
+                    {key: 'K_far', name: 'Не стоит', effects: [{kind: 'ammo', target: 'all', value: 50}]}]};
+    const built = new Set(['K_cargo', 'K_dummy', 'K_sig']), has = k => built.has(k);
+    const src = crewSources(data, has, has);
+    const rifles = FX.crewBonuses(src, 'rifles'), cannons = FX.crewBonuses(src, 'cannons');
+    check('ammo of the cannons only: +25 % from the hold (its own effect, not the mod\'s 15 %)', cannons.ammo.pct === 25 && rifles.ammo.pct === 0, JSON.stringify(src));
+    check('the dummy says nothing of the catalogue: the mod\'s +5 % accuracy, marked as the mod\'s', rifles.accuracy.pct === 5 && rifles.accuracy.from[0].mod);
+    check('the signals\' own range +20 % to every crew, the mod\'s +10 % of the cannons not added', rifles.range.pct === 20 && cannons.range.pct === 20);
+    check('the mod\'s accuracy of the signals stays (the node says nothing of accuracy)', cannons.accuracy.pct === 10);
+    check('a building that does not stand adds nothing', !src.some(s => s.from === 'Не стоит'));
+    check('the numbers with the bonus', FX.applyPct(96, 25, 'ammo') === 120 && FX.applyPct(13, -10, 'reload') === 11.7);
+}
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);
