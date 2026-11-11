@@ -194,9 +194,9 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     // format 2 is written in its own text; a format 1 file (the author's before this version) reads with every field it had, and its text written
     // again as format 2 reads back the same
     const workText = readFileSync(join(root, 'web/data/tree_design.json'), 'utf-8');
-    if (json('web/data/tree_design.json').format >= 2) check('the working file is in its own text', T.serialize(work.design) === workText);
-    else check('the working file (format 1) reads into format 2 and back the same', work.from === 1 && T.serialize(T.normalize(JSON.parse(T.serialize(work.design))).design) === T.serialize(work.design)
-        && work.design.nodes.every((n, i) => JSON.stringify(n.effects) === JSON.stringify(json('web/data/tree_design.json').nodes[i].effects)));
+    if (json('web/data/tree_design.json').format >= T.FORMAT) check('the working file is in its own text', T.serialize(work.design) === workText);
+    else check('the working file (an older format) reads into the new one and back the same', work.from < T.FORMAT && T.serialize(T.normalize(JSON.parse(T.serialize(work.design))).design) === T.serialize(work.design)
+        && work.design.nodes.every((n, i) => JSON.stringify(n.effects.map(e => ({...e, id: undefined}))) === JSON.stringify(json('web/data/tree_design.json').nodes[i].effects.map(e => ({...e, id: undefined})))));
     const start = T.normalize(json('tools/tests/tree_design_start.json'));
     check('the start file: no warnings', !T.warnings(start.design, {modKeys: new Set(all.map(r => r.short))}).length, JSON.stringify(T.warnings(start.design)));
     const g = T.gameData(start.design, data);
@@ -212,7 +212,7 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     check('the catalogue of the export: game effects and army units', catalog.game_effects.length > 50 && catalog.army_units.length > 10, `${catalog.game_effects.length} / ${catalog.army_units.length}`);
     const old = {format: 1, nodes: [{id: 'a', name: 'Old', cost: 5, effects: [{text: 'Строка', icon: null, good: true}]}]};
     const r = T.normalize(old);
-    check('format 1 reads: units and parts empty, the line as it was', r.from === 1 && r.design.format === 2 && !r.design.nodes[0].units.length && !r.design.nodes[0].parts.length && r.design.nodes[0].effects[0].text === 'Строка');
+    check('format 1 reads: units and parts empty, the line as it was', r.from === 1 && r.design.format === T.FORMAT && !r.design.nodes[0].units.length && !r.design.nodes[0].parts.length && r.design.nodes[0].effects[0].text === 'Строка');
     // the crew's effects by group
     const ammo = FX.complete({kind: 'ammo', target: 'rifles', value: 25}, ctx);
     check('ammo of the riflemen: the line after the mod\'s pattern, green', ammo.text === 'Боезапас стрелков: +25 %' && ammo.good, ammo.text);
@@ -246,8 +246,8 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
         parts: [{part: 'pub'}, {part: null, name: 'Дозорные', zone: 'balloon', what: 'figures', figures: 2, note: 'фигуры'}]});
     const back = T.normalize(JSON.parse(T.serialize(d))).design;
     const n = T.byId(back, id);
-    check('the file keeps an effect of the catalogue whole', JSON.stringify(n.effects[0]) === JSON.stringify(T.normalizeEffect(ammo)) && n.effects[0].kind === 'ammo' && n.effects[0].target === 'rifles');
-    check('the file keeps a free line as three fields', JSON.stringify(n.effects[1]) === JSON.stringify({text: 'Своя', icon: null, good: false}));
+    check('the file keeps an effect of the catalogue whole', JSON.stringify({...n.effects[0], id: undefined}) === JSON.stringify({...T.normalizeEffect(ammo), id: undefined}) && n.effects[0].id === 'e1' && n.effects[0].kind === 'ammo' && n.effects[0].target === 'rifles');
+    check('the file keeps a free line as three fields', JSON.stringify(n.effects[1]) === JSON.stringify({text: 'Своя', icon: null, good: false, id: 'e2'}));
     check('the file keeps units and parts', n.units.join() === 'wh_main_dwf_art_cannon' && n.parts.length === 2 && n.parts[1].figures === 2 && n.parts[1].zone === 'balloon');
     // the checks: one army unit by two buildings, a detail without a picture
     T.addNode(d, {name: 'Кузня', cost: 100, units: ['wh_main_dwf_art_cannon']});
@@ -278,6 +278,57 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     T.deleteNodes(gone, ['n3']);
     m = T.merge3(base, gone, mine);
     check('merge3: a building deleted in the file and untouched here goes', !T.byId(m.design, 'n3'));
+}
+// 11. lines of levels: three levels with inheritance, numbers changed on II and on I, a line hidden and given back, a fork, a broken line,
+// inheritance turned on over a node's whole set, the game's chains
+{
+    const data = json('build/web/data.json');
+    const d = T.emptyDesign();
+    const i1 = T.addNode(d, {name: 'Пивной чертог', cost: 1, col: 0, row: 0, crew: [{group: 'rifles', option: 'pirates'}], units: ['u1'], parts: [{part: 'pub'}],
+        effects: [{kind: 'ammo', target: 'rifles', value: 10, text: 'Боезапас стрелков: +10 %', icon: null, good: true}, {text: 'Строка A', icon: null, good: true}, {text: 'Строка B', icon: null, good: true}]});
+    const i2 = T.addNode(d, {name: 'Таверна', cost: 1, col: 0, row: 1, requires: [i1], prev: i1, inherit: true,
+        effects: [{kind: 'ammo', target: 'rifles', value: 25, text: 'Боезапас стрелков: +25 %', icon: null, good: true}, {text: 'Своя C', icon: null, good: true}]});
+    const i3 = T.addNode(d, {name: 'Винокурня', cost: 1, col: 0, row: 2, requires: [i2], prev: i2, inherit: true});
+    const texts = id => T.resolve(d, id).full.effects.map(x => x.e.text);
+    check('lines: levels I, II, III', [i1, i2, i3].map(id => T.levelOf(d, id)).join() === '1,2,3' && T.roman(3) === 'III');
+    check('lines: II gives I\'s lines with its own number in the place of I\'s, and its own line', texts(i2).join('|') === 'Боезапас стрелков: +25 %|Строка A|Строка B|Своя C', texts(i2));
+    check('lines: III gives II\'s whole set; crew, units, details along the line', texts(i3).join('|') === texts(i2).join('|') && T.resolve(d, i3).full.crew.length === 1 && T.resolve(d, i3).full.units[0].u === 'u1' && T.resolve(d, i3).full.parts.length === 1);
+    T.byId(d, i1).effects[0].value = 12; T.byId(d, i1).effects[1].text = 'Строка A2';
+    check('lines: I changed: III keeps II\'s number, sees I\'s new line (a live link)', texts(i3)[0] === 'Боезапас стрелков: +25 %' && texts(i3)[1] === 'Строка A2', texts(i3));
+    const keyB = `${i1}/${T.byId(d, i1).effects[2].id}`;
+    T.byId(d, i3).hide = [keyB];
+    check('lines: a line hidden on III', !texts(i3).includes('Строка B') && T.resolve(d, i3).inherited.effects.find(x => x.key === keyB).status === 'hidden');
+    T.byId(d, i3).hide = [];
+    check('lines: given back', texts(i3).includes('Строка B'));
+    T.byId(d, i3).effects.push({text: 'Строка A на III', icon: null, good: true, replaces: `${i1}/${T.byId(d, i1).effects[1].id}`});
+    T.ensureIds(d);
+    check('lines: a free line replaced on III in its place', texts(i3)[1] === 'Строка A на III' && texts(i3).length === 4, texts(i3));
+    check('lines: no warning for a whole line', !T.warnings(d).some(w => /^line/.test(w.kind)), T.warnings(d).filter(w => /^line/.test(w.kind)));
+    const fork = T.addNode(d, {name: 'Развилка', cost: 1, col: 1, row: 1, prev: i1, inherit: true});
+    const w = T.warnings(d);
+    check('lines: a fork is warned of, a next level that does not require the one before is warned of', w.some(x => x.kind === 'line_fork') && w.some(x => x.kind === 'line_require' && x.nodes.includes(fork)), w.map(x => x.kind));
+    check('lines: a circle is refused', !T.canContinue(d, i1, i3).ok && !T.canContinue(d, i1, i1).ok && T.canContinue(d, fork, i3).ok);
+    T.byId(d, fork).prev = null;
+    check('lines: broken: nothing inherited', T.resolve(d, fork).full.effects.length === 0 && T.resolve(d, fork).from === null);
+    // the file keeps only what is own
+    const back = T.normalize(JSON.parse(T.serialize(d))).design;
+    check('lines: the file keeps prev, inherit, hide, the ids and the replacements; nothing inherited is written', T.byId(back, i3).prev === i2 && T.byId(back, i3).inherit && T.byId(back, i3).effects.length === 1 && !!T.byId(back, i3).effects[0].replaces
+        && JSON.stringify(T.resolve(back, i3).full.effects.map(x => [x.key, x.e.text])) === JSON.stringify(T.resolve(d, i3).full.effects.map(x => [x.key, x.e.text])), [T.byId(back, i3), T.resolve(back, i3).full.effects.map(x => x.e.text)]);
+    // inheritance on over a node's whole set (a building of the mod): the doubles found
+    const m = T.emptyDesign();
+    const a = T.addNode(m, {name: 'Трюм', cost: 1, effects: [{text: 'Рост орды: +5', icon: null, good: true}, {text: 'Ровно так же', icon: null, good: true}, {kind: 'ammo', target: 'all', value: 15, text: 'Боезапас каждой команды: +15 %', icon: null, good: true}], crew: [{group: 'bombs', option: 'stock'}]});
+    const bb = T.addNode(m, {name: 'Хранилище', cost: 1, requires: [a], prev: a, effects: [{text: 'Рост орды: +10', icon: null, good: true}, {text: 'Ровно так же', icon: null, good: true}, {kind: 'ammo', target: 'all', value: 40, text: 'Боезапас каждой команды: +40 %', icon: null, good: true}], crew: [{group: 'bombs', option: 'stock'}]});
+    const read = t => (/Рост орды/.test(t) ? ['game|' + '|wh_main_effect_hordebuilding_growth_core'] : []);
+    const o = T.inheritOverlap(m, bb, read);
+    check('lines: inheritance over a whole set: the catalogue\'s replaces, the word for word doubles, the same kind, the crew', o.replace.length === 1 && o.doubles.length === 1 && o.sameKind.length === 1 && o.things.length === 1, o);
+    // the game's levels: a line is one chain of levels, each level the whole set
+    const g = T.gameData(d, data);
+    const r3 = g.tree_rows.find(r => r.node === i3), r1 = g.tree_rows.find(r => r.node === i1);
+    check('lines: the game: one chain, levels 0, 1, 2; III\'s row carries the whole set', r3.chain === r1.chain && r3.level === 2 && r3.line_level === 3 && r3.effects.length === 4 && r3.unlocks.length === 1 && r3.units[0] === 'u1');
+    // the mod's chains on the canvas become lines (inheritance off)
+    const start = T.normalize(json('tools/tests/tree_design_start.json')).design;
+    const n = T.linkModChains(start, data);
+    check('lines: the mod\'s chains made lines: the hull\'s II continues I, inheritance off', n >= 1 && start.nodes.find(x => x.mod_key === 'airship_hull_2').prev === start.nodes.find(x => x.mod_key === 'airship_hull_1').id && !start.nodes.some(x => x.inherit));
 }
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

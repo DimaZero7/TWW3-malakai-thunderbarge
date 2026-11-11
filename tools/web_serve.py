@@ -207,6 +207,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         page_text = text          # what the page has: the base of its next write when it has no versions
         blob, version = current()
         merged, clashes = False, []
+        # a page of an older format (its constructor does not know the newer fields) never writes over the newer file: it would drop them
+        try:
+            on_disk = int(json.loads(blob.decode("utf-8")).get("format") or 1) if blob else 0
+        except ValueError:
+            on_disk = 0
+        if on_disk > int(data.get("format") or 1):
+            return self._answer(409, {"error": f"страница устарела: файл уже в формате {on_disk}, обновите страницу (F5) — правки сохранены в браузере", "version": version})
         if base is not None and base != version:
             # an old state: nothing is written, the page gets the file as it is now
             return self._answer(409, {"error": "conflict", "version": version, "text": blob.decode("utf-8")})

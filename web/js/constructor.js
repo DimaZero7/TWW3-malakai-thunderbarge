@@ -12,6 +12,10 @@
 //                          effects of build/web/catalog.json) or are free text; the army units a building opens for recruitment (catalog.json); what
 //                          appears on the ship with it (web/data/blueprint.json parts, or a new detail described for the developer)
 //   the bar                undo, redo, delete, copy, show all, the file's menu, the keys, and the state of saving
+// Lines of levels (tree_model.mjs: prev, inherit, resolve): a node may continue a previous level of its line, as the game's chain; its level is on
+// its slot in the game's numeral, the link to the level below is a double line, and with «Наследует» it gives all the level below gives, live, its
+// own lines over it: the properties show the inherited block above the own one, a number of an inherited effect is changed in place, a line is
+// changed or removed on this level and given back. «+ Следующий уровень» makes the next level at once.
 // The file has a version (tools/web_serve.py): a write names the version it was made on, so it never goes over a change made from outside. The
 // constructor asks for the version every two seconds; a change from outside is taken at once when nothing of the author's waits to be written, merged
 // building by building when something does (tree_model.mjs, merge3), and only a building changed on both sides asks which to keep, the other kept
@@ -77,7 +81,7 @@ function wrapName(text) {
     return lines.length ? lines : [''];
 }
 
-export function makeConstructor(host, {data, cards, design, problems = [], onChange = () => {}, catalog = {}, blueprint = {}, art = {}, version = null}) {
+export function makeConstructor(host, {data, cards, design, problems = [], onChange = () => {}, catalog = {}, blueprint = {}, art = {}, version = null, migrated = null}) {
     const hist = new T.History(design);
     const cur = () => hist.current;
     let sel = new Set(), selEdge = null, hotEdge = null;       // selected nodes (ids), one selected link {from, to}, the link under the mouse
@@ -276,18 +280,22 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         for (const n of d.nodes) {
             const c = cardOf(n, place(n)), lines = nameLines(n);
             const frame = n.branch ? `/art/branch_frame_${n.branch}.png` : url(D + 'building_frame_plain.png');
-            const crew = n.crew.map(crewCard).filter(Boolean);
-            const el = h('div', {class: 'cx-node' + (sel.has(n.id) ? ' sel' : '') + (over && over[n.id] ? ' moving' : ''), 'data-id': n.id,
+            const full = T.resolve(d, n.id).full, lvl = T.inLine(d, n.id) ? T.levelOf(d, n.id) : 0;
+            const crew = full.crew.map(x => crewCard(x.c)).filter(Boolean);
+            const el = h('div', {class: 'cx-node' + (sel.has(n.id) ? ' sel' : '') + (over && over[n.id] ? ' moving' : '') + (lvl ? ' leveled' : ''), 'data-id': n.id,
                                  style: `left:${c.x}px;top:${c.y}px;height:${c.bottom - c.y + 4}px`, title: nodeTitle(n)},
                 h('div', {class: 'slot'},
                     h('img', {src: url(D + 'building_frame.png'), alt: ''}),
                     h('img', {src: url(n.icon || D + 'icon_check.png'), alt: ''}),
                     h('img', {src: frame, alt: ''}),
+                    // the level in its line: the game's numeral at the slot's lower left (building_frame.twui.xml, building_level, 20 x 20 at 0, 54)
+                    lvl ? (lvl <= 5 ? h('img', {class: 'lvl', src: url(D + `settlement_silver_numeral_${lvl}.png`), alt: T.roman(lvl), title: `Уровень ${T.roman(lvl)} линейки`})
+                        : h('span', {class: 'lvl txt', title: `Уровень ${T.roman(lvl)} линейки`}, T.roman(lvl))) : null,
                     h('div', {class: 'price' + (n.cost ? '' : ' none')}, h('img', {src: url(D + 'icon_treasury.png'), alt: ''}), h('span', {class: 'co'}, n.cost ? String(n.cost) : 'нет цены'),
                         h('img', {src: url(D + 'icon_hourglass.png'), alt: '', class: 'hg'}), h('span', {class: 'tu'}, String(n.turns)))),
                 crew.length ? h('div', {class: 'thumbs'}, crew.map((k, i) => h('div', {class: 'card', style: `top:${i * Math.min(16, 46 / Math.max(1, crew.length - 1))}px`},
                     h('img', {src: url(k.uc.picture), alt: ''}), h('img', {src: url(`ui/skins/tww3_mtb/unit_card_build_frame_${k.colour}.png`), alt: ''})))) : null,
-                army(n),
+                army({units: full.units.map(x => x.u)}),
                 h('div', {class: 'name' + (n.name.trim() ? '' : ' empty')}, ...lines.flatMap((l, i) => (i ? [h('br'), l] : [l]))),
                 warned.has(n.id) ? h('div', {class: 'warn'}, '!') : null,
                 h('div', {class: 'hd up', title: 'Тяните к постройке, которая строится ПОСЛЕ этой'}),
@@ -305,7 +313,9 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     function nodeTitle(n) {
         const d = cur();
         const req = n.requires.map(p => T.byId(d, p)).filter(Boolean).map(T.label);
+        const lvl = T.inLine(d, n.id) ? T.levelOf(d, n.id) : 0, first = lvl ? T.byId(d, T.lineOf(d, n.id).ids[0]) : null;
         return [n.name || 'без названия', `${n.cost} золота, ${n.turns} ${turnsWord(n.turns)}${n.tier ? `, тир корпуса ${n.tier}` : ''}`,
+            lvl ? `Уровень ${T.roman(lvl)} линейки «${T.label(first)}»${n.prev && n.inherit ? ', наследует прошлый уровень' : ''}` : '',
             req.length ? 'Требует: ' + req.join(', ') : 'Ничего не требует', n.mod_key ? 'Мод: ' + n.mod_key : 'Новая постройка (нет в моде)',
             (n.units || []).length ? 'Открывает найм: ' + n.units.map(unitName).join(', ') : '',
             (n.parts || []).length ? 'На корабле: ' + n.parts.map(p => (p.part ? partName(p.part) : p.name || 'новая деталь')).join(', ') : '',
@@ -329,11 +339,14 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const path = T.roundedPath(pts);
             const [ex, ey] = pts[pts.length - 1];
             const isSel = selEdge && selEdge.from === from && selEdge.to === to;
+            // the next level of the same line: a double line (a wide one in the branch's colour with a dark core), as a rail of the line
+            const line = n.prev === from;
             const hot = isSel || hotEdge === key || (focus && (focus.has(from) || focus.has(to)));
             const dim = !hot && (focus || hotEdge || selEdge);
-            s += `<g data-edge="${esc(key)}" data-pts="${esc(JSON.stringify(pts))}" class="${hot ? 'hot' : ''}${dim ? ' dim' : ''}">`
+            s += `<g data-edge="${esc(key)}" data-pts="${esc(JSON.stringify(pts))}" class="${hot ? 'hot' : ''}${dim ? ' dim' : ''}${line ? ' lineedge' : ''}">`
                 + (isSel ? `<path class="halo" d="${path}"/>` : '')
-                + `<path class="ln" d="${path}" stroke="${colour}"/><path class="ar" d="M${ex - 5} ${ey + 7} L${ex} ${ey} L${ex + 5} ${ey + 7} Z" fill="${colour}"/>`
+                + (line ? `<path class="ln line" d="${path}" stroke="${colour}"/><path class="ln core" d="${path}"/>` : `<path class="ln" d="${path}" stroke="${colour}"/>`)
+                + `<path class="ar" d="M${ex - (line ? 7 : 5)} ${ey + (line ? 9 : 7)} L${ex} ${ey} L${ex + (line ? 7 : 5)} ${ey + (line ? 9 : 7)} Z" fill="${colour}"/>`
                 + `<path class="hit" d="${path}"/></g>`;
         }
         if (tempLink) s += `<path class="temp${tempLink.bad ? ' bad' : ''}" d="M${tempLink.a.x} ${tempLink.a.y} L${tempLink.b.x} ${tempLink.b.y}"/>`;
@@ -426,6 +439,9 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             for (const q of d.nodes) if (q.id !== id && q.mod_key && byShort[q.mod_key] && T.modNeeds(byShort[q.mod_key], data).includes(short)) if (T.addEdge(d, id, q.id).ok) links.push(T.label(T.byId(d, id)) + ' → ' + T.label(q));
             const parent = d.nodes.find(n => T.byId(d, id).requires.includes(n.id) && n.branch);
             if (parent && !T.byId(d, id).branch) T.byId(d, id).branch = parent.branch;
+            // the line of the mod's chain: the level below on the canvas is its previous level, the level above continues it (inheritance off:
+            // a level of the mod comes with its whole set)
+            if (T.linkModChains(d, data)) links.push('линейка уровней мода');
         });
         select([id]);
         reveal(id);
@@ -483,6 +499,22 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         const ids = [...sel], d = cur(), set = new Set(ids);
         if (d.nodes.some(n => set.has(n.id) && T.cellTaken(d, n.col + dc, n.row + dr, set))) { toast('Клетка занята', true); return; }
         commit('Сдвиг', x => T.moveNodes(x, ids, dc, dr), 'nudge:' + ids.join());
+    }
+    // The next level of a line: over the node, requires it, continues it and inherits all it gives; the same icon, branch, tier, price and turns;
+    // the name empty, in focus to be typed
+    function addNextLevel(id) {
+        const n = T.byId(cur(), id);
+        const fork = T.nextLevels(cur(), id).length;
+        let nid;
+        commit('Следующий уровень', d => {
+            const c = freeToward(d, n.col, n.row + 1, 1);
+            nid = T.addNode(d, {name: '', cost: n.cost, turns: n.turns, tier: n.tier, icon: n.icon, branch: n.branch, prev: id, inherit: true, col: c.col, row: c.row});
+            T.addEdge(d, id, nid);
+        });
+        select([nid]);
+        reveal(nid);
+        focusName(true);
+        toast(fork ? `У «${T.label(n)}» уже есть следующий уровень: линейка ветвится (см. проверки). Ctrl+Z — убрать` : `Уровень ${T.roman(T.levelOf(cur(), nid))} линейки: наследует всё от «${T.label(n)}». Введите название`, !!fork);
     }
     function addLinked(id, dir) {
         const n = T.byId(cur(), id);
@@ -563,6 +595,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const n = T.byId(cur(), id), many = sel.size > 1;
             showMenu(e.clientX, e.clientY, [
                 !many && ['Переименовать', 'F2', () => focusName(true)],
+                !many && ['Следующий уровень (та же линейка, наследует её)', '', () => addNextLevel(id)],
                 !many && ['Новая постройка над ней (требует её)', '', () => addLinked(id, 'up')],
                 !many && ['Новая постройка под ней (нужна ей)', '', () => addLinked(id, 'down')],
                 many && sel.size === 2 && ['Связать две выделенные', 'L', linkSelected],
@@ -877,6 +910,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         if (selEdge) {
             const a = T.byId(d, selEdge.from), b = T.byId(d, selEdge.to);
             put(propsHead('Связь'), h('p', {}, `«${T.label(b)}» требует «${T.label(a)}»: сначала строится «${T.label(a)}».`),
+                b.prev === a.id ? h('p', {class: 'cx-lineinfo'}, `Это следующий уровень той же линейки (двойная линия): «${T.label(b)}» — уровень ${T.roman(T.levelOf(d, b.id))}, ${b.inherit ? 'наследует всё, что даёт' : 'не наследует'} «${T.label(a)}».`) : null,
                 h('div', {class: 'cx-actions'},
                     h('button', {onclick: () => reverse(selEdge.from, selEdge.to)}, 'Развернуть'),
                     h('button', {class: 'danger', onclick: deleteSelection}, 'Удалить связь')),
@@ -929,6 +963,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             h('div', {class: 'cx-field'}, h('label', {}, 'Описание (атмосферный текст, курсивом в окне сведений)'), bind(n, 'description', h('textarea', {rows: 3, class: 'cx-desc'})), descHelp),
             h('div', {class: 'cx-row2'}, field('Цена, золото', cost), field(`Ходы (1–${T.TURNS_MAX})`, turns)),
             field('Тир корпуса (какой корпус нужен)', tierSel),
+            lineEditor(n),
             field('Значок', h('div', {class: 'cx-iconpick'}, h('span', {title: 'Выбрать значок', onclick: () => iconGallery(n.id)}, slotIcon(n.icon, 'big')),
                 h('div', {}, h('button', {onclick: () => iconGallery(n.id)}, 'Выбрать…'), ' ',
                     n.icon ? h('button', {onclick: () => commit('Значок', x => T.updateNode(x, n.id, {icon: null}))}, 'Убрать') : null,
@@ -943,7 +978,8 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             h('hr'),
             linksInfo(n),
             h('div', {class: 'cx-actions'},
-                h('button', {onclick: () => addLinked(n.id, 'up')}, '+ Следующая над ней'),
+                h('button', {onclick: () => addNextLevel(n.id), title: 'Новый уровень этой линейки над ней: требует её, наследует её эффекты, экипаж, отряды и вид на корабле; тот же значок, ветка и тир. Как уровни одной постройки в игре'}, '+ Следующий уровень'),
+                h('button', {onclick: () => addLinked(n.id, 'up'), title: 'Отдельная новая постройка, которая требует эту. Ничего не наследует, своя линейка'}, '+ Постройка над ней'),
                 h('button', {onclick: duplicate}, 'Копия'),
                 h('button', {class: 'danger', onclick: deleteSelection}, 'Удалить')));
         props.scrollTop = scroll;
@@ -984,7 +1020,12 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     function effectsEditor(n) {
         const box = h('div', {class: 'cx-effects'});
         const setFx = (i, label, fn, merge = null, opt) => commit(label, d => { const fx = T.byId(d, n.id).effects; fn(fx[i]); fx[i] = FX.complete(fx[i], fxCtx); }, merge, opt);
+        const res = T.resolve(cur(), n.id);
+        const standing = new Set(res.inherited.effects.filter(x => x.status === 'replaced' && x.by).map(x => x.by.split('/').pop()));
+        if (res.from) box.append(inheritedEffects(n, res));
+        if (res.from) box.append(h('div', {class: 'cx-inh-head own'}, 'Свои строки этого уровня'));
         n.effects.forEach((e, i) => {
+            if (standing.has(e.id)) return;       // shown in the inherited block, in the place of the line it stands for
             const structured = FX.isStructured(e);
             const row = h('div', {class: 'e' + (e.good ? '' : ' badfx') + (structured ? ' fx' : '')});
             const input = h('input', {value: e.text, placeholder: 'Текст строки', 'data-field': `effect_${i}`, title: structured ? 'Текст строки: можно переписать своими словами, эффект останется' : 'Свободная строка'});
@@ -1040,6 +1081,156 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             h('button', {onclick: () => effectPicker(n.id), title: 'Эффект из каталога: экипаж, корабль, эффекты игры — с поиском'}, '+ Эффект…'),
             h('button', {onclick: () => { commit('Новая строка', d => { T.byId(d, n.id).effects.push({text: '', icon: null, good: true}); }); const el = props.querySelector(`[data-field="effect_${n.effects.length}"]`); if (el) el.focus(); }, title: 'Свободная строка текста'}, '+ Строка')));
         return box;
+    }
+    // The inherited lines of the level below (its full set), each in its place: kept (muted; a number of the catalogue typed in place makes it this
+    // level's own, of the same kind and target), changed here (the own line, editable; «вернуть» gives the inherited back), removed on this level
+    // (struck; «вернуть»).
+    // an effect with a number (a game effect without %n in its text, «Возможность найма героя», has none)
+    const valued = e => e.kind !== 'game' || /%\+?n/.test(((fxCtx.gameEffects[e.effect] || {}).text) || '%n');
+    function inheritedEffects(n, res) {
+        const prev = T.byId(cur(), n.prev);
+        const box = h('div', {class: 'cx-inherited'}, h('div', {class: 'cx-inh-head'}, `от «${T.label(prev)}» (${T.roman(T.levelOf(cur(), prev.id))})`,
+            h('span', {class: 'sub'}, ' — унаследовано, живая связь')));
+        const fromName = id => { const x = T.byId(cur(), id); return x ? `«${T.label(x)}» (${T.roman(T.levelOf(cur(), id))})` : id; };
+        const unit = e => (FX.KINDS[e.kind] && (FX.KINDS[e.kind].percent || /%\+?n%/.test(((fxCtx.gameEffects[e.effect || (FX.KINDS[e.kind] || {}).game] || {}).text) || '')) ? '%' : '');
+        res.inherited.effects.forEach(x => {
+            if (x.status === 'replaced' && !x.by) return;
+            const e = x.e, structured = FX.isStructured(e);
+            const row = h('div', {class: 'e inh ' + x.status + (e.good ? '' : ' badfx'), 'data-key': x.key, title: `Унаследовано от ${fromName(x.from)}`});
+            row.append(h('img', {src: url(e.icon || D + 'replenishement_positive.png'), alt: ''}));
+            if (x.status === 'hidden') {
+                row.append(h('span', {class: 'txt'}, e.text), h('div', {class: 'ebtns'}, h('span', {class: 'note'}, 'убрано на этом уровне'),
+                    h('button', {class: 'mini', title: 'Вернуть унаследованную строку', onclick: () => commit('Вернуть строку', d => { const m = T.byId(d, n.id); m.hide = m.hide.filter(k => k !== x.key); })}, 'вернуть')));
+                box.append(row); return;
+            }
+            if (x.status === 'replaced') {
+                // the own line that stands for it, editable here
+                const j = T.byId(cur(), n.id).effects.findIndex(o => `${n.id}/${o.id}` === x.by), own = T.byId(cur(), n.id).effects[j];
+                const input = h('input', {value: own.text, 'data-field': `effect_${j}`, title: 'Своя строка взамен унаследованной'});
+                input.addEventListener('input', () => commit('Текст строки', d => { const o = T.byId(d, n.id).effects[j]; o.text = input.value; if (FX.isStructured(o)) o.own_text = true; }, `fx:${n.id}:${j}`, {props: false}));
+                input.addEventListener('blur', flushField);
+                row.append(input);
+                const meta = h('div', {class: 'fxmeta'}, h('span', {class: 'was', title: 'Унаследованная строка'}, `было: ${e.text}`));
+                if (FX.isStructured(own) && valued(own)) {
+                    const v = h('input', {type: 'number', step: 'any', value: own.value, class: 'v', 'data-field': `fxv_${j}`, title: 'Число на этом уровне'});
+                    v.addEventListener('input', () => {
+                        if (v.value === '' || !Number.isFinite(Number(v.value))) return;
+                        commit('Число на этом уровне', d => { const fx = T.byId(d, n.id).effects; fx[j] = FX.complete({...fx[j], value: Number(v.value)}, fxCtx); }, `fxv:${n.id}:${j}`, {props: false});
+                        const o = T.byId(cur(), n.id).effects[j];
+                        if (!o.own_text) input.value = o.text;
+                        row.classList.toggle('badfx', !o.good);
+                    });
+                    v.addEventListener('blur', () => { flushField(); renderProps(); });
+                    meta.append(v, h('span', {class: 'unit'}, unit(own)));
+                }
+                row.classList.add('mine');
+                row.append(meta, h('div', {class: 'ebtns'}, h('span', {class: 'note'}, 'изменено здесь'),
+                    h('button', {class: 'mini', title: 'Убрать свою строку: снова действует унаследованная', onclick: () => commit('Вернуть унаследованную', d => { T.byId(d, n.id).effects.splice(j, 1); })}, 'вернуть')));
+                box.append(row); return;
+            }
+            // kept: muted; the number of the catalogue typed here makes this level's own line of the same kind and target
+            row.append(h('span', {class: 'txt'}, e.text));
+            const meta = h('div', {class: 'fxmeta'});
+            if (structured && valued(e)) {
+                const sig = T.effectSig(e);
+                const v = h('input', {type: 'number', step: 'any', value: e.value, class: 'v quick', 'data-quick': x.key, title: 'Другое число на этом уровне: строка станет своей, тот же эффект'});
+                v.addEventListener('input', () => {
+                    if (v.value === '' || !Number.isFinite(Number(v.value))) return;
+                    commit('Число на этом уровне', d => {
+                        const fx = T.byId(d, n.id).effects;
+                        let k = fx.findIndex(o => T.effectSig(o) === sig);
+                        if (k < 0) { fx.push({kind: e.kind, target: e.target, effect: e.effect, value: e.value, icon: e.icon}); k = fx.length - 1; }
+                        fx[k] = FX.complete({...fx[k], value: Number(v.value)}, fxCtx);
+                    }, `quick:${n.id}:${sig}`, {props: false});
+                    const o = T.byId(cur(), n.id).effects.find(q => T.effectSig(q) === sig);
+                    if (o) { row.querySelector('.txt').textContent = o.text; row.classList.toggle('badfx', !o.good); row.classList.add('editing'); }
+                });
+                v.addEventListener('blur', () => { flushField(); renderProps(); });
+                meta.append(h('span', {class: 'kind'}, FX.labelOf(e, fxCtx)), v, h('span', {class: 'unit'}, unit(e)));
+            }
+            row.append(meta, h('div', {class: 'ebtns'},
+                h('button', {class: 'mini', title: structured ? 'Своя строка того же эффекта на этом уровне' : 'Свой текст взамен унаследованной строки', onclick: () => {
+                    let j;
+                    commit('Изменить здесь', d => { const fx = T.byId(d, n.id).effects; fx.push(structured ? {kind: e.kind, target: e.target, effect: e.effect, value: e.value, icon: e.icon, text: e.text}
+                        : {text: e.text, icon: e.icon, good: e.good, replaces: x.key}); j = fx.length - 1; fx[j] = FX.complete(fx[j], fxCtx); });
+                    const el = props.querySelector(`[data-field="${structured ? 'fxv' : 'effect'}_${j}"]`);
+                    if (el) { el.focus(); if (el.select) el.select(); }
+                }}, 'изменить здесь'),
+                h('button', {class: 'mini', title: 'Убрать эту строку на этом уровне (и выше по линейке)', onclick: () => commit('Убрать на этом уровне', d => { const m = T.byId(d, n.id); m.hide = [...(m.hide || []), x.key]; })}, 'убрать')));
+            box.append(row);
+        });
+        if (!res.inherited.effects.length) box.append(h('div', {class: 'help'}, 'прошлый уровень строк не даёт'));
+        return box;
+    }
+    // inherited crew, units, details: muted chips, «убрать» on this level, the removed struck with «вернуть»
+    function inheritedThings(n, list, nameOf, cardOf) {
+        const res = T.resolve(cur(), n.id);
+        if (!res.from || !res.inherited[list].length) return null;
+        const prev = T.byId(cur(), n.prev);
+        return h('div', {class: 'cx-inherited things'}, h('div', {class: 'cx-inh-head'}, `от «${T.label(prev)}» (${T.roman(T.levelOf(cur(), prev.id))})`),
+            h('div', {class: 'cx-chips'}, res.inherited[list].map(x => {
+                const hidden = x.status === 'hidden', pic = cardOf ? cardOf(x) : null;
+                return h('span', {class: 'cx-chip inh' + (hidden ? ' hidden' : ''), title: hidden ? 'Убрано на этом уровне' : 'Унаследовано'}, pic ? h('img', {src: url(pic), alt: ''}) : null, nameOf(x),
+                    h('button', {class: 'mini', title: hidden ? 'Вернуть' : 'Убрать на этом уровне', onclick: () => commit(hidden ? 'Вернуть унаследованное' : 'Убрать на этом уровне', d => {
+                        const m = T.byId(d, n.id); m.hide = hidden ? m.hide.filter(k => k !== x.key) : [...(m.hide || []), x.key];
+                    })}, hidden ? 'вернуть' : '×'));
+            })));
+    }
+    // The line of levels: what this node continues, its level, inheritance, the next levels; the line broken; the link «требует» added when missing
+    function lineEditor(n) {
+        const d = cur(), line = T.lineOf(d, n.id), lvl = T.inLine(d, n.id) ? line.ids.length : 0, prev = n.prev && T.byId(d, n.prev), nexts = T.nextLevels(d, n.id).map(id => T.byId(d, id));
+        const options = d.nodes.filter(x => x.id !== n.id && T.canContinue(d, n.id, x.id).ok).sort((a, b) => T.label(a).localeCompare(T.label(b), 'ru'));
+        const pick = h('select', {'data-field': 'prev', onchange: ev => setPrev(n.id, ev.target.value || null)}, h('option', {value: ''}, '— не продолжает (начало линейки или отдельная)'),
+            options.map(x => h('option', {value: x.id, selected: x.id === n.prev}, `${T.label(x)}${T.inLine(d, x.id) ? ` (${T.roman(T.levelOf(d, x.id))})` : ''}`)));
+        const inherit = h('input', {type: 'checkbox', checked: !!n.inherit, disabled: !prev, 'data-field': 'inherit', onchange: ev => { if (ev.target.checked) enableInherit(n.id); else commit('Наследование выключено', x => { T.byId(x, n.id).inherit = false; }); }});
+        const go = x => h('a', {href: '#', onclick: e => { e.preventDefault(); select([x.id]); reveal(x.id); }}, T.label(x));
+        return h('div', {class: 'cx-field cx-line'}, h('label', {}, 'Продолжает линейку (прошлый уровень)'), pick,
+            lvl ? h('div', {class: 'help ok'}, `Уровень ${T.roman(lvl)} линейки «${T.label(T.byId(d, line.ids[0]))}»`) : h('div', {class: 'help'}, 'Не в линейке: отдельная постройка'),
+            prev && !n.requires.includes(prev.id) && !T.leadsTo(d, prev.id, n.id) ? h('div', {class: 'help bad'}, `Не требует «${T.label(prev)}» — в игре следующий уровень строится на прошлом. `,
+                h('button', {class: 'mini', onclick: () => commit('Связь', x => T.addEdge(x, prev.id, n.id))}, 'Добавить связь «требует»')) : null,
+            prev ? h('label', {class: 'cx-check', title: 'Получает всё, что даёт прошлый уровень (и тот — от своего): строки, экипаж, найм, вид на корабле. Живая связь'}, inherit, ' Наследует всё, что даёт прошлый уровень') : null,
+            nexts.length ? h('div', {class: 'help'}, 'Следующий уровень: ', ...nexts.flatMap((x, i) => [i ? ', ' : '', go(x)])) : null,
+            h('div', {class: 'cx-actions', style: 'margin:4px 0 0'},
+                h('button', {onclick: () => addNextLevel(n.id), title: 'Новый уровень этой линейки над ней: требует её и наследует всё, что она даёт'}, '+ Следующий уровень'),
+                prev ? h('button', {class: 'danger', onclick: () => setPrev(n.id, null), title: 'Постройка перестаёт быть уровнем этой линейки; связь «требует» остаётся'}, 'Разорвать линейку') : null));
+    }
+    function setPrev(id, prev) {
+        if (!prev) { commit('Линейка разорвана', d => { T.byId(d, id).prev = null; }); toast('Линейка разорвана: постройка больше не наследует. Ctrl+Z — вернуть'); return; }
+        const c = T.canContinue(cur(), id, prev);
+        if (!c.ok) { toast(c.why, true); renderProps(); return; }
+        commit('Продолжает линейку', d => { const n = T.byId(d, id); n.prev = prev; n.inherit = false; if (!n.requires.includes(prev) && T.canLink(d, prev, id).ok) T.addEdge(d, prev, id); });
+        enableInherit(id, true);
+    }
+    // Inheritance on: when the node has lines of its own (a building of the mod comes with its whole set), what would stand for the inherited, what
+    // would be doubled; one action takes the doubles away
+    function enableInherit(id, quiet = false) {
+        const read = t => FX.recognize(t, fxCtx).map(T.effectSig);
+        const o = T.inheritOverlap(cur(), id, read);
+        const n = T.byId(cur(), id);
+        if (!o.doubles.length && !o.sameKind.length && !o.things.length) {
+            commit('Наследование включено', d => { T.byId(d, id).inherit = true; });
+            if (!quiet || o.replace.length) toast(o.replace.length ? `Наследует «${T.label(T.byId(cur(), n.prev))}»; ${o.replace.length} своих эффектов заменяют унаследованные того же вида` : `Наследует всё от «${T.label(T.byId(cur(), n.prev))}»`);
+            return;
+        }
+        const li = x => h('li', {}, x.e.text, h('span', {class: 'help'}, ` — у «${T.label(T.byId(cur(), x.of.from))}»: ${x.of.e.text}`));
+        const fix = () => commit('Наследование включено, дубли убраны', d => {
+            const m = T.byId(d, id);
+            m.inherit = true;
+            const drop = new Set(o.doubles.map(x => x.i));
+            for (const x of o.sameKind) m.effects[x.i].replaces = x.of.key;
+            m.effects = m.effects.filter((e, i) => !drop.has(i));
+            for (const t of o.things) m[t.list] = m[t.list].filter(y => T.thingKey[t.list](y) !== t.key);
+        });
+        const box = modal([h('h3', {}, `Наследовать от «${T.label(T.byId(cur(), n.prev))}»`),
+            h('p', {}, `У «${T.label(n)}» есть свои строки; с наследованием часть из них совпадёт с унаследованными.`),
+            o.replace.length ? h('div', {}, h('b', {}, 'Заменят унаследованные (тот же эффект и адресат) — это не дубли:'), h('ul', {}, o.replace.map(li))) : null,
+            o.doubles.length ? h('div', {}, h('b', {}, 'Совпадают дословно — задвоятся:'), h('ul', {}, o.doubles.map(li))) : null,
+            o.sameKind.length ? h('div', {}, h('b', {}, 'Тот же вид с другим числом — задвоятся (станут заменой):'), h('ul', {}, o.sameKind.map(li))) : null,
+            o.things.length ? h('div', {}, h('b', {}, 'Уже даёт прошлый уровень:'), h('ul', {}, o.things.map(t => h('li', {}, t.list === 'crew' ? `экипаж: ${(data.groups[t.x.group] || {}).options?.[t.x.option]?.name || t.x.option}` : t.list === 'units' ? `найм: ${unitName(t.x)}` : `вид: ${t.x.part ? partName(t.x.part) : t.x.name}`)))) : null,
+            h('div', {class: 'btns'}, h('button', {onclick: () => { closeModal(); renderProps(); }}, 'Отмена'),
+                h('button', {onclick: () => { closeModal(); commit('Наследование включено', d => { T.byId(d, id).inherit = true; }); }}, 'Включить как есть'),
+                h('button', {class: 'danger', 'data-act': 'dedupe', onclick: () => { closeModal(); fix(); toast('Наследование включено, дубли убраны. Ctrl+Z — вернуть'); }}, 'Включить и убрать дубли'))], 'cx-dialog');
+        box.querySelector('[data-act="dedupe"]').focus();
     }
     // The catalogue: a list in sections with a search; the crew's kinds a row each with its targets as buttons. The arrows move between the choices,
     // Enter takes one, Escape closes; the search's Enter takes the first shown.
@@ -1113,7 +1304,8 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                 u ? h('img', {src: url(u.card.picture), alt: ''}) : null, u ? u.name : k, others.length ? h('span', {class: 'dupmark'}, '×2') : null,
                 h('button', {class: 'mini', title: 'Убрать', onclick: () => commit('Найм отряда', d => { const x = T.byId(d, n.id); x.units = x.units.filter(y => y !== k); })}, '×')));
         }
-        box.append((n.units || []).length ? chips : h('div', {class: 'help'}, 'ничего'), h('button', {onclick: () => unitsPicker(n.id)}, 'Выбрать…'),
+        const inh = inheritedThings(n, 'units', x => unitName(x.u), x => armyUnits[x.u] && armyUnits[x.u].card.picture);
+        box.append(inh || '', inh ? h('div', {class: 'cx-inh-head own'}, 'Свои') : '', (n.units || []).length ? chips : h('div', {class: 'help'}, 'ничего'), h('button', {onclick: () => unitsPicker(n.id)}, 'Выбрать…'),
             h('div', {class: 'help'}, 'Обычные отряды армии гномов: в игре — блок «Открывает найм» и карточки в обычной рамке. Найм армии страница не моделирует.'));
         return box;
     }
@@ -1157,6 +1349,8 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     };
     function partsEditor(n) {
         const box = h('div', {class: 'cx-parts'});
+        const inh = inheritedThings(n, 'parts', x => (x.p.part ? partName(x.p.part) : x.p.name || 'новая деталь'));
+        if (inh) box.append(inh, h('div', {class: 'cx-inh-head own'}, 'Свои'));
         (n.parts || []).forEach((p, i) => {
             const del = h('button', {class: 'mini', title: 'Убрать', onclick: () => commit('Вид на корабле', d => { T.byId(d, n.id).parts.splice(i, 1); })}, '×');
             if (p.part) { box.append(h('div', {class: 'part'}, h('b', {}, partName(p.part)), ...partBadges(p.part), del)); return; }
@@ -1216,7 +1410,8 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                 card ? h('img', {src: url(card.uc.picture), alt: ''}) : null, `${o ? o.name : c.option}`, h('span', {style: 'color:var(--cx-dim);font-size:12px'}, g ? g.name.toLowerCase() : ''),
                 h('button', {class: 'mini', title: 'Убрать', onclick: () => commit('Экипаж', d => { const x = T.byId(d, n.id); x.crew = x.crew.filter(y => !(y.group === c.group && y.option === c.option)); })}, '×')));
         }
-        box.append(n.crew.length ? chips : h('div', {class: 'help'}, 'ничего'), h('button', {onclick: () => crewPicker(n.id)}, 'Выбрать…'));
+        const inh = inheritedThings(n, 'crew', x => { const g = data.groups[x.c.group], o = g && g.options[x.c.option]; return o ? o.name : x.c.option; }, x => { const k = crewCard(x.c); return k && k.uc.picture; });
+        box.append(inh || '', inh ? h('div', {class: 'cx-inh-head own'}, 'Свои') : '', n.crew.length ? chips : h('div', {class: 'help'}, 'ничего'), h('button', {onclick: () => crewPicker(n.id)}, 'Выбрать…'));
         return box;
     }
     function renderTreeInfo() {
@@ -1551,6 +1746,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         } else if (kept && !kept.file_ok) keepLocal(true);       // they did reach it (the last request of the page before)
     } catch (e) { /* nothing kept */ }
     if (problems.length) toast('Файл дерева прочитан с поправками: ' + problems.join('; '), true);
+    else if (migrated) { lastSaved = ''; scheduleSave(); toast(`Файл переведён в новый формат${migrated.lines ? `: линейки уровней мода проставлены (${migrated.lines}), наследование у них выключено` : ''}`); }
     let first = true;
     return {
         show() { shown = true; paintFolds(); startWatch(); checkOutside(); if (first) { first = false; requestAnimationFrame(() => showAll(1)); } else applyView(); },

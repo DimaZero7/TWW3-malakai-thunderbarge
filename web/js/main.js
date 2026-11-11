@@ -187,9 +187,14 @@ async function main() {
     new ResizeObserver(fit).observe(document.getElementById('left'));
 
     // ---- the tree's file and the two modes ----
-    let design = null, problems = [];
+    let design = null, problems = [], migrated = null;
     if (designFile !== null) {
-        try { ({design, problems} = T.normalize(JSON.parse(designFile))); } catch (e) {
+        try {
+            let from;
+            ({design, problems, from} = T.normalize(JSON.parse(designFile)));
+            // a file older than the lines of levels: the mod's chains on the canvas become lines (inheritance off), written by the constructor
+            if (from < T.FORMAT) migrated = {from, lines: T.linkModChains(design, data)};
+        } catch (e) {
             // a broken file is kept as a copy before the constructor writes anything over it
             console.error('web/data/tree_design.json:', e);
             design = T.emptyDesign();
@@ -205,7 +210,7 @@ async function main() {
         for (const b of modeButtons) b.classList.toggle('on', b.dataset.mode === mode);
         try { localStorage.setItem('mtb_mode', mode); } catch (e) { /* no storage */ }
         if (mode === 'constructor') {
-            if (!editor) editor = makeConstructor(document.getElementById('constructor'), {data, cards, design, problems, onChange: d => { design = d; }, catalog, blueprint: blueprintAll, art, version: fileVersion});
+            if (!editor) editor = makeConstructor(document.getElementById('constructor'), {data, cards, design, problems, onChange: d => { design = d; }, catalog, blueprint: blueprintAll, art, version: fileVersion, migrated});
             editor.show();
         } else {
             if (editor) { editor.hide(); design = editor.design(); }

@@ -699,6 +699,8 @@ UNIT_STAT_ICONS = ["ui/skins/default/icon_stat_health.png", "ui/skins/default/ic
                    "ui/skins/default/icon_stat_ammo.png", "ui/skins/default/icon_stat_reload_time.png", "ui/skins/default/icon_stat_damage.png",
                    "ui/skins/default/modifier_icon_armour_piercing.png", "ui/skins/default/icon_income.png", "ui/skins/default/icon_treasury.png",
                    "ui/skins/default/icon_entity_small.png", "ui/skins/default/unit_card_build_frame.png", "ui/skins/default/icon_hourglass.png"]
+# the level of a building on its slot (ui/templates/building_frame.twui.xml, building_level: 20 x 20 at the slot's lower left corner, one picture a level)
+UNIT_STAT_ICONS += [f"ui/skins/default/settlement_silver_numeral_{i}.png" for i in range(1, 6)]
 # The dwarfs' unit keys (the game's own and its DLCs'); the faction's roster of custom battles is wh_main_dwf_dwarfs, Malakai's own units end in _malakai
 DWARF_UNITS = ("wh_main_dwf_", "wh_dlc06_dwf_", "wh2_dlc10_dwf_", "wh3_dlc25_dwf_")
 

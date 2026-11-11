@@ -164,5 +164,39 @@ const cost = (M, k) => M.level(k).cost;
     M.demolish(key);
     check('demolished: the detail goes, the bonus goes', M.stage('pub') === 'pencil' && FX.crewBonuses(crewSources(levels, k => game.has_building(k), k => game.standing(k)), 'rifles').ammo.pct === 0);
 }
+// the lines of levels in the game: the level that stands acts with its whole set, the levels are not added up; demolished, the one below acts again;
+// a next level that does not inherit closes what the level below opened
+{
+    const {crewSources} = await import('../../web/js/crew_model.mjs');
+    const FX = await import('../../web/js/effects_model.mjs');
+    const make = inherit => {
+        const d = JSON.parse(JSON.stringify(T.normalize(json('tools/tests/tree_design_start.json')).design));
+        const hull2 = d.nodes.find(n => n.mod_key === 'airship_hull_2');
+        const one = T.addNode(d, {name: 'Чертог I', cost: 100, col: 6, row: 2, requires: [hull2.id], crew: [{group: 'rifles', option: 'pirates'}],
+            effects: [{kind: 'ammo', target: 'rifles', value: 10, text: 'Боезапас стрелков: +10 %', icon: null, good: true}]});
+        const two = T.addNode(d, {name: 'Чертог II', cost: 100, col: 6, row: 3, requires: [one], prev: one, inherit,
+            effects: [{kind: 'ammo', target: 'rifles', value: 25, text: 'Боезапас стрелков: +25 %', icon: null, good: true}]});
+        const levels = T.gameData(d, data);
+        const game = new GameSim(levels, {...sim, gold: 50000, built: [], demolish: 'step_down'});
+        const M = makeBuildings(levels, game, stage.parts);
+        for (const k of ['airship_hull_1', 'airship_hull_2']) { M.order(data.prefix + k); game.end_turn(); }
+        return {game, M, levels, k1: levels.key_of[one], k2: levels.key_of[two]};
+    };
+    const ammo = ({levels, game}) => FX.crewBonuses(crewSources(levels, k => game.has_building(k), k => game.standing(k)), 'rifles').ammo.pct;
+    const pirates = M => M.crew_options('rifles').find(o => o.key === 'pirates');
+    let w = make(true);
+    w.M.order(w.k1); w.game.end_turn();
+    check('lines in the game: I built: +10 %, the pirates open', ammo(w) === 10 && pirates(w.M).unlocked);
+    w.M.set_crew('rifles', 'pirates'); w.game.end_turn();
+    check('lines in the game: II waits for I: ordered only after I', w.M.status(w.k2).state === 'open');
+    w.M.order(w.k2); w.game.end_turn();
+    check('lines in the game: I and II built: II\'s set acts, +25 % (not 35); the pirates of I open with II', ammo(w) === 25 && pirates(w.M).unlocked && w.M.crew('rifles') === 'pirates' && w.game.standing(w.k2) && !w.game.standing(w.k1));
+    w.M.demolish(w.k2);
+    check('lines in the game: II demolished: I stands and acts again, +10 %', ammo(w) === 10 && w.game.standing(w.k1));
+    w = make(false);
+    w.M.order(w.k1); w.game.end_turn(); w.M.set_crew('rifles', 'pirates'); w.game.end_turn();
+    w.M.order(w.k2); w.game.end_turn();
+    check('lines in the game: a II that does not inherit: +25 % only, the pirates of I closed and gone from the rails', ammo(w) === 25 && !pirates(w.M).unlocked && w.M.crew('rifles') !== 'pirates', w.M.message());
+}
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

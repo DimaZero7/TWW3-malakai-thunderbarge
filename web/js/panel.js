@@ -943,6 +943,9 @@ function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide) {
         v.constructing.SetImageColour(255, 255, 255, 0x64);
         v.check = image(b, 'check', D + 'icon_check_green.png', 44, 48, 31, 28);
         v.padlock = image(b, 'padlock', D + 'padlock.png', NODE - 24, 2, 20, 25);
+        // the level in its line, as the game's slot shows it (building_frame.twui.xml, building_level: 20 x 20 docked at the lower left, 0, 54;
+        // the game has pictures of I to V)
+        if (n.row.in_line && n.row.line_level <= 5) v.level = image(b, 'building_level', D + `settlement_silver_numeral_${n.row.line_level}.png`, 0, 54, 20, 20);
         v.hover = image(b, 'hover', D + 'building_frame_hover.png', -NODE * 8 / 74, -NODE * 8 / 74, NODE * 90 / 74, NODE * 90 / 74);
         v.hoverSelected = image(b, 'hover_selected', D + 'building_frame_selected_hover.png', 0, 0, NODE, NODE);
         v.hoverSelected.SetVisible(false);
@@ -1156,6 +1159,7 @@ function refreshTree(view, M) {
         v.turnsBanner.SetVisible(building);
         v.turns.SetVisible(building);
         v.turns.SetStateText(building ? String(st.turns) : '');
+        if (v.level) v.level.SetVisible(!building);        // the turns banner takes the slot's foot while it is built
         const row = !v.node.demo && M.level(v.node.key);
         v.cost.SetVisible(!!row && !built && !building);
         v.costRed.SetVisible(poor);

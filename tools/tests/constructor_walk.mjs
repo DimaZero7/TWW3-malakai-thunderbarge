@@ -22,6 +22,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WORK = join(ROOT, 'web/data/tree_design.json');
 const hash = p => (existsSync(p) ? createHash('sha256').update(readFileSync(p)).digest('hex') : 'none');
 const workBefore = hash(WORK);
+const backupsBefore = readdirSync(join(ROOT, 'web/data')).filter(f => f.startsWith('tree_design.backup-')).join();
 // the walk's own tree file and its own server
 const DATA = join(tmpdir(), 'mtb_walk_tree');
 rmSync(DATA, {recursive: true, force: true});
@@ -139,8 +140,8 @@ const images = () => b.eval(`(async () => {
 })()`);
 
 // CAPS_ONLY=1: only part 4 (the new capabilities), for a quick walk
-if (process.env.CAPS_ONLY) {
-    try { await walkCaps(); const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e)); check("caps: the console is clean (the 409 of the conflict walked on purpose aside), no dialog", !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]); } catch (e) { failed++; console.log("FAIL walk stopped: " + e.stack); try { await b.shot(join(SHOTS, "caps_walk_error.png")); } catch (x) { /* no picture */ } }
+if (process.env.CAPS_ONLY || process.env.CHAIN_ONLY) {
+    try { if (process.env.CAPS_ONLY) await walkCaps(); if (process.env.CHAIN_ONLY) await walkChains(); const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e)); check("caps: the console is clean (the 409 of the conflict walked on purpose aside), no dialog", !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]); } catch (e) { failed++; console.log("FAIL walk stopped: " + e.stack); try { await b.shot(join(SHOTS, "caps_walk_error.png")); } catch (x) { /* no picture */ } }
     await b.close(); server.kill();
     check("the author's working file web/data/tree_design.json untouched, byte for byte", hash(WORK) === workBefore);
     console.log(`checks: ${results.length}, failed: ${failed}`); process.exit(failed ? 1 : 0);
@@ -158,7 +159,8 @@ try {
     await b.until('mtb.editor.design().nodes.length === 0');
     await sameAsFile('clearing');
     const made = backups().filter(f => !before.includes(f));
-    check('clearing kept a copy of the old file beside it', made.length === 1 && readFileSync(join(DATA, made[0]), 'utf-8') === START);
+    // the copy is of the file as it was on the disk: the start fixture, taken into the new format by the constructor at its opening (the same buildings)
+    check('clearing kept a copy of the old file beside it', made.length === 1 && JSON.stringify(JSON.parse(readFileSync(join(DATA, made[0]), 'utf-8')).nodes.map(n => [n.id, n.name])) === JSON.stringify(JSON.parse(START).nodes.map(n => [n.id, n.name])));
 
     // the working view at 1280 x 800: one step smaller than 100 % (the names stay 11.6 px), four columns and five rows in sight
     await clickText('.cx-zoom button', '100%', false);
@@ -672,6 +674,7 @@ try {
     im = await images();
     check('game at 1:1: every picture loaded', !im.bad.length && !im.missing.length, im);
     if (!process.env.SKIP_CAPS) await walkCaps();
+    if (!process.env.SKIP_CHAINS) await walkChains();
     const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e));
     check('the console is clean (the 409 of the conflict walked on purpose aside), no dialog', !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]);
 } catch (e) {
@@ -682,7 +685,7 @@ try {
     await b.close();
     server.kill();
     check('the author\'s working file web/data/tree_design.json untouched, byte for byte', hash(WORK) === workBefore);
-    check('no copy of the tree file left in web/data', !readdirSync(join(ROOT, 'web/data')).some(f => f.startsWith('tree_design.backup-')));
+    check('no copy of the tree file left in web/data by the walk (the author\'s own copies aside)', readdirSync(join(ROOT, 'web/data')).filter(f => f.startsWith('tree_design.backup-')).join() === backupsBefore);
 }
 // Part 4: the new capabilities, on the author's own tree (build/web/tree_design.user_before_caps.json, the copy of his file taken before the work):
 // an effect of the catalogue for one crew group and its number in the unit's panel of the game; the free lines read as effects (the proposal's
@@ -782,7 +785,7 @@ async function walkCaps() {
     hold = await nodeByName('Трюм'); fx = hold.effects[hold.effects.length - 1];
     check('caps: the value typed, the line follows it', fx.value === 30 && fx.text === 'Боезапас стрелков: +30 %', fx);
     await savedOk();
-    check('caps: the file keeps the effect whole', JSON.stringify(fileNode('Трюм').effects.slice(-1)[0]) === JSON.stringify({kind: 'ammo', target: 'rifles', value: 30, text: 'Боезапас стрелков: +30 %', icon: fx.icon, good: true}), fileNode('Трюм').effects.slice(-1)[0]);
+    check('caps: the file keeps the effect whole', JSON.stringify({...fileNode('Трюм').effects.slice(-1)[0], id: undefined}) === JSON.stringify({kind: 'ammo', target: 'rifles', value: 30, text: 'Боезапас стрелков: +30 %', icon: fx.icon, good: true}), fileNode('Трюм').effects.slice(-1)[0]);
     await b.key('z', 'ctrl'); await sleep(200);
     hold = await nodeByName('Трюм');
     check('caps: Ctrl+Z takes the value back', hold.effects.slice(-1)[0].value === 5, hold.effects.slice(-1)[0]);
@@ -961,6 +964,199 @@ async function walkCaps() {
         const kept = copies.length > copies0 && /ИЗВНЕ/.test(readFileSync(join(DATA, copies[copies.length - 1]), 'utf-8'));
         check('caps: «Оставить мои»: the file has the author\'s text, the outside one is kept whole in a copy', / мои\d$/.test(desc) && !/ИЗВНЕ/.test(desc) && kept, {desc: desc.slice(-30), kept});
     }
+}
+// Part 5: lines of levels, on the author's tree of today (build/web/tree_design.user_before_chains.json, format 2): the file taken into format 3 with
+// the mod's chains as lines; a line broken; «Пивной чертог → Таверна → Винокурня» built by «+ Следующий уровень»; numbers changed on II and on I
+// (III sees both right), a line changed here, removed and given back; inheritance turned on for a node with its whole set (the doubles named and
+// taken away); in the game: I and II built — II's set acts, II demolished — I's; the crew of I open with II. Pictures chain_*.png.
+async function walkChains() {
+    let im;
+    const design = () => b.eval('JSON.stringify(mtb.editor.design())').then(s => JSON.parse(s));
+    const node = async id => (await design()).nodes.find(n => n.id === id);
+    const byName = async name => (await design()).nodes.find(n => n.name === name);
+    const selectNode = async id => {
+        await b.eval(`(() => { ${E}.select([${JSON.stringify(id)}]); const c = mtb.editor.api.cardOf(${JSON.stringify(id)}), r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = mtb.editor.api.view;
+            const sx = v.x + c.cx * v.z, sy = v.y + (c.y + 37) * v.z; if (sx < 60 || sx > r.width - 60 || sy < 60 || sy > r.height - 60) { v.x = r.width / 2 - c.cx * v.z; v.y = r.height / 2 - (c.y + 37) * v.z; mtb.editor.api.applyView(); } })()`);
+        await sleep(150);
+        const s = await b.rect(`.cx-node[data-id="${id}"] .slot`);
+        await b.click(s.x, s.y); await sleep(200);
+    };
+    const savedOk = async () => { await b.until(`${E}.saveState() === 'ok'`, 8000).catch(() => {}); await sleep(200); };
+    const fileNode = id => JSON.parse(readFileSync(FILE, 'utf-8')).nodes.find(n => n.id === id);
+    const smallText = sel => b.eval(`[...document.querySelectorAll(${JSON.stringify(sel)})].filter(e => e.offsetParent !== null && [...e.childNodes].some(c => c.nodeType === 3 && c.textContent.trim())).map(e => [e.textContent.trim().slice(0, 30), parseFloat(getComputedStyle(e).fontSize)]).filter(([, px]) => px < 11)`);
+    const toConstructor = async () => { await clickText('#mode button', 'Конструктор'); await b.until('document.body.dataset.mode === "constructor"'); await sleep(300); };
+    const toGame = async () => { await clickText('#mode button', 'Игра'); await b.until('document.body.dataset.mode === "game" && !!mtb.panel.view.tree'); await sleep(500); };
+    const gameComp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, t: r.top, b: r.bottom, l: r.left, r: r.right}; })()`);
+    const nodeOnScreen = async name => gameComp('mtb_tree_node_' + await b.eval(`mtb.panel.view.tree.findIndex(v => v.node.name === ${JSON.stringify(name)})`));
+    const inSight = async name => {
+        let n = await nodeOnScreen(name);
+        const win = await gameComp('tree_window');
+        for (let i = 0; i < 12 && (n.y < win.t + 40 || n.y > win.b - 40 || n.x < win.l + 40 || n.x > win.r - 40); i++) {
+            await b.drag(win.x, win.y, win.x + Math.max(-150, Math.min(150, win.x - n.x)), win.y + Math.max(-150, Math.min(150, win.y - n.y)), {steps: 6});
+            n = await nodeOnScreen(name);
+        }
+        return n;
+    };
+    const selectInGame = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(150); };
+    const buildTo = async name => { await selectInGame(name); const r = await b.rect('#build_to'); await b.click(r.x, r.y); await sleep(250); };
+    const resetGame = async () => { const r = await b.rect('#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
+    const infoText = () => b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); return t ? [...t.querySelectorAll('[data-id]')].filter(x => x.offsetParent !== null && x.querySelector('.t')).map(x => x.textContent).join(' | ') : ''; })()`);
+    const ammoOf = () => b.eval(`(async () => { const FX = await import('/js/effects_model.mjs'), C = await import('/js/crew_model.mjs'); const L = mtb.panel.view.data; return FX.crewBonuses(C.crewSources(L, k => mtb.game.has_building(k), k => mtb.game.standing(k)), 'rifles').ammo; })()`);
+    const btnIn = async (sel, label) => { const r = await at(`[...document.querySelectorAll(${JSON.stringify(sel)})].find(x => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(label)}))`); if (!r) throw new Error('no ' + label); await b.click(r.x, r.y); await sleep(220); };
+    const resolveTexts = id => b.eval(`(async () => { const T = await import('/js/tree_model.mjs'); return T.resolve(mtb.editor.design(), ${JSON.stringify(id)}).full.effects.map(x => x.e.text); })()`);
+    const inhRow = (re, inner) => `[...document.querySelectorAll('.cx-props .cx-inherited .e')].find(e => ${re}.test(e.textContent))${inner}`;
+
+    writeFileSync(FILE, readFileSync(join(ROOT, 'build/web/tree_design.user_before_chains.json'), 'utf-8'));
+    await b.size(1280, 800);
+    await b.open(URL0 + '?mode=constructor');
+    await b.until('!!(window.mtb && mtb.editor && mtb.editor.design().nodes.length > 10)', 15000);
+    await sleep(1200);
+    await savedOk();
+    for (let i = 0; i < 50 && JSON.parse(readFileSync(FILE, 'utf-8')).format !== 3; i++) await sleep(100);
+    const file0 = JSON.parse(readFileSync(FILE, 'utf-8'));
+    const lines0 = file0.nodes.filter(n => n.prev).map(n => `${n.prev}>${n.id}`);
+    check('chains: the author\'s file (format 2) written as format 3, the mod\'s chains on the canvas made lines, inheritance off',
+        file0.format === 3 && lines0.length >= 6 && file0.nodes.every(n => !n.inherit) && lines0.includes('beer_hall_1>beer_hall_2'), lines0);
+    await b.eval(`${E}.showAll()`); await sleep(400);
+    await b.shot(join(SHOTS, 'chain_user_tree.png'));
+
+    // a line broken: «Столовая» is no longer the beer hall's next level
+    await selectNode('beer_hall_2');
+    await btnIn('.cx-props .cx-line button', 'Разорвать линейку');
+    check('chains: «Разорвать линейку»: no previous level, the link «требует» kept', !(await node('beer_hall_2')).prev && (await node('beer_hall_2')).requires.includes('beer_hall_1'));
+    // the beer hall's line: a crew effect of the catalogue on I (the riflemen's ammunition +10 %), and its recruitment cost made an effect
+    await selectNode('beer_hall_1');
+    await btnIn('.cx-props .cx-effects .cx-actions button', '+ Эффект');
+    await b.until('!!document.querySelector(".cx-fxlist")');
+    await b.type('боезапас');
+    await sleep(200);
+    const tgt = await at(`[...document.querySelectorAll('.cx-fxlist .targets button')].find(x => x.textContent.trim().startsWith('Стрелки'))`);
+    await b.click(tgt.x, tgt.y); await sleep(200);
+    await b.key('a', 'ctrl'); await b.type('10'); await sleep(250);
+    const make = await at(`[...document.querySelectorAll('.cx-props .cx-effects > .e')].find(e => /Стоимость найма/.test(e.querySelector('input') ? e.querySelector('input').value : '')).querySelector('.propose button')`);
+    await b.click(make.x, make.y); await sleep(200);
+    const bh = await node('beer_hall_1');
+    check('chains: I: ammunition of the riflemen +10 and the recruitment cost an effect of the catalogue', bh.effects.some(e => e.kind === 'ammo' && e.value === 10) && bh.effects.some(e => e.kind === 'game' && /recruitment_cost/.test(e.effect)), bh.effects.map(e => e.kind || 'text'));
+    // II and III by «+ Следующий уровень»
+    await btnIn('.cx-props .cx-line button', '+ Следующий уровень');
+    await b.type('Таверна'); await sleep(250);
+    const tav = (await byName('Таверна')).id;
+    let t = await node(tav);
+    check('chains: «+ Следующий уровень»: over the node, requires it, continues it, inherits; the same icon, branch and tier; the name typed in focus',
+        t.prev === 'beer_hall_1' && t.inherit && t.requires.includes('beer_hall_1') && t.icon === bh.icon && t.branch === bh.branch && t.tier === bh.tier && t.row > bh.row, t);
+    await btnIn('.cx-props .cx-line button', '+ Следующий уровень');
+    await b.type('Винокурня'); await sleep(250);
+    const vin = (await byName('Винокурня')).id;
+    // II: the inherited numbers changed in place
+    await selectNode(tav);
+    await b.eval(`${inhRow('/Боезапас стрелков/', ".querySelector('input.quick')")}.scrollIntoView({block: 'center'})`);
+    const quick = await at(inhRow('/Боезапас стрелков/', ".querySelector('input.quick')"));
+    await b.click(quick.x, quick.y); await b.key('a', 'ctrl'); await b.type('25'); await sleep(250);
+    await b.shot(join(SHOTS, 'chain_quick_number.png'));
+    await b.key('Tab'); await sleep(250);
+    const q2 = await at(inhRow('/Стоимость найма/', ".querySelector('input.quick')"));
+    await b.click(q2.x, q2.y); await b.key('a', 'ctrl'); await b.type('-20'); await sleep(250);
+    await b.key('Tab'); await sleep(250);
+    t = await node(tav);
+    check('chains: II: two numbers typed in the inherited lines: own effects of the same kind, nothing doubled', t.effects.length === 2 && t.effects.some(e => e.kind === 'ammo' && e.value === 25) && t.effects.some(e => e.kind === 'game' && e.value === -20), t.effects);
+    await b.eval(`document.querySelector('.cx-canvas').focus()`);
+    await b.key('z', 'ctrl'); await sleep(250);
+    check('chains: Ctrl+Z takes the last number back: the inherited line acts again', (await node(tav)).effects.length === 1, (await node(tav)).effects);
+    await b.key('y', 'ctrl'); await sleep(250);
+    // a free line changed here
+    await selectNode(tav);
+    await b.eval(`${inhRow('/Производство гномьего пива/', ".querySelector('.ebtns button')")}.scrollIntoView({block: 'center'})`);
+    const chBtn = await at(inhRow('/Производство гномьего пива/', ".querySelector('.ebtns button')"));
+    await b.click(chBtn.x, chBtn.y); await sleep(250);
+    await b.key('a', 'ctrl'); await b.type('Производство гномьего пива (бочонки): 8'); await sleep(250);
+    await b.key('Tab'); await sleep(200);
+    t = await node(tav);
+    check('chains: «изменить здесь» on a free line: an own line in its place, the inherited one replaced', t.effects.some(e => e.replaces && /: 8$/.test(e.text)), t.effects);
+    // I changed: III sees I's new lines where II says nothing, II's where II changed it; a live link
+    await selectNode('beer_hall_1');
+    const v1 = await at(`[...document.querySelectorAll('.cx-props .cx-effects > .e')].find(e => e.querySelector('input') && /Боезапас стрелков/.test(e.querySelector('input').value)).querySelector('input.v')`);
+    await b.click(v1.x, v1.y); await b.key('a', 'ctrl'); await b.type('12'); await sleep(250);
+    await b.key('Tab'); await sleep(200);
+    const keep = await at(`[...document.querySelectorAll('.cx-props .cx-effects > .e input')].find(i => /^Содержание/.test(i.value))`);
+    await b.click(keep.x, keep.y); await b.key('End'); await b.type(' (свежее)'); await sleep(250); await b.key('Tab'); await sleep(200);
+    const full3 = await resolveTexts(vin);
+    check('chains: III sees II\'s numbers (+25 %, -20%, 8 barrels) and I\'s line II did not change, as I has it now (live)',
+        full3.includes('Боезапас стрелков: +25 %') && full3.some(x => /Стоимость найма: -20%/.test(x)) && full3.some(x => /: 8$/.test(x)) && full3.some(x => /Содержание.*\(свежее\)/.test(x)), full3);
+    // a line removed on III and given back
+    await selectNode(vin);
+    await b.eval(`${inhRow('/Содержание/', ".querySelectorAll('.ebtns button')[1]")}.scrollIntoView({block: 'center'})`);
+    const rm = await at(inhRow('/Содержание/', ".querySelectorAll('.ebtns button')[1]"));
+    await b.click(rm.x, rm.y); await sleep(250);
+    const v = await node(vin);
+    check('chains: «убрать» on III: hidden on this level', v.hide.length === 1 && !(await resolveTexts(vin)).some(x => /Содержание/.test(x)), v.hide);
+    await b.eval(`document.querySelector('.cx-props .cx-inherited').scrollIntoView({block: 'start'})`);
+    await sleep(150);
+    await b.shot(join(SHOTS, 'chain_props_inherited.png'));
+    const back = await at(`document.querySelector('.cx-props .cx-inherited .e.hidden .ebtns button')`);
+    await b.click(back.x, back.y); await sleep(250);
+    check('chains: «вернуть»: the line acts again', !(await node(vin)).hide.length);
+    // the canvas: the numerals and the double lines
+    const nb = await b.eval(`(() => { const ids = ['beer_hall_1', ${JSON.stringify(tav)}, ${JSON.stringify(vin)}]; const n = ids.map(id => document.querySelector('.cx-node[data-id="' + id + '"]'));
+        return {lvl: n.map(e => { const i = e.querySelector('.lvl'); return i ? i.getAttribute('alt') : ''; }), loaded: n.every(e => e.querySelector('img.lvl') && e.querySelector('img.lvl').naturalWidth > 0), doubles: document.querySelectorAll('.cx-edges g.lineedge').length}; })()`);
+    check('chains: the slots carry I, II, III in the game\'s numerals; the links of the line are double', nb.lvl.join() === 'I,II,III' && nb.loaded && nb.doubles >= 2, nb);
+    await b.eval(`(() => { ${E}.select([]); const a = mtb.editor.api.cardOf('beer_hall_1'), c = mtb.editor.api.cardOf(${JSON.stringify(vin)}); const r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = mtb.editor.api.view; v.z = 1; v.x = r.width / 2 - a.cx; v.y = r.height / 2 - (a.y + c.y) / 2 - 40; mtb.editor.api.applyView(); })()`);
+    await sleep(300);
+    const box = await b.eval(`(() => { const ids = ['beer_hall_1', ${JSON.stringify(tav)}, ${JSON.stringify(vin)}].map(id => document.querySelector('.cx-node[data-id="' + id + '"]').getBoundingClientRect()); return {l: Math.min(...ids.map(r => r.left)) - 140, t: Math.min(...ids.map(r => r.top)) - 40, r: Math.max(...ids.map(r => r.right)) + 140, b: Math.max(...ids.map(r => r.bottom)) + 30}; })()`);
+    const cv = await b.rect('.cx-canvas');
+    const cl = Math.max(cv.l, box.l), ct = Math.max(cv.t, box.t);
+    await b.shot(join(SHOTS, 'chain_canvas_levels.png'), {x: cl, y: ct, width: Math.min(cv.l + cv.w, box.r) - cl, height: Math.min(cv.t + cv.h, box.b) - ct});
+    // inheritance turned on for a node with its whole set: the doubles named, taken away by one action
+    await selectNode('cargo_hold_2');
+    await b.eval(`document.querySelector('.cx-props [data-field="inherit"]').scrollIntoView({block: 'center'})`);
+    const inh = await at(`document.querySelector('.cx-props [data-field="inherit"]')`);
+    await b.click(inh.x, inh.y); await sleep(300);
+    const dlg = await b.eval(`document.querySelector('.cx-dialog') ? document.querySelector('.cx-dialog').innerText : ''`);
+    check('chains: inheritance on a node of the mod: what stands for the inherited and what would be doubled is named', /задвоятся|Заменят|Уже даёт/.test(dlg), dlg.slice(0, 300));
+    await b.shot(join(SHOTS, 'chain_enable_on_existing.png'));
+    if (dlg) await clickText('.cx-dialog button', 'Включить и убрать дубли');
+    await sleep(250);
+    const ch2 = await b.eval(`(async () => { const T = await import('/js/tree_model.mjs'), FX = await import('/js/effects_model.mjs'); const d = mtb.editor.design(); const f = T.resolve(d, 'cargo_hold_2').full.effects.map(x => x.e.text);
+        const sig = t => FX.recognize(t, {groups: mtb.panel.view.data.groups, gameEffects: {}}).map(T.effectSig).join(); const sigs = f.map(sig).filter(Boolean); return {f, inherit: T.byId(d, 'cargo_hold_2').inherit, dup: sigs.length !== new Set(sigs).size, texts: f.length !== new Set(f).size}; })()`);
+    check('chains: after «убрать дубли»: it inherits, no line twice', ch2.inherit && !ch2.dup && !ch2.texts, ch2);
+    // three widths: the inherited block fits the panel, nothing under 11 px
+    for (const w of [1024, 1280, 1600]) {
+        await b.size(w, 800); await sleep(300);
+        await selectNode(vin);
+        const fit = await b.eval(`(() => { const p = document.querySelector('.cx-props'); const rows = [...p.querySelectorAll('.cx-inherited .e')]; return {sideways: p.scrollWidth > p.clientWidth + 1, out: rows.filter(r => r.getBoundingClientRect().right > p.getBoundingClientRect().right + 1).length, rows: rows.length, tall: Math.max(...rows.map(r => r.getBoundingClientRect().height))}; })()`);
+        const tiny = await smallText('.cx-props *');
+        check(`chains ${w}: the inherited block fits the panel, rows ≤ 130 px, no text under 11 px`, !fit.sideways && !fit.out && fit.rows >= 4 && fit.tall <= 130 && !tiny.length, {fit, tiny: tiny.slice(0, 3)});
+    }
+    await b.size(1280, 800); await sleep(300);
+    await savedOk();
+    const fv = fileNode(vin), ft = fileNode(tav);
+    check('chains: the file keeps only what is own: the link, the flag, the own lines (II: 3, III: none)', fv.prev === tav && fv.inherit && fv.effects.length === 0 && ft.effects.length === 3, {ft: ft.effects.length, fv: fv.effects.length});
+
+    // ---- the game: the level that stands acts with its whole set, the levels are not added up ----
+    await toGame();
+    await resetGame();
+    await buildTo('Пивной чертог');
+    let a = await ammoOf();
+    const pir = () => b.eval(`mtb.M.crew_options('rifles').find(o => o.key === 'pirates').unlocked`);
+    check('chains: game: I built: the riflemen +12 % from I; the pirates I opens are open', a.pct === 12 && await pir(), a);
+    await buildTo('Таверна');
+    a = await ammoOf();
+    check('chains: game: II built: +25 % (II\'s set, not 12 + 25); the pirates of I still open (II inherits them)', a.pct === 25 && a.from.length === 1 && await pir(), a);
+    const tv = await inSight('Винокурня');
+    await b.move(tv.x, tv.y, 4); await sleep(350);
+    const info = await infoText();
+    check('chains: game: III\'s window shows the whole set: inherited and own', /Боезапас стрелков: \+25 %/.test(info) && /Стоимость найма: -20%/.test(info) && /: 8/.test(info), info);
+    await b.shot(join(SHOTS, 'chain_game_info.png'));
+    const lvls = await b.eval(`['Пивной чертог', 'Таверна', 'Винокурня'].map(n => { const v = mtb.panel.view.tree.find(t => t.node.name === n); return v.level ? v.level.path.split('_').pop() : ''; })`);
+    check('chains: game: the slots carry the numerals I, II, III', lvls.join() === '1.png,2.png,3.png', lvls);
+    await selectInGame('Таверна');
+    const dem = await gameComp('mtb_ship_demolish');
+    await b.click(dem.x, dem.y); await sleep(250);
+    a = await ammoOf();
+    const firstKey = await b.eval(`mtb.panel.view.tree.find(t => t.node.name === 'Пивной чертог').node.key`);
+    check('chains: game: II demolished: I stands again and its set acts (+12 %), the pirates open', a.pct === 12 && await b.eval(`mtb.game.standing(${JSON.stringify(firstKey)})`) && await pir(), a);
+    im = await images();
+    check('chains: game: every picture loaded', !im.bad.length && !im.missing.length, im);
+    await toConstructor();
 }
 console.log(`checks: ${results.length}, failed: ${failed}`);
 console.log(failed ? `failed: ${failed}` : 'failed: 0');

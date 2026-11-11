@@ -111,7 +111,9 @@ export function labelOf(e, ctx = {}) {
 
 // An effect made whole: the text and the colour follow the pattern unless the author set his own; the icon the kind's when none is set.
 export function complete(e, ctx = {}) {
-    if (!isStructured(e)) return {text: String(e.text ?? ''), icon: e.icon || null, good: e.good !== false};
+    // the effect's id and the inherited line it stands for go with it (web/js/tree_model.mjs, the lines of levels)
+    const tail = o => { if (e.id) o.id = e.id; if (e.replaces) o.replaces = e.replaces; return o; };
+    if (!isStructured(e)) return tail({text: String(e.text ?? ''), icon: e.icon || null, good: e.good !== false});
     const out = {kind: e.kind};
     if (CREW_KINDS.includes(e.kind)) out.target = e.target || 'all';
     if (e.kind === 'game') out.effect = e.effect;
@@ -121,7 +123,7 @@ export function complete(e, ctx = {}) {
     out.own_good = !!e.own_good;
     out.good = out.own_good ? e.good !== false : goodOf(out, ctx);
     out.icon = e.icon || iconOf(out, ctx);
-    return out;
+    return tail(out);
 }
 
 // A new effect of a kind (the catalogue's choice): the value the game uses most for a game effect, 5 otherwise

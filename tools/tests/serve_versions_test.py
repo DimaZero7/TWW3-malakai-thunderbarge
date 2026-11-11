@@ -73,6 +73,13 @@ try:
     copies = list(folder.glob("tree_design.page-*.json"))
     check("the same building changed on both sides: the file's kept, the page's text in a copy, the page told (409)",
           code == 409 and now["nodes"][0]["note"] == "outside 2" and copies and "page clash" in copies[0].read_text(encoding="utf-8"), (code, j, now))
+    # a page of an older format never writes over a newer file (it would drop the fields it does not know)
+    v, now = get()
+    newer = dict(now, format=3)
+    post(newer, v)
+    v, _ = get()
+    code, j = post(tree(a="old format page", b="x"), v)
+    check("a write of an older format over a newer file: refused (409), nothing written", code == 409 and get()[1]["format"] == 3 and get()[1]["nodes"][0]["note"] != "old format page", (code, j))
 finally:
     server.kill()
 print(f"failed: {failed}")

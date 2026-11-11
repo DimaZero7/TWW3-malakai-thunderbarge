@@ -131,7 +131,8 @@ export function makeBuildings(data, game, parts) {
         if (M.all_parts) return 'ink';
         const keys = [...(p.building ? [prefix + p.building] : []), ...(partOpeners[part] || [])];
         if (!p.enabled || !keys.length) return 'none';
-        const states = keys.map(k => M.status(k).state);
+        // a node's own detail goes when a higher level of its line replaces it without carrying the detail on
+        const states = keys.map(k => (partOpeners[part] || []).includes(k) && M.status(k).state === 'built' && !M.stands(k) ? 'pencil' : M.status(k).state);
         return states.includes('built') ? 'ink' : states.includes('building') ? 'build' : 'pencil';
     };
 
@@ -190,10 +191,15 @@ export function makeBuildings(data, game, parts) {
     for (const row of Object.values(levels)) for (const u of row.unlocks || []) ((openers[u.group] ||= {})[u.option] ||= []).push(row);
     const cheap = r => r.tier * 100000 + r.cost;
     // the one to name: a standing one, else the cheapest
-    const opener = (g, o) => { const list = (openers[g] || {})[o]; return list ? list.find(r => game.has_building(r.key)) || [...list].sort((a, b) => cheap(a) - cheap(b))[0] : null; };
+    // A tree of the constructor: what a building opens is its full set with its line (tree_model.mjs resolve), and of a line of levels only the level
+    // that stands acts (the game's chain: II replaces I, what I opened stays only when II carries it on). The mod's data: a higher level counts the
+    // lower ones as standing (src/tww3_mtb_crew.lua).
+    const stands = r => (data.tree_rows ? game.standing(r.key) : game.has_building(r.key));
+    M.stands = key => { const r = M.level(key); return !!r && stands(r); };
+    const opener = (g, o) => { const list = (openers[g] || {})[o]; return list ? list.find(r => stands(r)) || [...list].sort((a, b) => cheap(a) - cheap(b))[0] : null; };
     const stateOf = g => crew[g] || {standing: data.groups[g].start, order: null};
     const ctxOf = g => ({start: data.groups[g].start, gold: game.treasury(), hire: o => (data.groups[g].options[o] || {}).hire || 0,
-                         unlocked: o => o === data.groups[g].start || ((openers[g] || {})[o] || []).some(r => game.has_building(r.key))});
+                         unlocked: o => o === data.groups[g].start || ((openers[g] || {})[o] || []).some(r => stands(r))});
     M.crew = group => stateOf(group).standing;
     M.crew_order = group => (stateOf(group).order ? stateOf(group).order.option : null);
     M.crew_options = group => {
@@ -247,7 +253,7 @@ export function makeBuildings(data, game, parts) {
         }
     };
     // a building that no longer stands takes its option away: the order with its gold, the standing crew without
-    game.on('BuildingDemolished', () => {
+    const dropLocked = () => {
         const said = [];
         for (const g of Object.keys(crew)) {
             const r = crewModel.lose(stateOf(g), ctxOf(g));
@@ -256,6 +262,10 @@ export function makeBuildings(data, game, parts) {
             for (const l of r.lost) said.push(l.kind === 'order' ? `заказ на ${nameOf(g, l.option)} снят, ${l.back} золота вернулось` : `${nameOf(g, l.option)} сошли с корабля, найм не возвращается`);
             if (r.lost.length) delete notes[g];
         }
+        return said;
+    };
+    game.on('BuildingDemolished', () => {
+        const said = dropLocked();
         if (said.length) { message = 'Постройки больше нет: ' + said.join('; ') + '.'; fire(); }
     });
 
@@ -263,6 +273,8 @@ export function makeBuildings(data, game, parts) {
     game.on('MilitaryForceBuildingCompleteEvent', ctx => {
         // GAME: here the mod's own on_building also runs (src/tww3_mtb_crew.lua): the bay appears, the hull's mount row changes
         message = `Постройка завершена: «${M.level(ctx.building).name}».`;
+        // a tree's next level that does not carry on what the level below opened: that crew is no longer open
+        if (data.tree_rows) { const said = dropLocked(); if (said.length) message += ' Новый уровень этого не даёт: ' + said.join('; ') + '.'; }
         fire();
     });
     game.on('FactionTurnStart', () => {

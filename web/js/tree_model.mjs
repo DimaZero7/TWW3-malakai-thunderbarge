@@ -12,7 +12,13 @@
 //     units      the army units of the game the building opens for recruitment (main_units keys, build/web/catalog.json army_units): shown only
 //     parts      what appears on the ship with the building, no hire, no choice: {part: a key of web/data/blueprint.json parts} or a new detail
 //                {part: null, name, zone, what, figures, note} (ZONES, WHAT)
-//   Format 1 (no units, no parts, free lines only) is read as it is and written as format 2.
+//     prev       the level this node continues in its line (one; a line of levels as the game's chain: II replaces I and carries what I gave)
+//     inherit    true: the node gives all its previous level gives (resolve: live, along the whole line), its own lines over it
+//     hide       the inherited things removed on this level: an effect's key "<node>/<effect id>", "crew:<group>:<option>", "unit:<key>",
+//                "part:<key>" or "part:new:<name>"
+//     an effect has an id (unique in its node) so a level above can name it; replaces: the key of an inherited free line it stands for (an
+//     effect of the catalogue replaces the inherited one of its kind and target by itself)
+//   Format 1 (no units, no parts, free lines only) and format 2 (no lines of levels) are read as they are and written as format 3.
 //     col, row   the place on the game's grid: a column and a row of 106 (a slot of 74 and 32 between, ui/campaign ui/building_browser.twui.xml);
 //                row 0 is the lowest, the tree grows up
 //     tier       the hull's tier the building needs (the mod's rule: tier N needs airship_hull_N), null: none
@@ -21,7 +27,7 @@
 //     mod_key    the level of the mod this node stands for, without the prefix (airship_hull_2), null for a new building
 //     requires   the nodes that must stand before this one (several: all of them)
 
-export const FORMAT = 2;
+export const FORMAT = 3;
 export const TURNS_MAX = 30;
 export const GRID = 106, NODE = 74;
 export const BRANCHES = [null, 'gold', 'blue', 'green', 'red'];
@@ -30,29 +36,44 @@ export const ABOUT = 'The tree of the barge\'s buildings, made in the page\'s co
     + 'tier: the hull tier needed (null none); icon: pack path; effects: the lines, a free one {text, icon, good} or an effect of the catalogue {kind, target, effect, value, '
     + 'text, icon, good, own_text, own_good} (web/js/effects_model.mjs); crew: what the building opens in the crew (data/crew_options.json); '
     + 'units: the army units it opens for recruitment (main_units keys); parts: what appears on the ship with it, {part: a key of web/data/blueprint.json parts} or a new one '
-    + '{part: null, name, zone, what, figures, note}; '
+    + '{part: null, name, zone, what, figures, note}; prev: the level it continues in its line (null: none); inherit: it gives all its previous level '
+    + 'gives (live), its own lines over it; hide: the inherited things removed on it (an effect "<node>/<effect id>", "crew:<group>:<option>", "unit:<key>", '
+    + '"part:<key>"); an effect\'s id names it for the levels above, replaces: the inherited free line it stands for; '
     + 'branch: colour of the frame and lines (null the trunk); mod_key: the mod\'s building level without the prefix (null for a new one); '
     + 'note: what the author wants from this building; requires: ids of the nodes that must stand first (all of them).';
 
-const NODE_KEYS = ['id', 'col', 'row', 'name', 'description', 'cost', 'turns', 'tier', 'icon', 'effects', 'crew', 'units', 'parts', 'branch', 'mod_key', 'note', 'requires'];
+const NODE_KEYS = ['id', 'col', 'row', 'name', 'description', 'cost', 'turns', 'tier', 'icon', 'prev', 'inherit', 'hide', 'effects', 'crew', 'units', 'parts', 'branch', 'mod_key', 'note', 'requires'];
 // a new detail of the ship: where it is and what it is (the constructor's choices)
 export const ZONES = {balloon: 'шар и вороньи гнёзда', deck: 'палуба', side: 'борт', bow: 'нос', stern: 'корма', hold: 'трюм', bottom: 'днище'};
 export const WHAT = {figures: 'фигуры гномов без оружия', item: 'предмет', hull: 'часть корпуса'};
-const EFFECT_KEYS = ['kind', 'target', 'effect', 'value', 'text', 'icon', 'good', 'own_text', 'own_good'];
+const EFFECT_KEYS = ['id', 'kind', 'target', 'effect', 'value', 'text', 'icon', 'good', 'own_text', 'own_good', 'replaces'];
 const EFFECT_KINDS = new Set(['ammo', 'accuracy', 'range', 'reload', 'damage', 'battle_speed', 'campaign_movement', 'sight', 'influence', 'game']);
 // an effect as read: a free line keeps only its three fields; an effect of the catalogue all of its own, each of its kind
 export function normalizeEffect(e) {
     if (!e || typeof e !== 'object') return null;
     const base = {text: str(e.text), icon: e.icon ? str(e.icon) : null, good: e.good !== false};
-    if (!EFFECT_KINDS.has(e.kind)) return base;
+    const tail = o => { if (e.id) o.id = str(e.id); if (e.replaces) o.replaces = str(e.replaces); return o; };
+    if (!EFFECT_KINDS.has(e.kind)) return tail(base);
     const out = {kind: e.kind};
     if (['ammo', 'accuracy', 'range', 'reload', 'damage'].includes(e.kind)) out.target = e.target ? str(e.target) : 'all';
-    if (e.kind === 'game') { if (!e.effect) return base; out.effect = str(e.effect); }
+    if (e.kind === 'game') { if (!e.effect) return tail(base); out.effect = str(e.effect); }
     out.value = Number.isFinite(Number(e.value)) && e.value !== null && e.value !== '' ? Number(e.value) : 0;
     Object.assign(out, base);
     if (e.own_text) out.own_text = true;
     if (e.own_good) out.own_good = true;
-    return out;
+    return tail(out);
+}
+// every effect an id unique in its node (e1, e2, ...): a new one gets the next free
+export function ensureIds(d) {
+    for (const n of d.nodes || []) {
+        const seen = new Set();
+        let k = 1;
+        for (const e of n.effects || []) {
+            if (!e.id || seen.has(e.id)) { while (n.effects.some(x => x.id === 'e' + k) || seen.has('e' + k)) k++; e.id = 'e' + k; }
+            seen.add(e.id);
+        }
+    }
+    return d;
 }
 export function normalizePart(p) {
     if (!p || typeof p !== 'object') return null;
@@ -67,8 +88,8 @@ const str = v => (v === null || v === undefined ? '' : String(v));
 export function emptyDesign() { return {_about: ABOUT, format: FORMAT, nodes: []}; }
 
 export function blankNode(fields = {}) {
-    return {id: '', col: 0, row: 0, name: '', description: '', cost: 0, turns: 1, tier: null, icon: null, effects: [], crew: [], units: [], parts: [],
-            branch: null, mod_key: null, note: '', requires: [], ...fields};
+    return {id: '', col: 0, row: 0, name: '', description: '', cost: 0, turns: 1, tier: null, icon: null, prev: null, inherit: false, hide: [], effects: [], crew: [],
+            units: [], parts: [], branch: null, mod_key: null, note: '', requires: [], ...fields};
 }
 
 // A design from anything read (the file, an import, the browser's copy): every field present and of its kind, ids unique, links only to nodes that
@@ -88,6 +109,7 @@ export function normalize(raw) {
             id, col: int(r.col, 0), row: int(r.row, 0), name: str(r.name), description: str(r.description),
             cost: Math.max(0, int(r.cost, 0)), turns: Math.min(TURNS_MAX, Math.max(1, int(r.turns, 1))), tier: r.tier === null || r.tier === undefined || r.tier === '' ? null : Math.max(0, int(r.tier, 0)) || null,
             icon: r.icon ? str(r.icon) : null,
+            prev: r.prev ? str(r.prev) : null, inherit: r.inherit === true, hide: [...new Set((Array.isArray(r.hide) ? r.hide : []).filter(h => typeof h === 'string' && h))],
             effects: (Array.isArray(r.effects) ? r.effects : []).map(normalizeEffect).filter(Boolean),
             crew: (Array.isArray(r.crew) ? r.crew : []).filter(c => c && c.group && c.option).map(c => ({group: str(c.group), option: str(c.option)})),
             units: [...new Set((Array.isArray(r.units) ? r.units : []).filter(u => typeof u === 'string' && u.trim()).map(u => u.trim()))],
@@ -109,7 +131,9 @@ export function normalize(raw) {
         const c = [];
         for (const x of n.crew) if (!c.some(y => y.group === x.group && y.option === x.option)) c.push(x);
         n.crew = c;
+        if (n.prev && (!ids.has(n.prev) || n.prev === n.id)) { problems.push(`«${n.name || n.id}» продолжает линейку узла «${n.prev}», которого нет: линейка разорвана`); n.prev = null; }
     }
+    ensureIds({nodes});
     return {design: {_about: ABOUT, format: FORMAT, nodes}, problems, from: Number(src.format) || 1};
 }
 
@@ -123,6 +147,8 @@ export function serialize(design) {
             const v = k === 'effects' ? list(n.effects.map(e => Object.fromEntries(EFFECT_KEYS.filter(f => e[f] !== undefined && ((f !== 'own_text' && f !== 'own_good') || e[f])).map(f => [f, e[f]]))), '      ')
                 : k === 'crew' ? list(n.crew.map(c => ({group: c.group, option: c.option})), '      ')
                 : k === 'units' ? J(n.units || [])
+                : k === 'hide' ? J(n.hide || [])
+                : k === 'inherit' ? J(!!n.inherit)
                 : k === 'parts' ? list((n.parts || []).map(p => (p.part ? {part: p.part} : {part: null, name: p.name, zone: p.zone, what: p.what, figures: p.figures, note: p.note})), '      ')
                 : J(n[k] === undefined ? null : n[k]);
             return `      ${J(k)}: ${v}`;
@@ -162,6 +188,7 @@ export function addNode(d, fields = {}) {
     n.id = fields.id && !byId(d, fields.id) ? fields.id : newId(d, fields.mod_key || null);
     n.requires = (n.requires || []).filter(p => byId(d, p));
     d.nodes.push(n);
+    ensureIds({nodes: [n]});
     return n.id;
 }
 
@@ -185,7 +212,7 @@ export function deleteNodes(d, ids) {
     const links = d.nodes.filter(n => !gone.has(n.id)).reduce((s, n) => s + n.requires.filter(p => gone.has(p)).length, 0)
         + d.nodes.filter(n => gone.has(n.id)).reduce((s, n) => s + n.requires.filter(p => !gone.has(p)).length, 0);
     d.nodes = d.nodes.filter(n => !gone.has(n.id));
-    for (const n of d.nodes) n.requires = n.requires.filter(p => !gone.has(p));
+    for (const n of d.nodes) { n.requires = n.requires.filter(p => !gone.has(p)); if (n.prev && gone.has(n.prev)) n.prev = null; }
     return {nodes: ids.length, links};
 }
 
@@ -252,7 +279,9 @@ export function pasteNodes(d, clip, col, row) {
     const map = {};
     for (const n of clip.nodes) map[n.id] = newId({nodes: [...d.nodes, ...Object.values(map).map(id => ({id}))]}, null);
     for (const n of clip.nodes) {
-        d.nodes.push({...blankNode(), ...clone(n), id: map[n.id], col: n.col + dc, row: n.row + dr, requires: n.requires.map(p => map[p]).filter(Boolean)});
+        // a line inside the copied group goes with it; to a level outside the group the copy continues the same level (a fork, warned of)
+        d.nodes.push({...blankNode(), ...clone(n), id: map[n.id], col: n.col + dc, row: n.row + dr, requires: n.requires.map(p => map[p]).filter(Boolean),
+                      prev: n.prev ? map[n.prev] || (byId(d, n.prev) ? n.prev : null) : null});
     }
     return clip.nodes.map(n => map[n.id]);
 }
@@ -319,8 +348,20 @@ export function warnings(d, ctx = {}) {
         if (p.part && ctx.partKnown && !ctx.partKnown(p.part)) out.push({kind: 'ship_part', text: `«${label(n)}»: вид на корабле «${p.part}» — такой детали нет в web/data/blueprint.json`, nodes: [n.id]});
         else if (!p.part || (ctx.partDrawn && !ctx.partDrawn(p.part))) out.push({kind: 'ship_part', text: `«${label(n)}»: вид на корабле: «${p.part ? (ctx.partName ? ctx.partName(p.part) : p.part) : p.name || 'новая деталь'}» (рисунок не готов)`, nodes: [n.id]});
     }
-    // what the game's building window would have to shorten (INFO, measured on the real window)
+    // the lines of levels: a circle, a fork (two levels continue one: a warning, the game's chains do not branch), a next level that does not
+    // require the one before it (in the game the next level is built on the one before)
     for (const n of d.nodes) {
+        if (!n.prev) continue;
+        if (lineOf(d, n.id).cycle) { out.push({kind: 'line_cycle', text: `«${label(n)}»: линейка уровней замкнута в круг`, nodes: [n.id]}); continue; }
+        if (!n.requires.includes(n.prev) && !leadsTo(d, n.prev, n.id)) out.push({kind: 'line_require', text: `«${label(n)}» продолжает линейку «${label(byId(d, n.prev))}», но не требует её`, nodes: [n.id, n.prev]});
+    }
+    const forks = {};
+    for (const n of d.nodes) if (n.prev) (forks[n.prev] ||= []).push(n.id);
+    for (const [p, ids] of Object.entries(forks)) if (ids.length > 1) out.push({kind: 'line_fork', text: `Линейка «${label(byId(d, p))}» ветвится: её продолжают ${ids.map(id => '«' + label(byId(d, id)) + '»').join(', ')}`, nodes: [p, ...ids]});
+    // what the game's building window would have to shorten (INFO, measured on the real window): the full set with the line
+    for (const n0 of d.nodes) {
+        const f = resolve(d, n0.id).full;
+        const n = {...n0, effects: f.effects.map(x => x.e), crew: f.crew.map(x => x.c), units: f.units.map(x => x.u), parts: f.parts.map(x => x.p)};
         const units = (ctx.units ? ctx.units(n) : n.crew.length) + (n.units || []).length;
         const bare = infoHeight({...n, description: ''}, units), max = infoDescMax(n, units);
         if (bare > INFO.SCREEN_H) {
@@ -578,16 +619,138 @@ export function gameData(design, data) {
     for (const n of design.nodes) {
         if (n.mod_key && !used.has(n.mod_key)) { used.add(n.mod_key); keyOf[n.id] = prefix + n.mod_key; } else keyOf[n.id] = prefix + 'tree_' + n.id;
     }
-    const rows = design.nodes.map(n => ({
-        key: keyOf[n.id], short: keyOf[n.id].slice(prefix.length), chain: keyOf[n.id], level: 0, name: label(n), game_name: null, text: n.description,
-        cost: n.cost, turns: n.turns, dev: 0, tier: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
-        icon: null, icon_path: n.icon, lines: n.effects.map(e => e.text), effects: n.effects, unlocks: n.crew.filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]),
-        units: n.units || [], parts: n.parts || [],
-        branch: n.branch, node: n.id, col: n.col, row: n.row,
-    }));
+    // a line of levels is one chain of the game: its first level's key, the level its place in the line (a fork: the second branch a chain of its own)
+    const chainOf = {}, taken = new Set();
+    for (const n of design.nodes) {
+        const line = lineOf(design, n.id);
+        if (line.cycle || line.ids.length < 2 && !design.nodes.some(m => m.prev === n.id)) { chainOf[n.id] = {chain: keyOf[n.id], level: 0}; continue; }
+        const c = {chain: keyOf[line.ids[0]], level: line.ids.length - 1};
+        const k = c.chain + ':' + c.level;
+        chainOf[n.id] = taken.has(k) ? {chain: keyOf[n.id], level: 0} : c;
+        taken.add(k);
+    }
+    const rows = design.nodes.map(n => {
+        const f = resolve(design, n.id).full, effects = f.effects.map(x => x.e);
+        return {
+            key: keyOf[n.id], short: keyOf[n.id].slice(prefix.length), chain: chainOf[n.id].chain, level: chainOf[n.id].level, line_level: levelOf(design, n.id),
+            in_line: !!n.prev || design.nodes.some(m => m.prev === n.id), name: label(n), game_name: null, text: n.description,
+            cost: n.cost, turns: n.turns, dev: 0, tier: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
+            icon: null, icon_path: n.icon, lines: effects.map(e => e.text), effects, unlocks: f.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]),
+            units: f.units.map(x => x.u), parts: f.parts.map(x => x.p), own_effects: n.effects,
+            branch: n.branch, node: n.id, col: n.col, row: n.row,
+        };
+    });
     const hull_tiers = {};
     for (const [id, t] of Object.entries(hullTiers(design))) hull_tiers[keyOf[id]] = t;
-    return {...data, hull: [], chains: rows.map(r => ({key: r.key, levels: [r]})), hull_tiers, tree_rows: rows, key_of: keyOf};
+    const chains = [];
+    for (const r of rows) { let c = chains.find(x => x.key === r.chain); if (!c) chains.push(c = {key: r.chain, levels: []}); c.levels.push(r); }
+    for (const c of chains) c.levels.sort((a, b) => a.level - b.level);
+    return {...data, hull: [], chains, hull_tiers, tree_rows: rows, key_of: keyOf};
+}
+
+// ---- lines of levels: a node continues its previous level (prev), the game's chain of levels ----
+export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+export const roman = k => ROMAN[k] || String(k);
+// the line down to its first level: {ids: [first .. this], cycle}
+export function lineOf(d, id) {
+    const ids = [], seen = new Set();
+    let n = byId(d, id);
+    while (n) {
+        if (seen.has(n.id)) return {ids: ids.reverse(), cycle: true};
+        seen.add(n.id); ids.push(n.id);
+        n = n.prev ? byId(d, n.prev) : null;
+    }
+    return {ids: ids.reverse(), cycle: false};
+}
+export const levelOf = (d, id) => lineOf(d, id).ids.length;
+export const nextLevels = (d, id) => d.nodes.filter(n => n.prev === id).map(n => n.id);
+export const inLine = (d, id) => { const n = byId(d, id); return !!(n && (n.prev || d.nodes.some(m => m.prev === id))); };
+// may `id` continue `prev`? Not itself, not a level above it in its own line (a circle)
+export function canContinue(d, id, prev) {
+    if (!prev) return {ok: true};
+    if (prev === id) return {ok: false, why: 'Постройка не может продолжать сама себя'};
+    if (lineOf(d, prev).ids.includes(id)) return {ok: false, why: 'Получится круг: эта постройка уже ниже в той же линейке'};
+    return {ok: true};
+}
+// the same effect of the catalogue: its kind and whom it acts on (a free line has none)
+export const effectSig = e => (e && e.kind && EFFECT_KINDS.has(e.kind) ? `${e.kind}|${e.target || ''}|${e.effect || ''}` : null);
+const crewKey = c => `crew:${c.group}:${c.option}`, unitKey = u => `unit:${u}`, partKey = p => (p.part ? `part:${p.part}` : `part:new:${p.name}`);
+// What a node gives with its line: its previous level's full set when it inherits (live, along the line), less what it hides, its own over it.
+// An own effect of the catalogue stands for the inherited one of its kind and target, an own free line for the one it replaces; what stands for
+// an inherited thing keeps that thing's place in the list. -> {
+//   full:      {effects: [{e, key, from}], crew: [{c, key, from}], units: [{u, key, from}], parts: [{p, key, from}]}  what the level gives in the game
+//   inherited: the same lists of the previous level's full set, each with status 'kept' | 'replaced' (by: the own effect's key) | 'hidden'
+//   from:      the previous level's id when it inherits, else null }
+export function resolve(d, id, depth = 0) {
+    const n = byId(d, id);
+    const empty = {effects: [], crew: [], units: [], parts: []};
+    if (!n) return {full: empty, inherited: empty, from: null};
+    const parent = n.inherit && n.prev && depth < 40 && byId(d, n.prev) ? resolve(d, n.prev, depth + 1) : null;
+    const base = parent ? parent.full : empty;
+    const hide = new Set(n.hide || []);
+    const own = (n.effects || []).map(e => ({e, key: `${n.id}/${e.id}`, from: n.id}));
+    const used = new Set(), inherited = {effects: [], crew: [], units: [], parts: []}, full = {effects: [], crew: [], units: [], parts: []};
+    const replacedSig = new Set();
+    for (const b of base.effects) {
+        if (hide.has(b.key)) { inherited.effects.push({...b, status: 'hidden'}); continue; }
+        const sig = effectSig(b.e);
+        const r = own.find(o => !used.has(o.key) && (o.e.replaces === b.key || (sig && effectSig(o.e) === sig)));
+        if (r) { used.add(r.key); inherited.effects.push({...b, status: 'replaced', by: r.key}); full.effects.push({...r, replaces: b.key}); if (sig) replacedSig.add(sig); continue; }
+        if (sig && replacedSig.has(sig)) { inherited.effects.push({...b, status: 'replaced', by: null}); continue; }
+        inherited.effects.push({...b, status: 'kept'}); full.effects.push(b);
+    }
+    for (const o of own) if (!used.has(o.key)) full.effects.push(o);
+    const merge = (list, item, keyOf, ownList) => {
+        for (const b of base[list]) {
+            if (hide.has(b.key)) { inherited[list].push({...b, status: 'hidden'}); continue; }
+            inherited[list].push({...b, status: 'kept'}); full[list].push(b);
+        }
+        for (const x of ownList) { const key = keyOf(x); if (!full[list].some(y => y.key === key)) full[list].push({[item]: x, key, from: n.id}); }
+    };
+    merge('crew', 'c', crewKey, n.crew || []);
+    merge('units', 'u', unitKey, n.units || []);
+    merge('parts', 'p', partKey, n.parts || []);
+    return {full, inherited, from: parent ? n.prev : null};
+}
+export const thingKey = {crew: crewKey, units: unitKey, parts: partKey};
+// Turning inheritance on for a node that already has its own lines (a building of the mod comes with its whole set): what of its own would stand for
+// the inherited (an effect of the catalogue of the same kind and target: a replacement by itself), what is the same word for word (a double), what is
+// the same kind with another number (a free line the catalogue reads as the inherited one's kind: offered as a replacement); the crew, units and
+// details it has that the line already gives. read(text) -> the signatures the catalogue reads in a free line (effects_model.mjs recognize).
+export function inheritOverlap(d, id, read = () => []) {
+    const n = byId(d, id);
+    const probe = {...d, nodes: d.nodes.map(x => (x.id === id ? {...x, inherit: true, effects: [], crew: [], units: [], parts: [], hide: []} : x))};
+    const base = resolve(probe, id).full;
+    const out = {replace: [], doubles: [], sameKind: [], things: []};
+    for (const [i, e] of (n.effects || []).entries()) {
+        const sig = effectSig(e);
+        const b = sig ? base.effects.find(x => effectSig(x.e) === sig) : null;
+        if (b) { out.replace.push({i, e, of: b}); continue; }
+        const same = base.effects.find(x => x.e.text.trim() === e.text.trim());
+        if (same) { out.doubles.push({i, e, of: same}); continue; }
+        const mine = sig ? [sig] : read(e.text);
+        const kind = mine.length && base.effects.find(x => mine.includes(effectSig(x.e)) || read(x.e.text).some(s => mine.includes(s)));
+        if (kind) out.sameKind.push({i, e, of: kind});
+    }
+    for (const [list, item] of [['crew', 'c'], ['units', 'u'], ['parts', 'p']]) for (const x of n[list] || []) if (base[list].some(b => b.key === thingKey[list](x))) out.things.push({list, x, key: thingKey[list](x)});
+    return out;
+}
+// The mod's chains on the canvas: a node of a mod level continues the node of the level below it when both are there (inheritance off: a level of
+// the mod comes with its whole set). -> the number of links set
+export function linkModChains(design, data) {
+    const levels = [...data.hull, ...data.chains.flatMap(c => c.levels)];
+    const byShort = Object.fromEntries(levels.map(r => [r.short, r]));
+    let k = 0;
+    for (const n of [...design.nodes].sort((a, b) => ((byShort[a.mod_key] || {}).level || 0) - ((byShort[b.mod_key] || {}).level || 0))) {
+        const row = n.mod_key && byShort[n.mod_key];
+        if (!row || n.prev) continue;
+        const chain = data.hull.includes(row) ? data.hull : (data.chains.find(c => c.key === row.chain) || {levels: []}).levels;
+        const below = chain.find(l => l.level === row.level - 1);
+        const p = below && design.nodes.find(m => m.mod_key === below.short && m.id !== n.id);
+        if (!p || design.nodes.some(m => m.prev === p.id) || !canContinue(design, n.id, p.id).ok) continue;
+        n.prev = p.id; n.inherit = false; k++;
+    }
+    return k;
 }
 
 // ---- two states of the file that went apart: the author's in the open constructor and one written from outside ----
@@ -649,6 +812,7 @@ export class History {
         const draft = clone(this.current);
         const result = fn(draft);
         if (result === false) return {changed: false, result};
+        ensureIds(draft);
         if (JSON.stringify(draft) === JSON.stringify(this.current)) return {changed: false, result};
         const join = merge && this.mergeKey === merge && now - this.mergeAt < 1200 && this.past.length;
         if (!join) { this.past.push({design: this.current, label}); if (this.past.length > this.limit) this.past.shift(); }
