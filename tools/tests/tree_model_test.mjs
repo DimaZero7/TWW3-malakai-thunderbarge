@@ -330,5 +330,32 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     const n = T.linkModChains(start, data);
     check('lines: the mod\'s chains made lines: the hull\'s II continues I, inheritance off', n >= 1 && start.nodes.find(x => x.mod_key === 'airship_hull_2').prev === start.nodes.find(x => x.mod_key === 'airship_hull_1').id && !start.nodes.some(x => x.inherit));
 }
+// 12. what is opened is kept along a line without inheritance; a draft of the browser taken back building by building
+{
+    const d = T.emptyDesign();
+    const a = T.addNode(d, {name: 'I', cost: 1, crew: [{group: 'rifles', option: 'pirates'}], units: ['u1'], parts: [{part: 'pub'}], effects: [{text: 'Строка I', icon: null, good: true}]});
+    const b2 = T.addNode(d, {name: 'II', cost: 1, requires: [a], prev: a, inherit: false, effects: [{text: 'Строка II', icon: null, good: true}]});
+    const r = T.resolve(d, b2);
+    check('opened kept: II without inheritance keeps I\'s crew, units, details; not its lines', r.full.crew.length === 1 && r.full.units[0].u === 'u1' && r.full.parts.length === 1 && r.full.effects.map(x => x.e.text).join() === 'Строка II' && r.below === a && r.from === null);
+    T.byId(d, b2).hide = ['crew:rifles:pirates'];
+    check('opened kept: an explicit «убрать» on II takes the crew away', T.resolve(d, b2).full.crew.length === 0);
+    T.byId(d, b2).hide = [];
+    // a draft of an older page (format 2, no base): its edits over the file, the file's line and new fields kept
+    const file = JSON.parse(JSON.stringify(d));
+    T.byId(file, b2).hide = ['unit:u1'];
+    const old = {format: 2, nodes: file.nodes.map(n => { const {prev, inherit, hide, ...rest} = n; return {...rest, effects: n.effects.map(({id, replaces, ...e}) => e)}; })};
+    old.nodes[0].cost = 777;
+    old.nodes.push({id: 'z', name: 'Новая из черновика', cost: 5});
+    const m = T.mergeDraft(file, old);
+    const n2 = T.byId(m.design, b2);
+    check('draft: an older draft joins by buildings: its cost in, a new building in, the line, inheritance, hide and the ids of the file kept',
+        T.byId(m.design, a).cost === 777 && !!T.byId(m.design, 'z') && n2.prev === a && n2.hide.join() === 'unit:u1' && T.byId(m.design, a).effects[0].id === file.nodes[0].effects[0].id, m.design.nodes.map(x => [x.id, x.prev, x.cost]));
+    // a draft of this format with its base: merge3, the file's change elsewhere kept
+    const base = JSON.parse(T.serialize(file));
+    const mine = JSON.parse(T.serialize(file)); mine.nodes[0].note = 'черновик';
+    const now = JSON.parse(JSON.stringify(file)); T.byId(now, b2).note = 'из файла';
+    const m2 = T.mergeDraft(now, mine, base);
+    check('draft: with its base: building by building, the draft\'s note and the file\'s both kept', T.byId(m2.design, a).note === 'черновик' && T.byId(m2.design, b2).note === 'из файла' && !m2.clashes.length);
+}
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

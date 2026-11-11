@@ -680,13 +680,17 @@ const crewKey = c => `crew:${c.group}:${c.option}`, unitKey = u => `unit:${u}`, 
 // an inherited thing keeps that thing's place in the list. -> {
 //   full:      {effects: [{e, key, from}], crew: [{c, key, from}], units: [{u, key, from}], parts: [{p, key, from}]}  what the level gives in the game
 //   inherited: the same lists of the previous level's full set, each with status 'kept' | 'replaced' (by: the own effect's key) | 'hidden'
-//   from:      the previous level's id when it inherits, else null }
+//   from:      the previous level's id when it inherits its lines, else null
+//   below:     the previous level's id: the crew, units and details opened below are kept along the line, inheriting or not }
 export function resolve(d, id, depth = 0) {
     const n = byId(d, id);
     const empty = {effects: [], crew: [], units: [], parts: []};
     if (!n) return {full: empty, inherited: empty, from: null};
-    const parent = n.inherit && n.prev && depth < 40 && byId(d, n.prev) ? resolve(d, n.prev, depth + 1) : null;
-    const base = parent ? parent.full : empty;
+    // what was opened along the line (crew, units, details) is kept by every level above, as in the game: a higher level never takes back what a
+    // lower one opened (only an explicit «убрать на этом уровне», hide); the lines of effects come only with inheritance on
+    const below = n.prev && depth < 40 && byId(d, n.prev) ? resolve(d, n.prev, depth + 1) : null;
+    const parent = below && n.inherit ? below : null;
+    const base = {effects: parent ? parent.full.effects : [], crew: below ? below.full.crew : [], units: below ? below.full.units : [], parts: below ? below.full.parts : []};
     const hide = new Set(n.hide || []);
     const own = (n.effects || []).map(e => ({e, key: `${n.id}/${e.id}`, from: n.id}));
     const used = new Set(), inherited = {effects: [], crew: [], units: [], parts: []}, full = {effects: [], crew: [], units: [], parts: []};
@@ -710,7 +714,7 @@ export function resolve(d, id, depth = 0) {
     merge('crew', 'c', crewKey, n.crew || []);
     merge('units', 'u', unitKey, n.units || []);
     merge('parts', 'p', partKey, n.parts || []);
-    return {full, inherited, from: parent ? n.prev : null};
+    return {full, inherited, from: parent ? n.prev : null, below: below ? n.prev : null};
 }
 export const thingKey = {crew: crewKey, units: unitKey, parts: partKey};
 // Turning inheritance on for a node that already has its own lines (a building of the mod comes with its whole set): what of its own would stand for
@@ -780,6 +784,39 @@ export function merge3(base, theirs, mine) {
     // a link to a building that went is dropped
     const ids = new Set(nodes.map(n => n.id));
     return {design: {...theirs, nodes: nodes.map(n => ({...clone(n), requires: n.requires.filter(p => ids.has(p))}))}, clashes};
+}
+// A draft kept in the browser that never reached the file, taken back over the file on the disk now. With the state the draft began from (base):
+// merge3, building by building, a clash keeps the file. A draft without its base (an older page) or of an older format: building by building over
+// the file, each building's own fields of the draft over the file's, the fields the draft's format did not have (the line, inheritance, what is
+// hidden, the effects' ids) kept from the file; a building only in the draft comes in, one only in the file stays. -> {design, clashes: [id]}
+export function mergeDraft(file, keptRaw, baseRaw = null) {
+    const kept = normalize(keptRaw).design;
+    if (baseRaw && Number(keptRaw.format) >= FORMAT) return merge3(normalize(baseRaw).design, file, kept);
+    const out = clone(file), byIdOut = new Map(out.nodes.map(n => [n.id, n]));
+    for (const raw of keptRaw.nodes || []) {
+        if (!raw || typeof raw !== 'object') continue;
+        const k = kept.nodes.find(n => n.id === String(raw.id));
+        if (!k) continue;
+        const f = byIdOut.get(k.id);
+        if (!f) { out.nodes.push(k); continue; }
+        for (const key of NODE_KEYS) {
+            if (key === 'id' || !(key in raw)) continue;
+            if (key === 'effects') {
+                // the same lines (the ids aside): the file's, with their ids; else the draft's, an id kept where the text is the same
+                const strip = list => JSON.stringify(list.map(e => { const {id, replaces, ...rest} = e; return rest; }));
+                if (strip(f.effects) === strip(k.effects)) continue;
+                const pool = [...f.effects];
+                f.effects = k.effects.map(e => { const i = pool.findIndex(x => x.text === e.text); const same = i >= 0 ? pool.splice(i, 1)[0] : null; return {...e, id: same ? same.id : undefined, ...(same && same.replaces ? {replaces: same.replaces} : {})}; });
+                for (const e of f.effects) if (e.id === undefined) delete e.id;
+                continue;
+            }
+            f[key] = clone(k[key]);
+        }
+    }
+    ensureIds(out);
+    const ids = new Set(out.nodes.map(n => n.id));
+    for (const n of out.nodes) { n.requires = n.requires.filter(p => ids.has(p)); if (n.prev && !ids.has(n.prev)) n.prev = null; }
+    return {design: out, clashes: []};
 }
 // the nodes whose fields differ between two states (for the status line: what came from outside)
 export function changedNodes(a, b) {

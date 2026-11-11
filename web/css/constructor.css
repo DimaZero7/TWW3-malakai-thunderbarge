@@ -106,10 +106,10 @@ body[data-mode="constructor"] #constructor { display: flex; }
 .cx-node { position: absolute; width: 150px; cursor: grab; user-select: none; }
 .cx-node .slot { position: absolute; left: 38px; top: 0; width: 74px; height: 74px; }
 .cx-node .slot > img { position: absolute; left: 0; top: 0; width: 74px; height: 74px; pointer-events: none; }
-.cx-node .price { position: absolute; left: 0; right: 0; bottom: 0; height: 17px; background: rgba(12, 9, 6, 0.8); display: flex; align-items: center; justify-content: center; gap: 2px;
+.cx-node .price { position: absolute; left: -9px; right: -9px; bottom: 0; height: 17px; background: rgba(12, 9, 6, 0.8); display: flex; align-items: center; justify-content: center; gap: 2px;
                   font-size: 12px; font-weight: 600; color: #fff3d0; pointer-events: none; white-space: nowrap; overflow: hidden; }
 .cx-node .price img { width: 13px; height: 13px; flex: none; }
-.cx-node .price .hg { margin-left: 4px; }
+.cx-node .price .hg { margin-left: 3px; }
 .cx-node .price.none .co { color: var(--cx-bad); }
 .cx-node .name { position: absolute; left: 0; top: 78px; width: 150px; text-align: center; font: 600 14px/15px "Segoe UI", sans-serif; color: #f3e6c4;
                  text-shadow: 0 0 2px #000, 0 1px 2px #000; pointer-events: none; white-space: nowrap; }
@@ -261,10 +261,10 @@ body[data-mode="constructor"] #constructor { display: flex; }
 .cx-status.narrow .cx-hinttext { display: none; }
 .cx-status.narrow .cx-toast { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); z-index: 7; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); }
 /* ---- lines of levels ---- */
-/* the level's numeral as the game's slot has it: 20 x 20 at the lower left (building_frame.twui.xml, building_level), over the price's strip */
-.cx-node .slot > img.lvl { left: 0; top: 54px; width: 20px; height: 20px; z-index: 2; }
-.cx-node .slot > .lvl.txt { position: absolute; left: 0; top: 54px; min-width: 20px; height: 20px; z-index: 2; font: bold 12px/20px Georgia, serif; color: #e8e8f0; background: #2a2a30; border: 1px solid #8a8a98; text-align: center; }
-.cx-node.leveled .price { padding-left: 18px; }
+/* the level's numeral at the slot's lower left as the game has it (building_frame.twui.xml, building_level, 20 x 20); the constructor's price
+   strip takes the slot's foot, so the numeral stands right over it, at the left: the two never share a row */
+.cx-node .slot > img.lvl { left: 0; top: 37px; width: 20px; height: 20px; z-index: 2; }
+.cx-node .slot > .lvl.txt { position: absolute; left: 0; top: 37px; min-width: 20px; height: 20px; z-index: 2; font: bold 12px/18px Georgia, serif; color: #e8e8f0; background: #2a2a30; border: 1px solid #8a8a98; text-align: center; }
 /* the next level of the same line: a double line, the branch's colour wide with a dark core */
 .cx-edges .ln.line { stroke-width: 6.5; }
 .cx-edges .ln.core { stroke: #1a1814; stroke-width: 2; }

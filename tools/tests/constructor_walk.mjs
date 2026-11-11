@@ -1099,12 +1099,46 @@ async function walkChains() {
     const nb = await b.eval(`(() => { const ids = ['beer_hall_1', ${JSON.stringify(tav)}, ${JSON.stringify(vin)}]; const n = ids.map(id => document.querySelector('.cx-node[data-id="' + id + '"]'));
         return {lvl: n.map(e => { const i = e.querySelector('.lvl'); return i ? i.getAttribute('alt') : ''; }), loaded: n.every(e => e.querySelector('img.lvl') && e.querySelector('img.lvl').naturalWidth > 0), doubles: document.querySelectorAll('.cx-edges g.lineedge').length}; })()`);
     check('chains: the slots carry I, II, III in the game\'s numerals; the links of the line are double', nb.lvl.join() === 'I,II,III' && nb.loaded && nb.doubles >= 2, nb);
-    await b.eval(`(() => { ${E}.select([]); const a = mtb.editor.api.cardOf('beer_hall_1'), c = mtb.editor.api.cardOf(${JSON.stringify(vin)}); const r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = mtb.editor.api.view; v.z = 1; v.x = r.width / 2 - a.cx; v.y = r.height / 2 - (a.y + c.y) / 2 - 40; mtb.editor.api.applyView(); })()`);
-    await sleep(300);
-    const box = await b.eval(`(() => { const ids = ['beer_hall_1', ${JSON.stringify(tav)}, ${JSON.stringify(vin)}].map(id => document.querySelector('.cx-node[data-id="' + id + '"]').getBoundingClientRect()); return {l: Math.min(...ids.map(r => r.left)) - 140, t: Math.min(...ids.map(r => r.top)) - 40, r: Math.max(...ids.map(r => r.right)) + 140, b: Math.max(...ids.map(r => r.bottom)) + 30}; })()`);
-    const cv = await b.rect('.cx-canvas');
-    const cl = Math.max(cv.l, box.l), ct = Math.max(cv.t, box.t);
-    await b.shot(join(SHOTS, 'chain_canvas_levels.png'), {x: cl, y: ct, width: Math.min(cv.l + cv.w, box.r) - cl, height: Math.min(cv.t + cv.h, box.b) - ct});
+    // the numeral and the price strip never share a row: III with a price of five digits and ten turns, at 79 % and 100 %, at 1280 and 1024
+    await selectNode(vin);
+    const typeField = async (f, t) => { const q = await at(`document.querySelector('.cx-props [data-field="${f}"]')`); await b.click(q.x, q.y); await b.key('a', 'ctrl'); await b.type(t); await b.key('Tab'); await sleep(150); };
+    await typeField('cost', '10000'); await typeField('turns', '10');
+    for (const w of [1280, 1024]) {
+        await b.size(w, 800); await sleep(300);
+        for (const z of [0.79, 1]) {
+            await b.eval(`(() => { ${E}.select([]); const a = mtb.editor.api.cardOf('beer_hall_1'), c = mtb.editor.api.cardOf(${JSON.stringify(vin)}); const r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = mtb.editor.api.view; v.z = ${z}; v.x = r.width / 2 - a.cx * v.z; v.y = r.height / 2 - ((a.y + c.y) / 2 + 40) * v.z; mtb.editor.api.applyView(); })()`);
+            await sleep(250);
+            const pr = await b.eval(`[...document.querySelectorAll('.cx-node.leveled')].map(n => { const p = n.querySelector('.price'), l = n.querySelector('.lvl'), pb = p.getBoundingClientRect(), lb = l.getBoundingClientRect();
+                const last = [...p.children].pop().getBoundingClientRect();
+                return {name: n.querySelector('.name').textContent, text: p.textContent, cut: p.scrollWidth > p.clientWidth + 0.5 || last.right > pb.right + 0.5, share: lb.bottom > pb.top + 0.5 && lb.right > pb.left && lb.left < pb.right}; }).filter(x => x.cut || x.share)`);
+            check(`chains ${w} at ${Math.round(z * 100)} %: no numeral shares the price's row, no price or turns cut (III: 10000, 10 turns)`, !pr.length, pr);
+        }
+        await b.eval(`(() => { const a = mtb.editor.api.cardOf('beer_hall_1'), c = mtb.editor.api.cardOf(${JSON.stringify(vin)}); const r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = mtb.editor.api.view; v.z = 1; v.x = r.width / 2 - a.cx; v.y = r.height / 2 - (a.y + c.y) / 2 - 40; mtb.editor.api.applyView(); })()`);
+        await sleep(300);
+        const box = await b.eval(`(() => { const ids = ['beer_hall_1', ${JSON.stringify(tav)}, ${JSON.stringify(vin)}].map(id => document.querySelector('.cx-node[data-id="' + id + '"]').getBoundingClientRect()); return {l: Math.min(...ids.map(r => r.left)) - 140, t: Math.min(...ids.map(r => r.top)) - 40, r: Math.max(...ids.map(r => r.right)) + 140, b: Math.max(...ids.map(r => r.bottom)) + 30}; })()`);
+        const cv = await b.rect('.cx-canvas');
+        const cl = Math.max(cv.l, box.l), ct = Math.max(cv.t, box.t);
+        await b.shot(join(SHOTS, w === 1280 ? 'chain_canvas_levels.png' : 'chain_canvas_levels_1024.png'), {x: cl, y: ct, width: Math.min(cv.l + cv.w, box.r) - cl, height: Math.min(cv.t + cv.h, box.b) - ct});
+    }
+    await b.size(1280, 800); await sleep(300);
+    // II with inheritance off: the crew, units and details opened by I are still there (muted, «открытое сохраняется»), the lines are not
+    await selectNode(tav);
+    await b.eval(`document.querySelector('.cx-props [data-field="inherit"]').scrollIntoView({block: 'center'})`);
+    const off = await at(`document.querySelector('.cx-props [data-field="inherit"]')`);
+    await b.click(off.x, off.y); await sleep(250);
+    const kept = await b.eval(`(() => { const f = [...document.querySelectorAll('.cx-props .cx-field')].find(x => x.querySelector('label') && x.querySelector('label').textContent === 'Открывает в экипаже'); const head = f && f.querySelector('.cx-inh-head');
+        return {inherit: mtb.editor.design().nodes.find(n => n.name === 'Таверна').inherit, head: head ? head.textContent : '', chips: f ? f.querySelectorAll('.cx-chip.inh').length : 0, label: document.querySelector('.cx-props .cx-check').textContent.trim(), lines: document.querySelectorAll('.cx-props .cx-effects .cx-inherited').length}; })()`);
+    check('chains: II with inheritance off: the crew of I shown kept («открытое сохраняется»), no inherited lines; the box says it inherits the lines', !kept.inherit && /сохраняется/.test(kept.head) && kept.chips >= 1 && kept.lines === 0 && /строки эффектов/.test(kept.label), kept);
+    for (const w of [1280, 1024]) {
+        await b.size(w, 800); await sleep(300);
+        await b.eval(`[...document.querySelectorAll('.cx-props .cx-field')].find(x => x.querySelector('label') && x.querySelector('label').textContent === 'Открывает в экипаже').scrollIntoView({block: 'center'})`);
+        await sleep(150);
+        await b.shot(join(SHOTS, w === 1280 ? 'chain_unlocks_kept.png' : 'chain_unlocks_kept_1024.png'));
+    }
+    await b.size(1280, 800); await sleep(300);
+    await b.eval(`document.querySelector('.cx-canvas').focus()`);
+    await b.key('z', 'ctrl'); await sleep(250);
+    check('chains: Ctrl+Z turns inheritance on again', (await node(tav)).inherit);
     // inheritance turned on for a node with its whole set: the doubles named, taken away by one action
     await selectNode('cargo_hold_2');
     await b.eval(`document.querySelector('.cx-props [data-field="inherit"]').scrollIntoView({block: 'center'})`);

@@ -169,12 +169,12 @@ const cost = (M, k) => M.level(k).cost;
 {
     const {crewSources} = await import('../../web/js/crew_model.mjs');
     const FX = await import('../../web/js/effects_model.mjs');
-    const make = inherit => {
+    const make = (inherit, hide = []) => {
         const d = JSON.parse(JSON.stringify(T.normalize(json('tools/tests/tree_design_start.json')).design));
         const hull2 = d.nodes.find(n => n.mod_key === 'airship_hull_2');
         const one = T.addNode(d, {name: 'Чертог I', cost: 100, col: 6, row: 2, requires: [hull2.id], crew: [{group: 'rifles', option: 'pirates'}],
             effects: [{kind: 'ammo', target: 'rifles', value: 10, text: 'Боезапас стрелков: +10 %', icon: null, good: true}]});
-        const two = T.addNode(d, {name: 'Чертог II', cost: 100, col: 6, row: 3, requires: [one], prev: one, inherit,
+        const two = T.addNode(d, {name: 'Чертог II', cost: 100, col: 6, row: 3, requires: [one], prev: one, inherit, hide,
             effects: [{kind: 'ammo', target: 'rifles', value: 25, text: 'Боезапас стрелков: +25 %', icon: null, good: true}]});
         const levels = T.gameData(d, data);
         const game = new GameSim(levels, {...sim, gold: 50000, built: [], demolish: 'step_down'});
@@ -196,7 +196,13 @@ const cost = (M, k) => M.level(k).cost;
     w = make(false);
     w.M.order(w.k1); w.game.end_turn(); w.M.set_crew('rifles', 'pirates'); w.game.end_turn();
     w.M.order(w.k2); w.game.end_turn();
-    check('lines in the game: a II that does not inherit: +25 % only, the pirates of I closed and gone from the rails', ammo(w) === 25 && !pirates(w.M).unlocked && w.M.crew('rifles') !== 'pirates', w.M.message());
+    check('lines in the game: a II that does not inherit the lines: +25 % only, and the pirates of I stay open and at the rails (what is opened is never taken back)', ammo(w) === 25 && pirates(w.M).unlocked && w.M.crew('rifles') === 'pirates', w.M.message());
+    w = make(false, ['crew:rifles:pirates']);
+    w.M.order(w.k1); w.game.end_turn(); w.M.set_crew('rifles', 'pirates'); w.game.end_turn();
+    w.M.order(w.k2); w.game.end_turn();
+    check('lines in the game: «убрать на этом уровне» the pirates on II: closed with II, gone from the rails', !pirates(w.M).unlocked && w.M.crew('rifles') !== 'pirates', w.M.message());
+    w.M.demolish(w.k2);
+    check('lines in the game: II with them taken away demolished: I opens the pirates again', pirates(w.M).unlocked);
 }
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

@@ -1165,9 +1165,10 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     // inherited crew, units, details: muted chips, «убрать» on this level, the removed struck with «вернуть»
     function inheritedThings(n, list, nameOf, cardOf) {
         const res = T.resolve(cur(), n.id);
-        if (!res.from || !res.inherited[list].length) return null;
+        if (!res.below || !res.inherited[list].length) return null;
         const prev = T.byId(cur(), n.prev);
-        return h('div', {class: 'cx-inherited things'}, h('div', {class: 'cx-inh-head'}, `от «${T.label(prev)}» (${T.roman(T.levelOf(cur(), prev.id))})`),
+        return h('div', {class: 'cx-inherited things'}, h('div', {class: 'cx-inh-head'}, `от «${T.label(prev)}» (${T.roman(T.levelOf(cur(), prev.id))})`,
+                h('span', {class: 'sub'}, ' — открытое прошлыми уровнями сохраняется')),
             h('div', {class: 'cx-chips'}, res.inherited[list].map(x => {
                 const hidden = x.status === 'hidden', pic = cardOf ? cardOf(x) : null;
                 return h('span', {class: 'cx-chip inh' + (hidden ? ' hidden' : ''), title: hidden ? 'Убрано на этом уровне' : 'Унаследовано'}, pic ? h('img', {src: url(pic), alt: ''}) : null, nameOf(x),
@@ -1188,7 +1189,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             lvl ? h('div', {class: 'help ok'}, `Уровень ${T.roman(lvl)} линейки «${T.label(T.byId(d, line.ids[0]))}»`) : h('div', {class: 'help'}, 'Не в линейке: отдельная постройка'),
             prev && !n.requires.includes(prev.id) && !T.leadsTo(d, prev.id, n.id) ? h('div', {class: 'help bad'}, `Не требует «${T.label(prev)}» — в игре следующий уровень строится на прошлом. `,
                 h('button', {class: 'mini', onclick: () => commit('Связь', x => T.addEdge(x, prev.id, n.id))}, 'Добавить связь «требует»')) : null,
-            prev ? h('label', {class: 'cx-check', title: 'Получает всё, что даёт прошлый уровень (и тот — от своего): строки, экипаж, найм, вид на корабле. Живая связь'}, inherit, ' Наследует всё, что даёт прошлый уровень') : null,
+            prev ? h('label', {class: 'cx-check', title: 'Получает строки эффектов прошлого уровня (и тот — своего), живая связь. Экипаж, найм и вид на корабле, открытые прошлыми уровнями, сохраняются всегда'}, inherit, ' Наследует строки эффектов прошлого уровня') : null,
             nexts.length ? h('div', {class: 'help'}, 'Следующий уровень: ', ...nexts.flatMap((x, i) => [i ? ', ' : '', go(x)])) : null,
             h('div', {class: 'cx-actions', style: 'margin:4px 0 0'},
                 h('button', {onclick: () => addNextLevel(n.id), title: 'Новый уровень этой линейки над ней: требует её и наследует всё, что она даёт'}, '+ Следующий уровень'),
@@ -1600,7 +1601,8 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         return {text: await r.text(), version: r.headers.get('X-Tree-Version')};
     };
     const pending = () => T.serialize(cur()) !== lastSaved || !!saveTimer || saving;
-    const keepLocal = fileOk => { try { localStorage.setItem(STORE, JSON.stringify({text: T.serialize(cur()), file_ok: fileOk, at: Date.now()})); } catch (e) { /* no storage */ } };
+    // the draft kept in the browser with the state of the file it began from (base): taken back later building by building (T.mergeDraft)
+    const keepLocal = fileOk => { try { localStorage.setItem(STORE, JSON.stringify({text: T.serialize(cur()), file_ok: fileOk, at: Date.now(), base: fileOk ? null : lastSaved, version})); } catch (e) { /* no storage */ } };
     function setSave(state, err = '') {
         saveState = state;
         const t = new Date().toLocaleTimeString('ru-RU');
@@ -1738,9 +1740,18 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     try {
         const kept = JSON.parse(localStorage.getItem(STORE) || 'null');
         if (kept && !kept.file_ok && kept.text && T.serialize(T.normalize(JSON.parse(kept.text)).design) !== T.serialize(design)) {
-            const read = T.normalize(JSON.parse(kept.text));
-            const banner = h('div', {class: 'cx-banner'}, h('span', {}, `В браузере остались изменения от ${new Date(kept.at).toLocaleString('ru-RU')}, которые не дошли до файла (построек: ${read.design.nodes.length}).`),
-                h('button', {onclick: () => { banner.remove(); commit('Изменения из браузера', d => { d.nodes = read.design.nodes; }); showAll(1); }}, 'Взять их'),
+            const keptRaw = JSON.parse(kept.text), baseRaw = kept.base ? JSON.parse(kept.base) : null;
+            // building by building over the file as it is now: what the file got since (the lines, new fields) is not lost
+            const m = T.mergeDraft(design, keptRaw, baseRaw);
+            const changes = T.changedNodes(design, m.design).length;
+            const banner = h('div', {class: 'cx-banner'}, h('span', {}, `В браузере остались изменения от ${new Date(kept.at).toLocaleString('ru-RU')}, которые не дошли до файла (построек с правками: ${changes}). `
+                + `Они соединятся с файлом по постройкам${m.clashes.length ? `; ${m.clashes.length} изменены и в файле — там останется файл, ваш черновик целиком сохранится копией` : ''}.`),
+                h('button', {onclick: async () => {
+                    banner.remove();
+                    if (m.clashes.length) { try { await backup(kept.text); } catch (e) { /* the draft stays in the browser */ } }
+                    commit('Изменения из браузера', d => { d.nodes = m.design.nodes; });
+                    showAll(1);
+                }}, 'Взять их'),
                 h('button', {onclick: () => { banner.remove(); keepLocal(true); }}, 'Оставить файл'));
             cv.append(banner);
         } else if (kept && !kept.file_ok) keepLocal(true);       // they did reach it (the last request of the page before)
