@@ -349,31 +349,50 @@ export function cxCard(n, lines = 1) {
 // the cell under a point of the constructor's world
 export const cxCellAt = (x, y) => ({col: Math.floor(x / CX.CW), row: -Math.floor(y / CX.CH)});
 
-// Every link its own way: out of the parent's slot top (the links of one parent spread across it, in the order of where they go), up into the
-// corridor over the parent, across, up the gap between two columns when rows lie between, across the corridor under the child, up into the
-// bottom of the child's card (the links of one child spread there too, an arrow at the end). Each piece runs in a lane of its corridor or gap
-// that no other piece uses where they overlap, so no two links share a stretch; the corridors and gaps hold nothing but lines, so a line never
-// crosses a name, a price, a card or another building. lines(n): the number of lines of the node's name. -> {"from|to": [[x, y], ...]}
+// Every link its own way, with as few bends as it can have:
+//   straight   the child in the parent's column, higher, every cell between empty: straight up the column's axis, out of the middle of the
+//              parent's slot top into the middle of the child's card bottom, over any number of rows
+//   step       the child one row higher in another column, or its own column empty over the parent's row: up into the corridor over the
+//              parent, across, up into the child (the column of the child carries the climb)
+//   climb      the parent's column empty up to under the child: up the parent's column, across the corridor under the child, up into it
+//   round      a building on the way (or the child lower than the parent, or on its row): up into the corridor over the parent, across to the gap
+//              between two columns, along the gap, across the corridor under the child, up into it; the side of the gap with fewer lines
+// The ends: the straight link of a building takes the middle; the links that go left leave left of it, those to the right right of it, the
+// nearest first (so they do not cross by the building); the ends of a child the same by where its links come from. Each piece across a corridor
+// or along a gap takes a lane no other piece uses where they overlap, so no two links share a stretch; the corridors and gaps hold nothing but
+// lines, so a line never crosses a name, a price, a card or another building. lines(n): the number of lines of the node's name.
+// -> {"from|to": [[x, y], ...]}
 export function cxRoutes(design, lines = () => 1) {
     const d = design, out = {};
-    const card = {};
-    for (const n of d.nodes) card[n.id] = cxCard(n, lines(n));
-    const links = edges(d).filter(e => card[e.from] && card[e.to]);
-    // the ends: spread over the parent's slot top and the child's card bottom, ordered by the other end's place
-    const spread = (list, key) => {
+    const card = {}, node = {}, taken = new Set();
+    for (const n of d.nodes) { card[n.id] = cxCard(n, lines(n)); node[n.id] = n; taken.add(n.col + ':' + n.row); }
+    const free = (col, r0, r1) => { for (let r = r0; r <= r1; r++) if (taken.has(col + ':' + r)) return false; return true; };
+    const L = edges(d).filter(e => card[e.from] && card[e.to]).map(e => ({...e}));
+    for (const l of L) {
+        const a = node[l.from], b = node[l.to];
+        l.dc = Math.sign(b.col - a.col);
+        if (b.row > a.row && b.col === a.col && free(a.col, a.row + 1, b.row - 1)) l.kind = 'straight';
+        else if (b.row > a.row && b.col !== a.col && free(b.col, a.row + 1, b.row - 1)) l.kind = 'step';
+        else if (b.row > a.row && b.col !== a.col && free(a.col, a.row + 1, b.row - 1)) l.kind = 'climb';
+        else l.kind = 'round';
+    }
+    // the ends
+    const spread = (key, other, shift) => {
         const by = {};
-        for (const l of list) (by[l[key]] ||= []).push(l);
-        for (const group of Object.values(by)) {
-            const other = key === 'from' ? 'to' : 'from';
-            group.sort((a, b) => card[a[other]].cx - card[b[other]].cx || card[a[other]].y - card[b[other]].y);
-            // on a grid of 10 from the middle, the starts 3 right of it and the ends 3 left: the line leaving a building never runs on the line
-            // that enters the building over it
-            const step = Math.min(10, 56 / Math.max(1, group.length - 1));
-            group.forEach((l, i) => { l[key === 'from' ? 'sx' : 'ex'] = card[l[key]].cx + (i - Math.floor((group.length - 1) / 2)) * step + (key === 'from' ? 3 : -3); });
+        for (const l of L) (by[l[key]] ||= []).push(l);
+        for (const [id, group] of Object.entries(by)) {
+            const mid = group.find(l => l.kind === 'straight') || null;
+            const side = s => group.filter(l => l !== mid && (s < 0 ? card[l[other]].cx < card[id].cx : card[l[other]].cx >= card[id].cx))
+                .sort((x, y) => Math.abs(card[x[other]].cx - card[id].cx) - Math.abs(card[y[other]].cx - card[id].cx) || card[x[other]].y - card[y[other]].y);
+            if (mid) mid[key === 'from' ? 'sx' : 'ex'] = card[id].cx;
+            for (const s of [-1, 1]) {
+                const list = side(s), step = Math.min(10, 30 / Math.max(1, list.length));
+                list.forEach((l, i) => { l[key === 'from' ? 'sx' : 'ex'] = card[id].cx + s * (i + 1) * step + shift; });
+            }
         }
     };
-    const L = links.map(e => ({...e}));
-    spread(L, 'from'); spread(L, 'to');
+    // starts 2 right of the grid of 10 and ends 2 left: a line leaving a building never runs on the line entering the building over it
+    spread('from', 'to', 2); spread('to', 'from', -2);
     // the corridor k lies between row k and row k + 1: from under the names of row k + 1 to over the slots of row k
     const rowsBottom = {};
     for (const n of d.nodes) rowsBottom[n.row] = Math.max(rowsBottom[n.row] ?? -Infinity, card[n.id].bottom);
@@ -382,25 +401,29 @@ export function cxRoutes(design, lines = () => 1) {
         const top = (rowsBottom[k + 1] ?? cxCell(0, k + 1).y + CX.SLOT_Y + NODE + CX.NAME_GAP + CX.LINE_H + 2) + 5;
         return {top, bottom};
     };
-    // the pieces that need a lane: [channel, from, to, link, field]
-    const pieces = [];
+    const pieces = [], gapUse = {};
+    const across = (k, x0, x1, l, f) => pieces.push({ch: 'h' + k, lo: Math.min(x0, x1), hi: Math.max(x0, x1), l, f});
     for (const l of L) {
-        const a = d.nodes.find(n => n.id === l.from), b = d.nodes.find(n => n.id === l.to);
+        const a = node[l.from], b = node[l.to];
         l.k1 = a.row; l.k2 = b.row - 1;
-        if (l.k1 === l.k2) {
-            pieces.push({ch: 'h' + l.k1, lo: Math.min(l.sx, l.ex), hi: Math.max(l.sx, l.ex), l, f: 'y1'});
-            l.y2f = 'y1';
-        } else {
-            // the gap next to the child, on the side of the parent (the right one when they share a column)
-            l.g = b.col > a.col ? b.col : b.col < a.col ? b.col + 1 : b.col + 1;
-            l.gx = l.g * CX.CW;
-            pieces.push({ch: 'h' + l.k1, lo: Math.min(l.sx, l.gx), hi: Math.max(l.sx, l.gx), l, f: 'y1'});
-            pieces.push({ch: 'h' + l.k2, lo: Math.min(l.gx, l.ex), hi: Math.max(l.gx, l.ex), l, f: 'y2'});
-            const ya = corridor(l.k1), yb = corridor(l.k2);
-            pieces.push({ch: 'v' + l.g, lo: Math.min(ya.top, yb.top), hi: Math.max(ya.bottom, yb.bottom), l, f: 'x'});
-        }
+        if (l.kind === 'straight') continue;
+        if (l.kind === 'step') across(l.k1, l.sx, l.ex, l, 'y1');
+        else if (l.kind === 'climb') across(l.k2, l.sx, l.ex, l, 'y2');
     }
-    // lanes: in each channel the pieces that overlap take different lanes, from the middle outwards
+    // the round ones last: each takes the gap on its side with fewer lines along it
+    for (const l of L.filter(x => x.kind === 'round')) {
+        const a = node[l.from], b = node[l.to];
+        const sides = b.col !== a.col ? [b.col > a.col ? b.col : b.col + 1] : [b.col, b.col + 1];
+        const ya = corridor(l.k1), yb = corridor(l.k2), lo = Math.min(ya.top, yb.top), hi = Math.max(ya.bottom, yb.bottom);
+        const use = g => (gapUse[g] || []).filter(([p, q]) => p < hi && lo < q).length;
+        l.g = sides.sort((x, y) => use(x) - use(y) || y - x)[0];
+        (gapUse[l.g] ||= []).push([lo, hi]);
+        l.gx = l.g * CX.CW;
+        across(l.k1, l.sx, l.gx, l, 'y1');
+        across(l.k2, l.gx, l.ex, l, 'y2');
+        pieces.push({ch: 'v' + l.g, lo, hi, l, f: 'x'});
+    }
+    // lanes: in each channel the pieces that overlap take different lanes
     const byCh = {};
     for (const p of pieces) (byCh[p.ch] ||= []).push(p);
     for (const [ch, list] of Object.entries(byCh)) {
@@ -425,12 +448,16 @@ export function cxRoutes(design, lines = () => 1) {
     for (const l of L) {
         const a = card[l.from], b = card[l.to];
         const start = [l.sx, a.slotY], end = [l.ex, b.bottom + 3];
-        out[l.from + '|' + l.to] = l.k1 === l.k2
-            ? [start, [l.sx, l.y1], [l.ex, l.y1], end]
+        out[l.from + '|' + l.to] = l.kind === 'straight' ? [start, end]
+            : l.kind === 'step' ? (l.sx === l.ex ? [start, end] : [start, [l.sx, l.y1], [l.ex, l.y1], end])
+            : l.kind === 'climb' ? [start, [l.sx, l.y2], [l.ex, l.y2], end]
             : [start, [l.sx, l.y1], [l.x, l.y1], [l.x, l.y2], [l.ex, l.y2], end];
     }
     return out;
 }
+
+// the bends of a route (its points less the two ends)
+export const bends = pts => Math.max(0, pts.length - 2);
 
 // the points of a route as an SVG path with rounded corners
 export function roundedPath(pts, r = 6) {

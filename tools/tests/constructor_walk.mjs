@@ -1,13 +1,16 @@
 // The constructor and the game's tree walked as the user would, with the mouse and the keys, in a headless Chrome (tools/tests/cdp.mjs):
-//   node --experimental-websocket tools/tests/constructor_walk.mjs      (the page's server running: py -3.14 tools/web_serve.py)
+//   node --experimental-websocket tools/tests/constructor_walk.mjs
+// It starts a server of its own (tools/web_serve.py --port 8766 --tree <a copy in the temp folder>): the author's working file
+// web/data/tree_design.json is never read nor written, and checked unchanged at the end.
 // Part 1 builds a tree from nothing at 1280 x 800 (the palette, empty buildings, links by the handles, a node with two parents, a group moved, every
 // field edited, a node with links deleted, a long undo and redo, F5) and checks after each kind of action that web/data/tree_design.json on disk is
-// what the canvas shows, and each of the faults the independent check found (items 6-14 of its list). Part 2 imports the test stand of 26
+// what the canvas shows (the walk's own copy), and each of the faults the independent check found (items 6-14 of its list). Part 2 imports the test stand of 26
 // buildings (tools/tests/constructor_stand.mjs) and measures it at 1600, 1280 and 1024: no line across a name, a price, a crew card or another
 // building; no name cut or smaller than 11 px; every icon on the slot's parchment. Part 3 plays the stand's tree in «Игра». Pictures to
-// build/web/shots/constructor_*.png, the walked tree to build/web/tree_design_walk.json. The start file is put back and the copies the walk made
-// beside it are removed. Prints a line a check; exit 1 on any failure.
-import {readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, unlinkSync} from 'node:fs';
+// build/web/shots/constructor_*.png, the walked tree to build/web/tree_design_walk.json. Prints a line a check; exit 1 on any failure.
+import {readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync} from 'node:fs';
+import {spawn} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -16,12 +19,21 @@ import {standDesign} from './constructor_stand.mjs';
 import * as T from '../../web/js/tree_model.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const FILE = join(ROOT, 'web/data/tree_design.json'), DATA = join(ROOT, 'web/data');
+const WORK = join(ROOT, 'web/data/tree_design.json');
+const hash = p => (existsSync(p) ? createHash('sha256').update(readFileSync(p)).digest('hex') : 'none');
+const workBefore = hash(WORK);
+// the walk's own tree file and its own server
+const DATA = join(tmpdir(), 'mtb_walk_tree');
+rmSync(DATA, {recursive: true, force: true});
+mkdirSync(DATA, {recursive: true});
+const FILE = join(DATA, 'tree_design.json');
+const START = readFileSync(join(ROOT, 'tools/tests/tree_design_start.json'), 'utf-8');
+writeFileSync(FILE, START);
+const PORT = 8766, URL0 = `http://127.0.0.1:${PORT}/`;
+const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', String(PORT), '--tree', FILE], {stdio: 'ignore'});
+for (let i = 0; i < 50; i++) { if (await fetch(URL0 + 'data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
 const SHOTS = join(ROOT, 'build/web/shots');
-const URL0 = process.env.PAGE || 'http://127.0.0.1:8765/';
 mkdirSync(SHOTS, {recursive: true});
-const START = readFileSync(FILE, 'utf-8');
-const backupsAtStart = new Set(readdirSync(DATA).filter(f => f.startsWith('tree_design.backup-')));
 let failed = 0;
 const results = [];
 const check = (name, ok, extra = '') => { if (!ok) failed++; results.push([name, ok]); console.log((ok ? 'ok   ' : 'FAIL ') + name + (extra ? '  ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)) : '')); return ok; };
@@ -30,7 +42,6 @@ mkdirSync(tmp, {recursive: true});
 
 const b = await launch({width: 1280, height: 800});
 await b.size(1280, 800);
-const putBack = async () => { await fetch(URL0 + 'api/tree_design', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: START}); };
 const E = 'mtb.editor.api';
 const design = () => b.eval('JSON.stringify(mtb.editor.design())').then(s => JSON.parse(s));
 const text = async () => T.serialize(T.normalize(await design()).design);
@@ -39,7 +50,7 @@ const idOf = async name => (await design()).nodes.find(n => n.name === name)?.id
 const cell = async (col, row) => b.eval(`(() => { const r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = ${E}.view; const c = {x: ${col} * ${T.CX.CW} + ${T.CX.CARD_X} + ${T.CX.CARD_W / 2}, y: ${-row} * ${T.CX.CH} + ${T.CX.SLOT_Y} + 37}; return {x: r.left + v.x + c.x * v.z, y: r.top + v.y + c.y * v.z}; })()`);
 const slot = async id => b.rect(`.cx-node[data-id="${id}"] .slot`);
 const nodeBox = async id => b.rect(`.cx-node[data-id="${id}"]`);
-const handle = async (id, which) => { const s = await slot(id), n = await nodeBox(id), z = await b.eval(`${E}.view.z`); return which === 'up' ? {x: s.x, y: s.t} : {x: s.x, y: n.t + n.h - 7 * z}; };
+const handle = async (id, which) => { const s = await slot(id), n = await nodeBox(id), z = await b.eval(`${E}.view.z`); return which === 'up' ? {x: s.x, y: s.t} : {x: s.x, y: n.t + n.h + 5 * z}; };
 const at = sel => b.eval(`(() => { const e = ${sel}; if (!e) return null; e.scrollIntoView({block: 'nearest'}); const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height}; })()`);
 const byText = (sel, t, starts = true) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find(x => x.offsetParent !== null && (${starts} ? x.textContent.trim().startsWith(${JSON.stringify(t)}) : x.textContent.trim() === ${JSON.stringify(t)}))`;
 const clickText = async (sel, t, starts = true) => { const r = await at(byText(sel, t, starts)); if (!r) throw new Error('no ' + sel + ' ' + t); await b.click(r.x, r.y); return r; };
@@ -452,6 +463,42 @@ try {
     await sleep(800);
     check('export: the file downloaded is the tree', existsSync(join(tmp, 'tree_design.json')) && readFileSync(join(tmp, 'tree_design.json'), 'utf-8') === beforeF5);
 
+    // ======== the author's case: the hull, three empty rows, the runed frame straight over it; side links beside ========
+    const strt = T.normalize(JSON.parse(START)).design;
+    const h2 = strt.nodes.find(n => n.mod_key === 'airship_hull_2');
+    const frame = T.addNode(strt, {name: 'Каркас с рунами', col: h2.col, row: h2.row + 4, cost: 3000, turns: 2});
+    const forge = T.addNode(strt, {name: 'Кузня', col: h2.col + 1, row: h2.row + 1, cost: 1000});
+    const arsenal = T.addNode(strt, {name: 'Арсенал', col: h2.col + 2, row: h2.row + 2, cost: 1000});
+    for (const x of [frame, forge, arsenal]) T.addEdge(strt, h2.id, x);
+    writeFileSync(join(tmp, 'straight.json'), T.serialize(strt));
+    await importFile(join(tmp, 'straight.json'));
+    await clickText('.cx-dialog .btns button', 'Заменить');
+    await b.until(`mtb.editor.design().nodes.length === ${strt.nodes.length}`);
+    await clickCanvasEmpty();
+    await b.key('f');
+    await sleep(300);
+    const wayOf = (f, x) => b.eval(`JSON.parse(document.querySelector('.cx-edges g[data-edge="${f}|${x}"]').dataset.pts)`);
+    const way = await wayOf(h2.id, frame);
+    const hc = await b.eval(`${E}.cardOf(${JSON.stringify(h2.id)}).cx`);
+    check('the author\'s case: the hull to the frame over 3 empty rows, one straight line out of the middle', way.length === 2 && way[0][0] === hc && way[1][0] === hc, way);
+    const sides = [await wayOf(h2.id, forge), await wayOf(h2.id, arsenal)];
+    check('the author\'s case: the side links leave right of the middle, one step each', sides.every(p => p[0][0] > hc && p.length === 4), sides);
+    await b.shot(join(SHOTS, 'constructor_straight_edges.png'));
+    // a building put on the way: round it; taken away: straight again
+    const midc = await cell(h2.col, h2.row + 2);
+    await b.dblclick(midc.x + 55, midc.y);         // beside the straight line, in the same cell
+    await b.key('a', 'ctrl'); await b.type('На пути'); await b.key('Escape');
+    let w2 = await wayOf(h2.id, frame);
+    const m2 = await measure();
+    check('a building put on the way: the line goes round it, crossing nothing', w2.length > 2 && crossings(m2) === 0, {pts: w2.length, n: crossings(m2)});
+    await b.shot(join(SHOTS, 'constructor_straight_edges_blocked.png'));
+    const inWay = await idOf('На пути');
+    const iw = await slot(inWay);
+    await b.click(iw.x, iw.y);
+    await b.key('Delete');
+    w2 = await wayOf(h2.id, frame);
+    check('taken away (Delete): straight again', w2.length === 2, w2);
+
     // ======== part 2: the stand of 26 buildings, imported, measured ========
     writeFileSync(join(tmp, 'stand.json'), T.serialize(standDesign(JSON.parse(START))));
     before = backups();
@@ -483,14 +530,27 @@ try {
     await clickCanvasEmpty();
     await clickText('.cx-zoom button', '100%', false);
     const m100 = await measure();
+    // the links up a free column are straight: no bend; no two links share a stretch
+    const bentStraight = await b.eval(`(() => { const d = mtb.editor.design(), at = {}; for (const n of d.nodes) at[n.col + ':' + n.row] = n.id; const out = [];
+        for (const g of document.querySelectorAll('.cx-edges g[data-edge]')) { const [f, t] = g.dataset.edge.split('|'), a = d.nodes.find(n => n.id === f), c = d.nodes.find(n => n.id === t);
+            if (a.col !== c.col || c.row <= a.row) continue; let freeWay = true; for (let r = a.row + 1; r < c.row; r++) if (at[a.col + ':' + r]) freeWay = false;
+            const pts = JSON.parse(g.dataset.pts); if (freeWay) out.push({k: g.dataset.edge, bends: pts.length - 2}); } return out; })()`);
+    check('stand: links up a free column have no bend', bentStraight.length > 0 && bentStraight.every(x => x.bends === 0), bentStraight);
+    const shared = await b.eval(`(() => { const segs = []; for (const g of document.querySelectorAll('.cx-edges g[data-edge]')) { const p = JSON.parse(g.dataset.pts); for (let i = 1; i < p.length; i++) segs.push({k: g.dataset.edge, a: p[i - 1], b: p[i]}); }
+        let n = 0; for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) { const s = segs[i], t = segs[j]; if (s.k === t.k) continue;
+            for (const ax of [0, 1]) { const o = 1 - ax; if (s.a[o] === s.b[o] && t.a[o] === t.b[o] && s.a[o] === t.a[o]) { const lo = Math.max(Math.min(s.a[ax], s.b[ax]), Math.min(t.a[ax], t.b[ax])), hi = Math.min(Math.max(s.a[ax], s.b[ax]), Math.max(t.a[ax], t.b[ax])); if (hi - lo > 2) n++; } } }
+        return n; })()`);
+    check('stand: no two links share a stretch of line', shared === 0, String(shared));
     check('B: stand at 100 %: no line across a name, price, card or building', crossings(m100) === 0, crossings(m100));
     check('A: stand at 100 %: names 14 px, none cut', !m100.nameCut.length && !m100.nameSmall.length);
     // the link under the mouse lit with its two buildings; a selected building lights its links and dims the rest
-    const eg = await b.eval(`(() => { const g = [...document.querySelectorAll('.cx-edges g[data-edge]')].find(x => x.dataset.edge.includes('|') && x.getBoundingClientRect().top > 120 && x.getBoundingClientRect().bottom < innerHeight - 80); const pts = JSON.parse(g.dataset.pts); const m = document.querySelector('.cx-edges').getScreenCTM(); const a = new DOMPoint(pts[2][0], pts[2][1]).matrixTransform(m), c = new DOMPoint(pts[3][0], pts[3][1]).matrixTransform(m); return {x: (a.x + c.x) / 2, y: (a.y + c.y) / 2, key: g.dataset.edge}; })()`);
+    const eg = await b.eval(`(() => { const m = document.querySelector('.cx-edges').getScreenCTM(), cv = document.querySelector('.cx-canvas').getBoundingClientRect();
+        const mid = x => { const p = JSON.parse(x.dataset.pts); if (p.length < 4) return null; const a = new DOMPoint(p[1][0], p[1][1]).matrixTransform(m), c = new DOMPoint(p[2][0], p[2][1]).matrixTransform(m); return {x: (a.x + c.x) / 2, y: (a.y + c.y) / 2}; };
+        for (const g of document.querySelectorAll('.cx-edges g[data-edge]')) { const q = mid(g); if (q && q.x > cv.left + 40 && q.x < cv.right - 40 && q.y > cv.top + 40 && q.y < cv.bottom - 40 && document.elementFromPoint(q.x, q.y + 5).closest('[data-edge]')) return {...q, key: g.dataset.edge}; } return null; })()`);
     await b.move(eg.x, eg.y + 5, 6);       // 5 px off the line: its wide zone
     await sleep(200);
     const hov = await b.eval(`({hot: !!document.querySelector('.cx-edges g.hot[data-edge="${eg.key}"]'), nodes: [...document.querySelectorAll('.cx-node.linkhot')].map(e => e.dataset.id).sort().join()})`);
-    check('B: a link under the mouse (5 px off it) lit with its two buildings', hov.hot && hov.nodes === eg.key.split('|').sort().join(), hov);
+    check('B: a link under the mouse (5 px off it) lit with its two buildings', hov.hot && hov.nodes === eg.key.split('|').sort().join(), {...hov, eg, under: await b.eval(`(() => { const e = document.elementFromPoint(${eg.x}, ${eg.y + 5}); return e ? e.outerHTML.slice(0, 120) : null; })()`)});
     await b.shot(join(SHOTS, 'constructor_edge_hover.png'));
     const kuz = await idOf('Кузня');
     p = await slot(kuz); await b.click(p.x, p.y);
@@ -610,11 +670,10 @@ try {
     console.log('FAIL walk stopped: ' + e.stack);
     try { await b.shot(join(SHOTS, 'constructor_walk_error.png')); } catch (x) { /* no picture */ }
 } finally {
-    await putBack();
-    // the copies of the file the walk made are its own: removed
-    for (const f of readdirSync(DATA)) if (f.startsWith('tree_design.backup-') && !backupsAtStart.has(f)) unlinkSync(join(DATA, f));
-    check('the start file is back, no copy left in web/data', readFileSync(FILE, 'utf-8') === START && readdirSync(DATA).filter(f => f.startsWith('tree_design.backup-') && !backupsAtStart.has(f)).length === 0);
     await b.close();
+    server.kill();
+    check('the author\'s working file web/data/tree_design.json untouched, byte for byte', hash(WORK) === workBefore);
+    check('no copy of the tree file left in web/data', !readdirSync(join(ROOT, 'web/data')).some(f => f.startsWith('tree_design.backup-')));
 }
 console.log(`checks: ${results.length}, failed: ${failed}`);
 console.log(failed ? `failed: ${failed}` : 'failed: 0');

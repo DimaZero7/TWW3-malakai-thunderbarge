@@ -90,6 +90,49 @@
       "mod_key": "crew_weapons_1",
       "note": "",
       "requires": ["beer_hall_1"]
+    },
+    {
+      "id": "airship_hull_3",
+      "col": 2,
+      "row": 5,
+      "name": "Каркас с рунами",
+      "description": "Кователи рун украсили этот металлический каркас знаками, чтобы защитить воздушный корабль от вражеской магии и пагубного влияния Хаоса.",
+      "cost": 3000,
+      "turns": 2,
+      "tier": null,
+      "icon": "ui/buildings/icons/tww3_mtb_airship_hull_3.png",
+      "effects": [
+        {"text":"Численность героев: +1 для драконоборцев","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true},
+        {"text":"Возможность найма героя: драконоборец","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true},
+        {"text":"Резерв найма орды: +2","icon":"ui/campaign ui/effect_bundles/army.png","good":true},
+        {"text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true}
+      ],
+      "crew": [],
+      "branch": null,
+      "mod_key": "airship_hull_3",
+      "note": "",
+      "requires": ["airship_hull_2"]
+    },
+    {
+      "id": "mtb_guns_1",
+      "col": 1,
+      "row": 6,
+      "name": "Орудийные порты",
+      "description": "В бортах прорезают порты: без них ни одно орудие не встанет.",
+      "cost": 2500,
+      "turns": 1,
+      "tier": 3,
+      "icon": "ui/buildings/icons/tww3_mtb_mtb_guns_1.png",
+      "effects": [
+        {"text":"Крепление: орудийные порты, 2 места, пока без оружия. Оружие открывают другие постройки, ставится в панели экипажа","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
+      ],
+      "crew": [
+        {"group":"cannons","option":"empty"}
+      ],
+      "branch": null,
+      "mod_key": "mtb_guns_1",
+      "note": "",
+      "requires": ["airship_hull_3"]
     }
   ]
 }

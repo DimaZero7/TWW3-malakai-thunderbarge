@@ -8,6 +8,7 @@ and the constructor's file of the tree of buildings (web/js/constructor.js), the
   POST /api/tree_design          the body (the file's JSON text) becomes web/data/tree_design.json, written atomically
   POST /api/tree_design/backup   a copy of that file beside it, web/data/tree_design.backup-<time>.json (the last 20 kept); answers {"name"}
   GET  /api/tree_icons           the building icons of the mod and of the game's export, and the effect icons, as pack paths
+--tree <file>: the page reads and writes that file in place of web/data/tree_design.json (tools/tests/constructor_walk.mjs runs its own server so).
 Runs tools/web_export.py first when build/web is missing (or with --export), and tools/web_art.py when web/art is missing. Stop with Ctrl+C.
 """
 import argparse
@@ -33,6 +34,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def translate_path(self, path):
         path = urllib.parse.unquote(urllib.parse.urlsplit(path).path)
+        if path == "/data/tree_design.json":
+            return str(TREE_FILE)          # the tree's file, also when --tree points elsewhere
         for prefix, folder in ROOTS:
             if path.startswith(prefix):
                 rel = path[len(prefix):]
@@ -122,7 +125,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--export", action="store_true", help="run tools/web_export.py again")
+    ap.add_argument("--tree", help="another file of the tree in place of web/data/tree_design.json (the tests' own copy; its backups beside it)")
     a = ap.parse_args()
+    if a.tree:
+        global TREE_FILE
+        TREE_FILE = Path(a.tree).resolve()
     if a.export or not (REPO / "build" / "web" / "manifest.json").exists():
         subprocess.run([sys.executable, str(REPO / "tools" / "web_export.py")], check=True)
     if not (REPO / "web" / "art" / "layers.json").exists():

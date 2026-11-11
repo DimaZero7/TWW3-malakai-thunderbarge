@@ -261,7 +261,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const frame = n.branch ? `/art/branch_frame_${n.branch}.png` : url(D + 'building_frame_plain.png');
             const crew = n.crew.map(crewCard).filter(Boolean);
             const el = h('div', {class: 'cx-node' + (sel.has(n.id) ? ' sel' : '') + (over && over[n.id] ? ' moving' : ''), 'data-id': n.id,
-                                 style: `left:${c.x}px;top:${c.y}px;height:${c.bottom - c.y + 16}px`, title: nodeTitle(n)},
+                                 style: `left:${c.x}px;top:${c.y}px;height:${c.bottom - c.y + 4}px`, title: nodeTitle(n)},
                 h('div', {class: 'slot'},
                     h('img', {src: url(D + 'building_frame.png'), alt: ''}),
                     h('img', {src: url(n.icon || D + 'icon_check.png'), alt: ''}),

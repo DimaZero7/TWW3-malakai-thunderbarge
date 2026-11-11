@@ -1,6 +1,6 @@
 // The constructor's model of the tree (web/js/tree_model.mjs): node tools/tests/tree_model_test.mjs (from the repository's root)
 // The operations, links and their checks, undo and redo, copy and paste, the file's text and the reading of a broken file, the warnings, the mod's
-// buildings as nodes, the start file web/data/tree_design.json. Prints a line a check, exit 1 on any failure.
+// buildings as nodes, the working file web/data/tree_design.json and the start fixture tools/tests/tree_design_start.json. Prints a line a check, exit 1 on any failure.
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
@@ -116,11 +116,45 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     const seg = T.linkSegments(a, b, T.slotsBlock([a, b, mid]));
     check('a line goes round a building on its way, in the lane between columns', seg.length === 5 && seg[2][0] === 37 + 53 && seg.every(([x0, y0, x1, y1]) => !(x0 === 37 && x1 === 37 && Math.min(y0, y1) < 180 && Math.max(y0, y1) > 106)), JSON.stringify(seg));
 }
+// 5d. the constructor's lines take the shortest way: straight up a free column, round only what stands on it, one step to the next column
+{
+    const route = (d, a, b) => T.cxRoutes(d)[a + '|' + b];
+    for (const gap of [1, 2, 4]) {
+        const d = T.emptyDesign();
+        const a = T.addNode(d, {name: 'A', col: 0, row: 0}), b = T.addNode(d, {name: 'B', col: 0, row: gap + 1});
+        T.addNode(d, {name: 'Сосед', col: 1, row: 1});         // a building in the next column changes nothing
+        T.addEdge(d, a, b);
+        const r = route(d, a, b), ca = T.cxCard(T.byId(d, a)), cb = T.cxCard(T.byId(d, b));
+        check(`the same column over ${gap} empty row(s): a straight line of two points, middle to middle`, r.length === 2 && r[0][0] === ca.cx && r[1][0] === cb.cx, r);
+    }
+    const d = T.emptyDesign();
+    const a = T.addNode(d, {name: 'A', col: 0, row: 0}), b = T.addNode(d, {name: 'B', col: 0, row: 3}), mid = T.addNode(d, {name: 'Посередине', col: 0, row: 2});
+    T.addEdge(d, a, b);
+    let r = route(d, a, b);
+    const cm = T.cxCard(T.byId(d, mid), 1);
+    const crosses = r.slice(1).some((q, i) => { const p = r[i]; const x0 = Math.min(p[0], q[0]), x1 = Math.max(p[0], q[0]), y0 = Math.min(p[1], q[1]), y1 = Math.max(p[1], q[1]); return x0 < cm.x + cm.w && x1 > cm.x && y0 < cm.bottom && y1 > cm.y; });
+    check('a building on the way: the line goes round it', r.length > 2 && !crosses, r);
+    T.deleteNodes(d, [mid]);
+    r = route(d, a, b);
+    check('the building taken away: straight again', r.length === 2);
+    const e = T.emptyDesign();
+    const p = T.addNode(e, {name: 'P', col: 1, row: 0});
+    const l = T.addNode(e, {name: 'L', col: 0, row: 1}), s = T.addNode(e, {name: 'S', col: 1, row: 1}), rr = T.addNode(e, {name: 'R', col: 2, row: 1});
+    for (const c of [rr, s, l]) T.addEdge(e, p, c);
+    const R = T.cxRoutes(e), cp = T.cxCard(T.byId(e, p));
+    const sx = k => R[p + '|' + k][0][0];
+    check('three children left, straight, right: exits left, middle, right', sx(l) < sx(s) && sx(s) === cp.cx && sx(rr) > sx(s) && R[p + '|' + s].length === 2, [sx(l), sx(s), sx(rr)]);
+    check('a child one row up in the next column: one step (two bends)', T.bends(R[p + '|' + l]) === 2 && T.bends(R[p + '|' + rr]) === 2);
+    // the game's column: straight up a free column, round a building in the way
+    const g0 = {x: 0, y: 318}, g1 = {x: 0, y: 0}, gm = {x: 0, y: 106};
+    check('the game: the same column over empty rows, one straight piece', T.linkSegments(g0, g1, T.slotsBlock([g0, g1])).length === 1);
+    check('the game: a building in the way, round it', T.linkSegments(g0, g1, T.slotsBlock([g0, g1, gm])).length === 5);
+}
 // 5c. the constructor's grid: on the stand of 26 buildings every link has its own way, from the parent's slot top to the child's card bottom,
 // and no two links share a stretch of line; the warnings of the game's building window
 {
     const {standDesign} = await import('./constructor_stand.mjs');
-    const d = standDesign(json('web/data/tree_design.json'));
+    const d = standDesign(json('tools/tests/tree_design_start.json'));
     const routes = T.cxRoutes(d, n => (n.name.length > 40 ? 3 : n.name.length > 18 ? 2 : 1));
     const keys = Object.keys(routes);
     check('stand: a way for each of the 35 links', keys.length === 35 && T.edges(d).length === 35);
@@ -152,9 +186,12 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     const f = T.fromModLevel(beer, cards[beer.key], data);
     check('a mod level as a node: name, cost, icon, effects, crew', f.name === beer.name && f.cost === beer.cost && f.icon.endsWith('beer_hall_1.png') && f.effects.length > 0 && f.crew.some(c => c.option === 'pirates'));
     check('the mod says beer hall 2 needs beer hall 1', T.modNeeds(all.find(r => r.short === 'beer_hall_2'), data).includes('beer_hall_1'));
-    const start = T.normalize(json('web/data/tree_design.json'));
-    check('the start file reads without problems', !start.problems.length, start.problems.join('; '));
-    check('the start file is in its own text', T.serialize(start.design) === readFileSync(join(root, 'web/data/tree_design.json'), 'utf-8'));
+    // the working file (the author's tree, whatever it holds now) reads cleanly and is in the file's own text; the four start nodes (a fixture,
+    // tools/tests/tree_design_start.json) also have no warning and keep the mod's keys in the game
+    const work = T.normalize(json('web/data/tree_design.json'));
+    check('the working file reads without problems', !work.problems.length, work.problems.join('; '));
+    check('the working file is in its own text', T.serialize(work.design) === readFileSync(join(root, 'web/data/tree_design.json'), 'utf-8'));
+    const start = T.normalize(json('tools/tests/tree_design_start.json'));
     check('the start file: no warnings', !T.warnings(start.design, {modKeys: new Set(all.map(r => r.short))}).length, JSON.stringify(T.warnings(start.design)));
     const g = T.gameData(start.design, data);
     check('game levels keep the mod keys', g.chains.map(c => c.key).join() === start.design.nodes.map(n => data.prefix + n.mod_key).join());

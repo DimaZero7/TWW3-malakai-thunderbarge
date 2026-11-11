@@ -92,10 +92,10 @@ const cost = (M, k) => M.level(k).cost;
     check('hire and upkeep are multiples of ten', kinds.every(([, o]) => o.hire % 10 === 0 && o.upkeep % 10 === 0));
     check('every kind has its weapon numbers', kinds.every(([, o]) => o.numbers && o.numbers.range > 0 && o.numbers.ammo > 0));
 }
-// 4. the tree of the constructor's file (web/data/tree_design.json, tree_model.mjs gameData): the start file, then a tree with a node of two parents,
+// 4. the tree of the constructor's file (tree_model.mjs gameData) on the four start nodes (tools/tests/tree_design_start.json), then a tree with a node of two parents,
 // new buildings that the mod does not have, and a crew opened by a node of the file
 {
-    const start = T.normalize(json('web/data/tree_design.json')).design;
+    const start = T.normalize(json('tools/tests/tree_design_start.json')).design;      // the four start nodes, not the author's working file
     const gd = T.gameData(start, data);
     const game = new GameSim(gd, {...sim, gold: 6000, built: [], demolish: stage.demolish_mode});
     const M = makeBuildings(gd, game, stage.parts);
