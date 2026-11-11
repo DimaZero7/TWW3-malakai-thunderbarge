@@ -94,5 +94,31 @@ scenario('a treasury in debt: no hire, but the crew may be taken off', 'pirates'
     check('a building that does not stand adds nothing', !src.some(s => s.from === 'Не стоит'));
     check('the numbers with the bonus', FX.applyPct(96, 25, 'ammo') === 120 && FX.applyPct(13, -10, 'reload') === 11.7);
 }
+// the rules of the author's tree (docs/design/tree-audit.md): a line of levels acts by its highest level (the game replaces the lower one in its slot,
+// so its numbers are not added up); different buildings add; «каждой команды» and one group's own number add (the cargo hold's +100 % for every crew
+// and the torpedo gallery's +30 % for the bombs: the bombs +130 %)
+{
+    const T = await import('../../web/js/tree_model.mjs');
+    const {crewSources} = await import('../../web/js/crew_model.mjs');
+    const FX = await import('../../web/js/effects_model.mjs');
+    const d = T.emptyDesign();
+    const h1 = T.addNode(d, {id: 'h1', name: 'Трюм', cost: 1, effects: [{kind: 'ammo', target: 'rifles', value: 15, text: '', icon: null, good: true}]});
+    const h2 = T.addNode(d, {id: 'h2', name: 'Хранилище', cost: 1, requires: [h1], prev: h1, inherit: true, effects: [{kind: 'ammo', target: 'rifles', value: 30, text: '', icon: null, good: true}]});
+    const h3 = T.addNode(d, {id: 'h3', name: 'Люк', cost: 1, requires: [h2], prev: h2, inherit: true, effects: [{kind: 'ammo', target: 'all', value: 100, text: '', icon: null, good: true}]});
+    const tg = T.addNode(d, {id: 'tg', name: 'Торпедная галерея', cost: 1, effects: [{kind: 'ammo', target: 'bombs', value: 30, text: '', icon: null, good: true}]});
+    const n1 = T.addNode(d, {id: 'n1', name: 'Гнёзда', cost: 1, effects: [{kind: 'sight', value: 10, text: '', icon: null, good: true}]});
+    const n2 = T.addNode(d, {id: 'n2', name: 'Гнёзда с боеукладкой', cost: 1, requires: [n1], prev: n1, inherit: false, effects: [{kind: 'sight', value: 15, text: '', icon: null, good: true}]});
+    const data = {prefix: 'p_', groups: {}, ammo_mod: {}, hull: [], chains: []};
+    const g = T.gameData(d, data), key = id => g.key_of[id];
+    // the game: a line is one chain, the level built replaces the one under it in its slot (web/js/game_sim.js); standing = the level in the slot
+    const bonus = (ids, group) => { const s = new Set(ids.map(key)); return FX.crewBonuses(crewSources(g, k => s.has(k), k => s.has(k)), group).ammo.pct; };
+    check('a line acts by its highest level: Хранилище +30, not Трюм 15 + 30', bonus([h2], 'rifles') === 30, bonus([h2], 'rifles'));
+    check('«каждой команды» and the group\'s own add: Люк gives the rifles 30 (inherited) + 100', bonus([h3], 'rifles') === 130, bonus([h3], 'rifles'));
+    check('different buildings add: Люк +100 for every crew and the gallery +30 for the bombs: bombs +130, cannons +100', bonus([h3, tg], 'bombs') === 130 && bonus([h3, tg], 'cannons') === 100);
+    check('the gallery alone: the bombs +30, nobody else', bonus([tg], 'bombs') === 30 && bonus([tg], 'rifles') === 0);
+    // a level without inheritance gives only its own: the nests' sight 15, not 10 + 15
+    const sight = id => T.resolve(d, id).full.effects.filter(x => x.e.kind === 'sight').map(x => x.e.value);
+    check('a level that does not inherit: «Гнёзда с боеукладкой» give sight 15 only (the line\'s rule: the upgrade, not a sum)', sight(n2).join() === '15' && g.tree_rows.find(r => r.node === n2).chain === g.tree_rows.find(r => r.node === n1).chain);
+}
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

@@ -21,7 +21,8 @@ export const DEFAULT_ICON = GI + 'general_ability.png';
 // what the mod has for a kind: 'есть' (a mechanism of the mod already does it), 'нужна разработка', 'не проверено'; why: where it is
 export const STATUS = {have: 'в моде уже есть механизм', dev: 'в моде потребуется разработка', unknown: 'не проверено'};
 
-// The crew groups' names in the lines, as the mod writes them («Меткость стрелков», «Дальность и меткость орудий»): the genitive plural.
+// The crew groups' names in the lines, as the mod writes them («Меткость стрелков», «Дальность и меткость орудий»): the genitive plural. The lines say
+// «барки» after them (the author's rule: the bonuses of the shooting are the barge's crew's, never the army's units; docs/design/tree-audit.md).
 export const GROUP_GENITIVE = {rifles: 'стрелков', cannons: 'орудий', cupolas: 'куполов', bombs: 'бомбовых люков', harpoon: 'гарпуна', pub: 'паба', deck: 'палубы'};
 // the groups whose shooting the crew kinds can change: the ones with a weapon of numbers (the harpoon is an ability, the deck and the pub do not shoot)
 export const SHOOTING = groups => Object.keys(groups).filter(g => Object.values(groups[g].options).some(o => o.numbers && o.numbers.range));
@@ -30,32 +31,63 @@ export const SHOOTING = groups => Object.keys(groups).filter(g => Object.values(
 // status: what the mod has (docs/design/progression-proposal.md, data/crew_options.json, src/tww3_mtb_ammo.lua).
 export const KINDS = {
     ammo: {section: 'crew', name: 'Боезапас', percent: true, positiveGood: true, icon: GI + 'general_ability.png',
-           words: t => (t === 'all' ? 'Боезапас каждой команды' : `Боезапас ${GROUP_GENITIVE[t] || 'группы «' + t + '»'}`),
+           words: t => (t === 'all' ? 'Боезапас каждой команды барки' : `Боезапас ${GROUP_GENITIVE[t] || 'группы «' + t + '»'} барки`),
            status: t => (t === 'all' ? ['have', 'один множитель на всех: уровень трюма уходит в бой через core:svr_save_string, src/tww3_mtb_ammo.lua умножает запас каждой группы (ammo_mod)']
                                      : ['dev', 'сейчас множитель один на все группы (ammo_mod, src/tww3_mtb_ammo.lua): нужен свой множитель на группу в той же строке реестра'])},
     accuracy: {section: 'crew', name: 'Меткость', percent: true, positiveGood: true, icon: GI + 'general_ability.png',
-               words: t => (t === 'all' ? 'Меткость каждой команды' : `Меткость ${GROUP_GENITIVE[t] || 'группы «' + t + '»'}`),
+               words: t => (t === 'all' ? 'Меткость каждой команды барки' : `Меткость ${GROUP_GENITIVE[t] || 'группы «' + t + '»'} барки`),
                status: () => ['have', 'boost группы в data/crew_options.json: копия снаряда на уровень, calibration_area × 0,95 / 0,90 / 0,85; «все команды» — boost в каждой группе']},
     range: {section: 'crew', name: 'Дальность стрельбы', percent: true, positiveGood: true, icon: GI + 'general_ability.png',
-            words: t => (t === 'all' ? 'Дальность стрельбы каждой команды' : `Дальность стрельбы ${GROUP_GENITIVE[t] || 'группы «' + t + '»'}`),
+            words: t => (t === 'all' ? 'Дальность стрельбы каждой команды барки' : `Дальность стрельбы ${GROUP_GENITIVE[t] || 'группы «' + t + '»'} барки`),
             status: () => ['have', 'boost группы: effective_range × 1,1 / 1,2 в копии снаряда (так сделано у орудий от сигнальной системы)']},
     reload: {section: 'crew', name: 'Время перезарядки', percent: true, positiveGood: false, icon: GI + 'general_ability.png',
-             words: t => (t === 'all' ? 'Время перезарядки каждой команды' : `Время перезарядки ${GROUP_GENITIVE[t] || 'группы «' + t + '»'}`),
+             words: t => (t === 'all' ? 'Время перезарядки каждой команды барки' : `Время перезарядки ${GROUP_GENITIVE[t] || 'группы «' + t + '»'} барки`),
              status: () => ['dev', 'в boost группы нет base_reload_time: нужно добавить поле в копию снаряда, как calibration_area']},
     damage: {section: 'crew', name: 'Урон выстрела', percent: true, positiveGood: true, icon: GI + 'general_ability.png',
-             words: t => (t === 'all' ? 'Урон выстрела каждой команды' : `Урон выстрела ${GROUP_GENITIVE[t] || 'группы «' + t + '»'}`),
+             words: t => (t === 'all' ? 'Урон выстрела каждой команды барки' : `Урон выстрела ${GROUP_GENITIVE[t] || 'группы «' + t + '»'} барки`),
              status: () => ['dev', 'в boost группы нет damage и ap_damage: нужно добавить поля в копию снаряда']},
     battle_speed: {section: 'ship', name: 'Скорость барки в бою', percent: true, positiveGood: true, icon: GI + 'general_ability.png',
                    words: () => 'Скорость барки на поле боя',
-                   status: () => ['have', 'пассивные способности mtb_engine_speed_1..3 (scalar_speed 1,05 / 1,10 / 1,15) включаются эффектом постройки; новое число — новая строка способности']},
+                   status: () => ['have', 'пассивные способности mtb_engine_speed_1..3 (scalar_speed 1,05 / 1,10 / 1,15) включаются эффектом постройки; новое число (и минус: трюм, броня) — новая строка способности того же образца']},
+    // the barge itself in battle (the unit of Malakai on the barge, the mod's unit set mtb_dwf_malakai_thunderbarge)
+    missile_resist: {section: 'ship', name: 'Защита барки от выстрелов', percent: true, positiveGood: true, icon: GI + 'general_ability.png',
+                     words: () => 'Защита барки от выстрелов',
+                     status: () => ['dev', 'в игре есть образец: wh3_dlc25_effect_force_stat_missile_resistance_dwf_thunderbarge (сопротивление обстрелу, bonus_value unit_damage_resistance_missile_mod) на набор dwf_thunderbarge, барка мода в него не входит. Нужен свой эффект на набор mtb_dwf_malakai_thunderbarge и строка постройки, как у способностей мода. Сопротивления в игре складываются и ограничены 90 %']},
+    hp: {section: 'ship', name: 'Здоровье барки', percent: false, positiveGood: true, icon: GI + 'general_ability.png',
+         words: () => 'Здоровье барки',
+         status: () => ['dev', 'эффекта игры на очки здоровья отряда нет (среди bonus_value есть только барьер battle_barrier_health). Здоровье барки — bonus_hit_points отряда в land_units (у «Духа Грунгни» 12 340): нужна копия отряда на уровень корпуса и его подмена, или барьер вместо здоровья']},
+    morale: {section: 'ship', name: 'Боевой дух барки', percent: false, positiveGood: true, icon: GI + 'general_ability.png',
+             words: () => 'Боевой дух барки',
+             status: () => ['dev', 'в игре есть: bonus_value morale на набор отрядов (эффекты effect_bonus_value_ids_unit_sets). Нужен свой эффект на набор mtb_dwf_malakai_thunderbarge']},
+    ability: {section: 'ship', name: 'Способность в бою', percent: false, positiveGood: true, valueless: true, icon: GI + 'general_ability.png',
+              words: (t, ctx = {}) => `Способность «${abilityOf(t, ctx).name}»`,
+              status: (t, ctx = {}) => (abilityOf(t, ctx).mod ? ['have', `способность ${t} уже есть в моде (data/crew_options.json, abilities): включается эффектом постройки на набор барки, enabled_by — ключ уровня`]
+                                                            : ['dev', 'своей способности в моде нет: строки unit_abilities и фаз по образцу abilities в data/crew_options.json'])},
     campaign_movement: {section: 'ship', name: 'Дальность перемещения по карте', game: 'wh_main_effect_force_all_campaign_movement_range'},
     sight: {section: 'ship', name: 'Обзор на карте кампании', game: 'wh_main_effect_agent_field_line_of_sight_mod'},
     influence: {section: 'ship', name: 'Размер зоны влияния', game: 'wh3_dlc25_effect_force_stat_support_radius'},
+    // the army's units chosen by the author (the units the tree opens, or the units a line of it opens): a number of the game for those units only
+    army_replenish: {section: 'army', name: 'Скорость восполнения потерь', percent: true, positiveGood: true, icon: GI + 'replenishment.png', bonus: 'replenishment_percentage_bonus',
+                     sample: 'wh3_dlc25_effect_force_replenishment_rate_dwf_arty_warmachines (на наборы dwf_artillery, dwf_flying_war_machines)'},
+    army_cost: {section: 'army', name: 'Стоимость найма', percent: true, positiveGood: false, icon: GI + 'treasury.png', bonus: 'cost_mod',
+                sample: 'wh2_main_effect_resource_recruitment_cost_reduction_dwf_quarreler_ranger_grudge_boltthrower'},
+    army_upkeep: {section: 'army', name: 'Содержание', percent: true, positiveGood: false, icon: GI + 'military_spending.png', bonus: 'upkeep_mod',
+                  sample: 'wh2_main_effect_resource_upkeep_cost_reduction_dwf_quarreler_ranger_grudge_boltthrower'},
     game: {section: 'game', name: 'Эффект игры'},
 };
 export const CREW_KINDS = ['ammo', 'accuracy', 'range', 'reload', 'damage'];
-export const SHIP_KINDS = ['battle_speed', 'campaign_movement', 'sight', 'influence'];
-export const SECTIONS = {crew: 'Экипаж', ship: 'Корабль', game: 'Игра', text: 'Своя строка'};
+export const SHIP_KINDS = ['battle_speed', 'missile_resist', 'hp', 'morale', 'ability', 'campaign_movement', 'sight', 'influence'];
+export const ARMY_KINDS = ['army_replenish', 'army_cost', 'army_upkeep'];
+for (const k of ARMY_KINDS) KINDS[k].status = () => ['dev', `в игре есть: bonus_value ${KINDS[k].bonus} на набор отрядов (образец ${KINDS[k].sample}). Нужен свой набор из выбранных отрядов (unit_sets, unit_set_to_unit_junctions), эффект на него (effect_bonus_value_ids_unit_sets) и строка постройки`];
+export const SECTIONS = {crew: 'Экипаж', ship: 'Корабль', army: 'Армия: выбранные отряды', game: 'Игра', text: 'Своя строка'};
+// the abilities a building can open: the mod's own (data/crew_options.json, abilities; ctx.abilities over them)
+export const ABILITIES = {mtb_forsage: {name: 'Форсаж', mod: true}};
+const abilityOf = (t, ctx = {}) => ({...(ABILITIES[t] || {name: t || '…', mod: false}), ...((ctx.abilities || {})[t] || {})});
+// the units of an army effect in its line: their names without the variant in brackets, each once («Забияки», «Егеря»)
+export function unitsWords(units, ctx = {}) {
+    const name = k => String((ctx.unitName ? ctx.unitName(k) : k) || k).replace(/\s*\(.*\)\s*$/, '');
+    return [...new Set((units || []).map(name))];
+}
 const GAME_STATUS = ['have', 'строка building_effects_junction у постройки, как у стоковых построек (tools/build.py пишет такие строки в таблицу мода)'];
 
 const num = v => (Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100).replace('.', ','));
@@ -66,6 +98,7 @@ const gameRow = (e, ctx) => (ctx.gameEffects || {})[e.kind === 'game' ? e.effect
 
 export function isStructured(e) { return !!(e && e.kind && e.kind !== 'text' && KINDS[e.kind]); }
 export const isCrew = e => isStructured(e) && CREW_KINDS.includes(e.kind);
+export const isArmy = e => isStructured(e) && ARMY_KINDS.includes(e.kind);
 
 // The line of an effect after the game's own pattern: the mod's lines «Меткость стрелков: +5 %», the game's template with its %+n / %n.
 export function makeText(e, ctx = {}) {
@@ -79,7 +112,12 @@ export function makeText(e, ctx = {}) {
         return t;
     }
     if (k.game) return `${k.name}: ${signed(e.value)}%`;     // the catalogue not exported yet: the kind's own name
-    return `${k.words(e.target || 'all')}: ${signed(e.value)}${k.percent ? ' %' : ''}`;
+    if (k.valueless) return k.words(e.target, ctx);
+    if (ARMY_KINDS.includes(e.kind)) {
+        const w = unitsWords(e.units, ctx);
+        return `${k.name}: ${signed(e.value)}% ${w.length ? 'для отрядов: ' + w.join(', ') : 'для всех отрядов армии'}`;
+    }
+    return `${k.words(e.target || 'all', ctx)}: ${signed(e.value)}${k.percent ? ' %' : ''}`;
 }
 
 // green or red: the sign of the value and whether the kind's plus is good (the game's is_positive_value_good); 0 counts as good
@@ -97,15 +135,17 @@ export function iconOf(e, ctx = {}) {
 export function statusOf(e, ctx = {}) {
     const k = KINDS[e.kind];
     if (!k) return ['unknown', 'свободная строка: что она делает, страница не знает'];
-    if (k.status) return k.status(e.target || 'all');
+    if (k.status) return k.status(e.target || 'all', ctx);
     return GAME_STATUS;
 }
-// the effect's name for people, with its target: «Боезапас, стрелки», «Опыт за ход»
+// the effect's name for people, with its target: «Боезапас, стрелки», «Опыт за ход», «Скорость восполнения потерь, 4 отряда»
 export function labelOf(e, ctx = {}) {
     const k = KINDS[e.kind];
     if (!k) return 'Своя строка';
     if (e.kind === 'game') { const g = gameRow(e, ctx); return g ? g.text.replace(/:?\s*%\+?n%?/, '').replace(/\s+/g, ' ').trim() : e.effect; }
     if (CREW_KINDS.includes(e.kind)) return `${k.name}, ${e.target === 'all' || !e.target ? 'все команды' : ((ctx.groups || {})[e.target] || {}).name?.toLowerCase() || e.target}`;
+    if (ARMY_KINDS.includes(e.kind)) { const w = unitsWords(e.units, ctx); return `${k.name}, ${w.length ? w.join(', ') : 'вся армия'}`; }
+    if (e.kind === 'ability') return k.words(e.target, ctx);
     return k.name;
 }
 
@@ -116,8 +156,10 @@ export function complete(e, ctx = {}) {
     if (!isStructured(e)) return tail({text: String(e.text ?? ''), icon: e.icon || null, good: e.good !== false});
     const out = {kind: e.kind};
     if (CREW_KINDS.includes(e.kind)) out.target = e.target || 'all';
+    if (e.kind === 'ability') out.target = e.target || Object.keys(ABILITIES)[0];
+    if (ARMY_KINDS.includes(e.kind)) { out.units = [...new Set((e.units || []).map(String))]; if (e.units_from) out.units_from = String(e.units_from); }
     if (e.kind === 'game') out.effect = e.effect;
-    out.value = Number.isFinite(Number(e.value)) ? Number(e.value) : 0;
+    out.value = KINDS[e.kind].valueless ? 1 : Number.isFinite(Number(e.value)) ? Number(e.value) : 0;
     out.own_text = !!e.own_text;
     out.text = out.own_text ? String(e.text ?? '') : makeText(out, ctx);
     out.own_good = !!e.own_good;
@@ -128,9 +170,11 @@ export function complete(e, ctx = {}) {
 
 // A new effect of a kind (the catalogue's choice): the value the game uses most for a game effect, 5 otherwise
 export function newEffect(kind, opts = {}, ctx = {}) {
-    const e = {kind, ...(CREW_KINDS.includes(kind) ? {target: opts.target || 'all'} : {}), ...(kind === 'game' ? {effect: opts.effect} : {})};
+    const e = {kind, ...(CREW_KINDS.includes(kind) ? {target: opts.target || 'all'} : {}), ...(kind === 'game' ? {effect: opts.effect} : {}),
+               ...(kind === 'ability' ? {target: opts.target || Object.keys(ABILITIES)[0]} : {}),
+               ...(ARMY_KINDS.includes(kind) ? {units: opts.units || [], ...(opts.units_from ? {units_from: opts.units_from} : {})} : {})};
     const g = gameRow(e, ctx);
-    e.value = opts.value ?? (g && g.values && g.values.length ? g.values[Math.floor(g.values.length / 2)] : kind === 'reload' ? -10 : 5);
+    e.value = opts.value ?? (g && g.values && g.values.length ? g.values[Math.floor(g.values.length / 2)] : kind === 'reload' || kind === 'army_cost' || kind === 'army_upkeep' ? -10 : kind === 'hp' ? 500 : 5);
     if (g && !/%\+?n/.test(g.text)) e.value = opts.value ?? (g.values && g.values[0]) ?? 1;
     return complete(e, ctx);
 }
@@ -147,8 +191,19 @@ export function catalogue(ctx = {}) {
         }
     }
     for (const kind of SHIP_KINDS) {
-        const e = {kind, value: 5};
-        out.push({section: 'ship', kind, title: KINDS[kind].name, sub: KINDS[kind].game ? 'эффект игры' : 'способность мода', icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx)});
+        if (kind === 'ability') {
+            for (const t of Object.keys({...ABILITIES, ...(ctx.abilities || {})})) {
+                const e = {kind, target: t, value: 1};
+                out.push({section: 'ship', kind, target: t, title: KINDS[kind].name, sub: abilityOf(t, ctx).name, icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx)});
+            }
+            continue;
+        }
+        const e = {kind, value: kind === 'hp' ? 500 : 5};
+        out.push({section: 'ship', kind, title: KINDS[kind].name, sub: KINDS[kind].game ? 'эффект игры' : 'барка в бою', icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx)});
+    }
+    for (const kind of ARMY_KINDS) {
+        const e = {kind, units: [], value: KINDS[kind].positiveGood ? 5 : -10};
+        out.push({section: 'army', kind, title: KINDS[kind].name, sub: 'для выбранных отрядов', icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx).replace('для всех отрядов армии', 'для выбранных отрядов')});
     }
     const shipKeys = new Set(SHIP_KINDS.map(k => KINDS[k].game).filter(Boolean));
     for (const g of Object.values(ctx.gameEffects || {})) {
@@ -184,9 +239,16 @@ export function recognize(text, ctx = {}) {
     const crew = kind => { const t = targetIn(s, groups); return t && v !== null ? [complete({kind, target: t, value: v}, ctx)] : []; };
     if (/боезапас|боеприпас|запаскажд/.test(s)) return crew('ammo');
     if (/дальност.*иметкост|меткост.*идальност/.test(s)) { const t = targetIn(s, groups); return t && v !== null ? ['range', 'accuracy'].map(kind => complete({kind, target: t, value: v}, ctx)) : []; }
-    if (/меткост/.test(s)) return crew('accuracy');
-    if (/перезаряд/.test(s)) return crew('reload');
+    if (/меткост|точност/.test(s)) return crew('accuracy');
+    if (/перезаряд|перезряд|перзаряд|перезардя/.test(s)) return crew('reload');
     if (/урон/.test(s) && targetIn(s, groups) && !/%для|для/.test(s)) return crew('damage');
+    // the barge itself: protection from shots, health, the «discipline» (its morale), an ability
+    const barge = /барк|барж|барак|корабл/.test(s);
+    if (/форсаж/.test(s)) return [complete({kind: 'ability', target: 'mtb_forsage'}, ctx)];
+    if (/защит/.test(s) && /выстрел|вытсрел|выстерл|обстрел/.test(s) && v !== null) return [complete({kind: 'missile_resist', value: v}, ctx)];
+    if (/здоров|здоро[яй]/.test(s) && barge && v !== null) return [complete({kind: 'hp', value: v}, ctx)];
+    if (/дисциплин|боевойдух/.test(s) && v !== null) return [complete({kind: 'morale', value: v}, ctx)];
+    if (/скорост/.test(s) && barge && !/карт/.test(s) && v !== null) return [complete({kind: 'battle_speed', value: v}, ctx)];
     if (/обзор/.test(s) && v !== null) return [complete({kind: 'sight', value: v}, ctx)];
     if (/зон\S*влиян/.test(s) && v !== null) return [complete({kind: 'influence', value: v}, ctx)];
     if (/(скорост|ход)/.test(s) && /(бо[йяе]|пол[ея]боя|сражен)/.test(s) && v !== null) return [complete({kind: 'battle_speed', value: v}, ctx)];

@@ -1,5 +1,5 @@
 {
-  "_about": "The tree of the barge's buildings, made in the page's constructor (web/js/constructor.js, model web/js/tree_model.mjs). nodes: id; col, row: the place on the game's grid (106 px a step, row 0 the lowest, the tree grows up); name, description, cost, turns; tier: the hull tier needed (null none); icon: pack path; effects: the lines, a free one {text, icon, good} or an effect of the catalogue {kind, target, effect, value, text, icon, good, own_text, own_good} (web/js/effects_model.mjs); crew: what the building opens in the crew (data/crew_options.json); units: the army units it opens for recruitment (main_units keys); parts: what appears on the ship with it, {part: a key of web/data/blueprint.json parts} or a new one {part: null, name, zone, what, figures, note}; prev: the level it continues in its line (null: none); inherit: it gives all its previous level gives (live), its own lines over it; hide: the inherited things removed on it (an effect \"<node>/<effect id>\", \"crew:<group>:<option>\", \"unit:<key>\", \"part:<key>\"); an effect's id names it for the levels above, replaces: the inherited free line it stands for; branch: colour of the frame and lines (null the trunk); mod_key: the mod's building level without the prefix (null for a new one); note: what the author wants from this building; requires: ids of the nodes that must stand first (all of them).",
+  "_about": "The tree of the barge's buildings, made in the page's constructor (web/js/constructor.js, model web/js/tree_model.mjs). nodes: id; col, row: the place on the game's grid (106 px a step, row 0 the lowest, the tree grows up); name, description, cost, turns; tier: the hull tier needed (null none); icon: pack path; effects: the lines, a free one {text, icon, good} or an effect of the catalogue {kind, target, effect, units, units_from, value, text, icon, good, own_text, own_good} (web/js/effects_model.mjs; units: the army units an army effect acts on, units_from: the node whose line they come from); crew: what the building opens in the crew (data/crew_options.json); units: the army units it opens for recruitment (main_units keys); parts: what appears on the ship with it, {part: a key of web/data/blueprint.json parts} or a new one {part: null, name, zone, what, figures, note}; prev: the level it continues in its line (null: none); inherit: it gives all its previous level gives (live), its own lines over it; hide: the inherited things removed on it (an effect \"<node>/<effect id>\", \"crew:<group>:<option>\", \"unit:<key>\", \"part:<key>\"); an effect's id names it for the levels above, replaces: the inherited free line it stands for; branch: colour of the frame and lines (null the trunk); mod_key: the mod's building level without the prefix (null for a new one); note: what the author wants from this building; requires: ids of the nodes that must stand first (all of them).",
   "format": 3,
   "nodes": [
     {
@@ -16,8 +16,8 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Резерв найма орды: +1","icon":"ui/campaign ui/effect_bundles/army.png","good":true},
-        {"id":"e2","text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_recruitment_points","value":1,"text":"Резерв найма орды: +1","icon":"ui/campaign ui/effect_bundles/army.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":10,"text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true}
       ],
       "crew": [],
       "units": [],
@@ -38,7 +38,7 @@
       "tier": null,
       "icon": "ui/buildings/icons/tww3_mtb_airship_hull_2.png",
       "prev": "airship_hull_1",
-      "inherit": false,
+      "inherit": true,
       "hide": [],
       "effects": [
         {"id":"e1","text":"Открывает доступ к кораблю","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
@@ -67,12 +67,12 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
-        {"id":"e2","text":"Содержание: -5%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true},
-        {"id":"e3","text":"Производство гномьего пива (бочонки): 5","icon":"ui/campaign ui/effect_bundles/resource_dwarf_beer.png","good":true},
-        {"id":"e4","text":"Открывает цепочку экипажа","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e5","text":"Дисциплина барка максималоьная +10","icon":null,"good":true},
-        {"id":"e6","kind":"game","effect":"wh3_dlc25_effect_agent_enable_recruitment_dignitary_dragon_slayer","value":1,"text":"Возможность найма героя: драконоборец","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-10,"text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_upkeep","value":-5,"text":"Содержание: -5%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true},
+        {"id":"e3","kind":"game","effect":"wh_main_effect_region_resource_beer_production","value":5,"text":"Производство гномьего пива (бочонки): 5","icon":"ui/campaign ui/effect_bundles/resource_dwarf_beer.png","good":true},
+        {"id":"e5","kind":"morale","value":10,"text":"Боевой дух барки: +10","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e6","kind":"game","effect":"wh3_dlc25_effect_agent_enable_recruitment_dignitary_dragon_slayer","value":1,"text":"Возможность найма героя: драконоборец","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true},
+        {"id":"e4","kind":"game","effect":"wh3_dlc25_effect_agent_cap_increase_dignitary_dwarfs","value":1,"text":"Численность героев: +1 для драконоборцев","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true}
       ],
       "crew": [
         {"group":"rifles","option":"pirates"}
@@ -83,7 +83,7 @@
       ],
       "branch": null,
       "mod_key": "beer_hall_1",
-      "note": "Тут надо проверить возможость нама героя но что бы он в стоке можно было 1 нанаять а то возможность будет а поо факту нет",
+      "note": "Тут надо проверить возможость нама героя но что бы он в стоке можно было 1 нанаять а то возможность будет а поо факту нет\n→ сделано: «Возможность найма» в игре только открывает найм, а нанять можно столько, сколько даёт «Численность героев» (эффект agent_cap, на фракцию). В стоке первая численность драконоборцев — у «Каркаса с рунами» (+1), а возможность — у «Прочного корпуса»: между ними нанять некого. Добавлена строка «Численность героев: +1 для драконоборцев». «Столовая» теперь наследует строки чертога — возможность и численность не пропадают на II и III. Итог при всём дереве: 1 (чертог) + 2 (корпус IV–V) = 3 драконоборца, в стоке 2.\n→ вопрос: «Дисциплина барки максимальная» записана как «Боевой дух барки» (в игре величины «дисциплина» нет). Если имелось в виду другое — скажи.",
       "requires": ["airship_hull_2"]
     },
     {
@@ -100,10 +100,10 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Опыт за ход: +250","icon":"ui/campaign ui/effect_bundles/experience.png","good":true},
-        {"id":"e2","text":"Меткость стрелков: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e3","kind":"range","target":"rifles","value":5,"text":"Дальность стрельбы стрелков: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e4","kind":"reload","target":"rifles","value":-5,"text":"Время перезарядки стрелков: -5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
+        {"id":"e1","kind":"game","effect":"wh_dlc05_effect_building_army_xp_gain","value":250,"text":"Опыт за ход: +250","icon":"ui/campaign ui/effect_bundles/experience.png","good":true},
+        {"id":"e2","kind":"accuracy","target":"rifles","value":5,"text":"Меткость стрелков барки: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e3","kind":"range","target":"rifles","value":5,"text":"Дальность стрельбы стрелков барки: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e4","kind":"reload","target":"rifles","value":-5,"text":"Время перезарядки стрелков барки: -5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [
         {"group":"rifles","option":"quarrellers"}
@@ -120,24 +120,24 @@
       "col": -2,
       "row": 9,
       "name": "Склад оружия",
-      "description": "Мстители редко покидают свои мастерские, а лишь денно и нощно готовятся встретить славную погибель.",
+      "description": "Вдоль переборки тянутся стойки с арбалетами и топорами, у каждого крюка — бирка с руной. Пороха здесь не держат: этот склад для тетивы и стали.",
       "cost": 1700,
       "turns": 1,
       "tier": 2,
-      "icon": "ui/buildings/icons/dwarf_guild_worshops.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_infantry_workshop_1.png",
       "prev": null,
       "inherit": false,
       "hide": [],
       "effects": [
         {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-10,"text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
-        {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":1,"text":"Скорость восполнения потерь: +1%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true}
+        {"id":"e2","kind":"army_replenish","units":["wh_main_dwf_inf_quarrellers_0","wh_main_dwf_inf_quarrellers_1","wh_dlc06_dwf_inf_rangers_0","wh_dlc06_dwf_inf_rangers_1"],"value":1,"text":"Скорость восполнения потерь: +1% для забияк и егерей","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"own_text":true}
       ],
       "crew": [],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "infantry_workshop_1",
-      "note": "Скорость пополнения только стрелков и только тех которых можно нанять после строительства оруженого скалада логика такая что новому гному ты аджеш готове оружие которое у тебя етьс на скалде но на этом слкаде не может быть огнетсрела\nК примеру на пиратов баф не распростроняется а вот на линейку воск на маникене распростронется на всех  юнитов",
+      "note": "Скорость пополнения только стрелков и только тех которых можно нанять после строительства оруженого скалада логика такая что новому гному ты аджеш готове оружие которое у тебя етьс на скалде но на этом слкаде не может быть огнетсрела\nК примеру на пиратов баф не распростроняется а вот на линейку воск на маникене распростронется на всех  юнитов\n→ сделано: строка — эффект «Скорость восполнения потерь» с адресатом «выбранные отряды»: Забияки и Егеря (обе версии), их открывает «Манекен для учебной стрельбы». Пираты и громобои не входят. В игре так делается эффектом на набор отрядов (bonus_value replenishment_percentage_bonus, образец wh3_dlc25_effect_force_replenishment_rate_dwf_arty_warmachines); в моде нужна разработка: свой набор отрядов и эффект на него.",
       "requires": ["beer_hall_1"]
     },
     {
@@ -145,7 +145,7 @@
       "col": 1,
       "row": 8,
       "name": "Вороньи гнёзда",
-      "description": "Два гнезда на самой макушке шара. Оттуда видно дальше всех, а топор летит вниз охотнее, чем вверх.",
+      "description": "Два гнезда на самой макушке шара. В каждом дежурит дозорный с подзорной трубой: оттуда видно дальше всех, и ни одна туча не подкрадётся незамеченной.",
       "cost": 1200,
       "turns": 1,
       "tier": 2,
@@ -154,18 +154,19 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Обзор на карте кампании: +10%","icon":"ui/campaign ui/effect_bundles/agent.png","good":true}
+        {"id":"e1","kind":"sight","value":10,"text":"Обзор на карте кампании: +10%","icon":"ui/campaign ui/effect_bundles/agent.png","good":true}
       ],
       "crew": [
         {"group":"cupolas","option":"empty"}
       ],
       "units": [],
       "parts": [
-        {"part":"rings"}
+        {"part":"rings"},
+        {"part":null,"name":"Дозорные в гнёздах","zone":"balloon","what":"figures","figures":2,"note":"В каждом из двух гнёзд на макушке шара — гном-дозорный без оружия (подзорная труба). Не стреляют, мест в бою не занимают, просто видны на модели; с метателями топоров («Гнёзда с боеукладкой») их место занимают метатели."}
       ],
       "branch": null,
       "mod_key": "mtb_nest_1",
-      "note": "ДОбавляются гнезда с гномами наблюдателями они не стряляют просто есть",
+      "note": "ДОбавляются гнезда с гномами наблюдателями они не стряляют просто есть\n→ сделано: деталь «Дозорные в гнёздах» (2 фигуры без оружия, шар) в «Что появляется на корабле»; описание переписано под дозорных.",
       "requires": ["airship_hull_2"]
     },
     {
@@ -173,7 +174,7 @@
       "col": 1,
       "row": 11,
       "name": "Гнёзда с боеукладкой",
-      "description": "Укладка под гранаты в самих гнёздах.",
+      "description": "В гнёздах закрепили стойки с метательными топорами. Дозорный больше не только смотрит: топор, пущенный с высоты шара, летит вниз охотнее, чем вверх.",
       "cost": 1000,
       "turns": 1,
       "tier": 3,
@@ -182,7 +183,7 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Обзор на карте кампании: +15%","icon":"ui/campaign ui/effect_bundles/agent.png","good":true}
+        {"id":"e1","kind":"sight","value":15,"text":"Обзор на карте кампании: +15%","icon":"ui/campaign ui/effect_bundles/agent.png","good":true}
       ],
       "crew": [
         {"group":"cupolas","option":"axes"}
@@ -191,7 +192,7 @@
       "parts": [],
       "branch": null,
       "mod_key": "mtb_nest_2",
-      "note": "Тут надо учитывать сто бонус не скалдывется с прошлой постройкой а эток ак бы апргед прогшлой построки тоесть в обшем будет не 25 к дальности обозра а 15",
+      "note": "Тут надо учитывать сто бонус не скалдывется с прошлой постройкой а эток ак бы апргед прогшлой построки тоесть в обшем будет не 25 к дальности обозра а 15\n→ так и работает: «Гнёзда с боеукладкой» — следующий уровень линейки «Вороньих гнёзд» без наследования. В игре уровень заменяет прошлый в своём слоте, на странице постройка линейки действует старшим уровнем: обзор +15 %, не 10 + 15.",
       "requires": ["mtb_nest_1","crew_weapons_1"]
     },
     {
@@ -208,10 +209,10 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Скорость восполнения потерь: +2%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true},
-        {"id":"e2","text":"Рост орды: +5","icon":"ui/campaign ui/effect_bundles/growth.png","good":true},
-        {"id":"e3","kind":"ammo","target":"rifles","value":10,"text":"Боезапас стрелков: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"own_text":true},
-        {"id":"e4","kind":"ammo","target":"cupolas","value":10,"text":"Боезапас куполов: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"own_text":true},
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":2,"text":"Скорость восполнения потерь: +2%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":5,"text":"Рост орды: +5","icon":"ui/campaign ui/effect_bundles/growth.png","good":true},
+        {"id":"e3","kind":"ammo","target":"rifles","value":15,"text":"Боезапас стрелков барки: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e4","kind":"ammo","target":"cupolas","value":15,"text":"Боезапас куполов барки: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
         {"id":"e5","kind":"battle_speed","value":-5,"text":"Скорость барки на поле боя: -5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false},
         {"id":"e6","kind":"game","effect":"wh_main_effect_force_army_campaign_attrition_all_resistance","value":-5,"text":"Небоевые потери: -5% во всех случаях","icon":"ui/campaign ui/effect_bundles/attrition.png","good":true}
       ],
@@ -237,9 +238,9 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Способность: «Улучшенный испепеляющий гром» для «Духа Грунгни»","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e2","text":"Дальность перемещения по карте кампании: +5%","icon":"ui/campaign ui/effect_bundles/campaign_movement.png","good":true},
-        {"id":"e3","text":"Скорость барки на поле боя: +7 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
+        {"id":"e1","kind":"game","effect":"wh3_dlc25_effect_ability_enable_thunderburner_upgraded","value":1,"text":"Способность: «Улучшенный испепеляющий гром» для «Духа Грунгни»","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e2","kind":"campaign_movement","value":5,"text":"Дальность перемещения по карте кампании: +5%","icon":"ui/campaign ui/effect_bundles/campaign_movement.png","good":true},
+        {"id":"e3","kind":"battle_speed","value":7,"text":"Скорость барки на поле боя: +7 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [],
       "units": [],
@@ -260,19 +261,19 @@
       "tier": null,
       "icon": "ui/buildings/icons/tww3_mtb_airship_hull_3.png",
       "prev": "airship_hull_2",
-      "inherit": false,
-      "hide": [],
+      "inherit": true,
+      "hide": ["airship_hull_2/e1"],
       "effects": [
-        {"id":"e1","text":"Численность героев: +1 для драконоборцев","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true},
-        {"id":"e2","text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true},
-        {"id":"e3","text":"+1000 единиц здороя бараки","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh3_dlc25_effect_agent_cap_increase_dignitary_dwarfs","value":1,"text":"Численность героев: +1 для драконоборцев","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":10,"text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true},
+        {"id":"e3","kind":"hp","value":1000,"text":"Здоровье барки: +1000","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "airship_hull_3",
-      "note": "Каркас с рунами а не шар надо перерисовать иконку\n",
+      "note": "Каркас с рунами а не шар надо перерисовать иконку\n→ сделано: значок перерисован — металлический каркас с открытыми рёбрами и рунными пластинами (tools/draw_building_icons.py, airship_hull_3). Каркас теперь наследует строки «Прочного корпуса»: резерв найма +1 не пропадает между I и IV.",
       "requires": ["airship_hull_2"]
     },
     {
@@ -286,13 +287,13 @@
       "tier": 3,
       "icon": "ui/buildings/icons/tww3_mtb_beer_hall_2.png",
       "prev": "beer_hall_1",
-      "inherit": false,
+      "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
-        {"id":"e2","text":"Содержание: -7%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true},
-        {"id":"e3","text":"Производство гномьего пива (бочонки): 10","icon":"ui/campaign ui/effect_bundles/resource_dwarf_beer.png","good":true},
-        {"id":"e4","text":"Дисциплина барка максималоьная +15","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-15,"text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_upkeep","value":-7,"text":"Содержание: -7%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true},
+        {"id":"e3","kind":"game","effect":"wh_main_effect_region_resource_beer_production","value":10,"text":"Производство гномьего пива (бочонки): 10","icon":"ui/campaign ui/effect_bundles/resource_dwarf_beer.png","good":true},
+        {"id":"e4","kind":"morale","value":15,"text":"Боевой дух барки: +15","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [],
       "units": ["wh_main_dwf_inf_slayers"],
@@ -311,22 +312,23 @@
       "cost": 850,
       "turns": 1,
       "tier": 3,
-      "icon": "ui/buildings/icons/dwarf_spirit_of_grungni_engineering_workshop.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_engineering_workshop_1.png",
       "prev": null,
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Возможность найма героя: опытный инженер","icon":"ui/campaign ui/effect_bundles/engineer.png","good":true},
-        {"id":"e2","text":"Урон в дальней атаке для всех стреков бараки +5%","icon":null,"good":true},
-        {"id":"e3","kind":"range","target":"rifles","value":3,"text":"Дальность стрельбы стрелков: +3 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e4","text":"Скорость перезрядки для стрелков -5%","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_agent_enable_recruitment_engineer","value":1,"text":"Возможность найма героя: опытный инженер","icon":"ui/campaign ui/effect_bundles/engineer.png","good":true},
+        {"id":"e2","kind":"damage","target":"rifles","value":5,"text":"Урон выстрела стрелков барки: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e3","kind":"range","target":"rifles","value":3,"text":"Дальность стрельбы стрелков барки: +3 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e4","kind":"reload","target":"rifles","value":-5,"text":"Время перезарядки стрелков барки: -5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e5","kind":"game","effect":"wh_main_effect_agent_cap_increase_engineer","value":1,"text":"Численность героев: +1 для опытных инженеров","icon":"ui/campaign ui/effect_bundles/engineer.png","good":true}
       ],
       "crew": [],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "engineering_workshop_1",
-      "note": "Тут надо уичтывать что бонусы скорость и презряда боезопас и прочее расрпостроняется только на экпаж бараки а не на юнитов армии бюбарака дает только нанять юнитов и скажем уменшить их содеражние или стоимость найма",
+      "note": "Тут надо уичтывать что бонусы скорость и презряда боезопас и прочее расрпостроняется только на экпаж бараки а не на юнитов армии бюбарака дает только нанять юнитов и скажем уменшить их содеражние или стоимость найма\n→ сделано: правило проверено по всему дереву (раздел «Правило 6» в docs/design/tree-audit.md). Скорость, перезарядка, боезапас, меткость, урон, дальность — только у команд барки, строки так и звучат: «… стрелков барки», «… орудий барки». Армии дерево даёт найм, стоимость, содержание, опыт, пополнение, рост. Нарушений по смыслу нет, были только формулировки.\n→ сделано: на «Отсеке инженера» была убрана «Возможность найма героя: опытный инженер» — без неё численность никого не нанимает; возвращена. На «Верстаке» добавлена «Численность героев: +1 для опытных инженеров», как у драконоборцев.\n→ вопрос: числа численности 1 / 1 / 2 по уровням: «Отсек» ничего не прибавляет к «Верстаку». Предлагаю 1 / 2 / 3.",
       "requires": ["airship_hull_3"]
     },
     {
@@ -343,13 +345,15 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Размер зоны влияния: +25%","icon":"ui/campaign ui/effect_bundles/sphere_of_influence_size.png","good":true},
-        {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":2,"text":"Скорость восполнения потерь: +2% ","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"own_text":true},
-        {"id":"e3","kind":"game","effect":"wh_main_effect_province_growth_building","value":20,"text":"Рост: +20","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"own_text":true}
+        {"id":"e1","kind":"influence","value":25,"text":"Размер зоны влияния: +25%","icon":"ui/campaign ui/effect_bundles/sphere_of_influence_size.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":2,"text":"Скорость восполнения потерь: +2%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true},
+        {"id":"e3","kind":"game","effect":"wh_main_effect_province_growth_building","value":20,"text":"Рост: +20","icon":"ui/campaign ui/effect_bundles/growth.png","good":true}
       ],
       "crew": [],
       "units": [],
-      "parts": [],
+      "parts": [
+        {"part":"porthole"}
+      ],
       "branch": null,
       "mod_key": "support_radius_1",
       "note": "",
@@ -360,24 +364,24 @@
       "col": -2,
       "row": 14,
       "name": "Оружейный склад",
-      "description": "Этот внушительный арсенал оружия стал для мстителей своего рода святилищем и символом их грядущей смерти.",
+      "description": "Склад разросся на полтрюма: к арбалетам добавились ружья в смазке, ящики с болтами и пулями уложены до самой палубы. Новобранцу тут найдётся оружие по руке.",
       "cost": 2200,
       "turns": 1,
       "tier": 3,
-      "icon": "ui/buildings/icons/dwarf_guild_worshops.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_infantry_workshop_2.png",
       "prev": "infantry_workshop_1",
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Стоимость найма: -15%","icon":null,"good":true},
-        {"id":"e2","text":"Скорость восполнения потерь: +2% (поа налогии с прошлой только адптировано под будуюший стрелков оэтой ветки)","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-15,"text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e2","kind":"army_replenish","units":["wh_main_dwf_inf_quarrellers_0","wh_main_dwf_inf_quarrellers_1","wh_dlc06_dwf_inf_rangers_0","wh_dlc06_dwf_inf_rangers_1","wh_main_dwf_inf_thunderers_0","wh3_dlc25_dwf_inf_thunderers_grudge_rakers"],"units_from":"crew_weapons_1","value":2,"text":"Скорость восполнения потерь: +2% для забияк, егерей, громобоев и злопыхателей","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"own_text":true}
       ],
       "crew": [],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "infantry_workshop_2",
-      "note": "",
+      "note": "«Скорость восполнения потерь: +2% (по аналогии с прошлой, только адаптировано под будущих стрелков этой ветки)» → эффект на отряды линейки «Манекен для учебной стрельбы»: арбалетчики первого склада и громобои со злопыхателями «Тира».\n→ вопрос: на втором складе огнестрел уже есть? Если нет — оставить только Забияк и Егерей (тогда +2% заменит +1% тем же отрядам).",
       "requires": ["infantry_workshop_1","engineering_workshop_1"]
     },
     {
@@ -394,10 +398,10 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Опыт за ход: +550","icon":"ui/campaign ui/effect_bundles/experience.png","good":true},
-        {"id":"e2","text":"Меткость стрелков: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e3","text":"Дальность стрельбы стрелков: +10 % (барки)","icon":null,"good":true},
-        {"id":"e4","text":"Время перезарядки стрелков: -7 % (бараки)","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_dlc05_effect_building_army_xp_gain","value":550,"text":"Опыт за ход: +550","icon":"ui/campaign ui/effect_bundles/experience.png","good":true},
+        {"id":"e2","kind":"accuracy","target":"rifles","value":10,"text":"Меткость стрелков барки: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e3","kind":"range","target":"rifles","value":10,"text":"Дальность стрельбы стрелков барки: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e4","kind":"reload","target":"rifles","value":-7,"text":"Время перезарядки стрелков барки: -7 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [
         {"group":"rifles","option":"thunderers"},
@@ -407,7 +411,7 @@
       "parts": [],
       "branch": null,
       "mod_key": "crew_weapons_2",
-      "note": "",
+      "note": "Пометки в строках «(барки)», «(бараки)» учтены: дальность и перезарядка — у стрелков барки (экипажа), не у отрядов армии.",
       "requires": ["crew_weapons_1","infantry_workshop_2"]
     },
     {
@@ -424,12 +428,12 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Скорость восполнения потерь: +5%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true},
-        {"id":"e2","text":"Небоевые потери: -20% во всех случаях","icon":"ui/campaign ui/effect_bundles/attrition.png","good":true},
-        {"id":"e3","text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true},
-        {"id":"e4","text":"Боезапас стрелков: +30 %","icon":null,"good":true},
-        {"id":"e5","text":"Боезапас куполов: +30 %","icon":null,"good":true},
-        {"id":"e6","text":"Скорость барки на поле боя: -12 %","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":5,"text":"Скорость восполнения потерь: +5%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_force_army_campaign_attrition_all_resistance","value":-20,"text":"Небоевые потери: -20% во всех случаях","icon":"ui/campaign ui/effect_bundles/attrition.png","good":true},
+        {"id":"e3","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":10,"text":"Рост орды: +10","icon":"ui/campaign ui/effect_bundles/growth.png","good":true},
+        {"id":"e4","kind":"ammo","target":"rifles","value":30,"text":"Боезапас стрелков барки: +30 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e5","kind":"ammo","target":"cupolas","value":30,"text":"Боезапас куполов барки: +30 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e6","kind":"battle_speed","value":-12,"text":"Скорость барки на поле боя: -12 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false}
       ],
       "crew": [],
       "units": [],
@@ -458,7 +462,9 @@
         {"group":"bombs","option":"stock"}
       ],
       "units": [],
-      "parts": [],
+      "parts": [
+        {"part":"bomb_hatches"}
+      ],
       "branch": null,
       "mod_key": "mtb_hatches_1",
       "note": "",
@@ -473,19 +479,19 @@
       "cost": 2700,
       "turns": 2,
       "tier": 2,
-      "icon": "ui/buildings/icons/dwarf_spirit_of_grungni_artillery_workshop.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_artillery_workshop_1.png",
       "prev": null,
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_region_resource_iron_production","value":30,"text":"Производство железа (слитки): 50","icon":"ui/campaign ui/effect_bundles/resource_iron.png","good":true,"own_text":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_region_resource_iron_production","value":50,"text":"Производство железа (слитки): 50","icon":"ui/campaign ui/effect_bundles/resource_iron.png","good":true}
       ],
       "crew": [],
       "units": ["wh_dlc06_dwf_art_bolt_thrower_0","wh_main_dwf_art_grudge_thrower"],
       "parts": [],
       "branch": null,
       "mod_key": "artillery_workshop_1",
-      "note": "",
+      "note": "→ вопрос: в строке было число 30, а текст ты написал «50» (на «Облегчённых плавильнях» 60 и «120»). Взял текст: 50 и 120. Если правильные 30 и 60 — скажи.",
       "requires": ["engineering_workshop_1"]
     },
     {
@@ -502,11 +508,11 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Численность героев: +2 для драконоборцев","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true,"replaces":"airship_hull_3/e1"},
-        {"id":"e3","text":"Резерв найма орды: +2","icon":"ui/campaign ui/effect_bundles/army.png","good":true},
-        {"id":"e2","text":"Рост орды: +20","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"replaces":"airship_hull_3/e2"},
-        {"id":"e4","text":"Зашита от выстрелов бараки +10%","icon":null,"good":true},
-        {"id":"e5","text":"Скорость бараки в бою -5%","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh3_dlc25_effect_agent_cap_increase_dignitary_dwarfs","value":2,"text":"Численность героев: +2 для драконоборцев","icon":"ui/campaign ui/effect_bundles/dragon_slayer.png","good":true,"replaces":"airship_hull_3/e1"},
+        {"id":"e3","kind":"game","effect":"wh_main_effect_force_all_recruitment_points","value":2,"text":"Резерв найма орды: +2","icon":"ui/campaign ui/effect_bundles/army.png","good":true},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":20,"text":"Рост орды: +20","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"replaces":"airship_hull_3/e2"},
+        {"id":"e4","kind":"missile_resist","value":10,"text":"Защита барки от выстрелов: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e5","kind":"battle_speed","value":-5,"text":"Скорость барки на поле боя: -5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false}
       ],
       "crew": [],
       "units": [],
@@ -520,18 +526,18 @@
       "id": "n1",
       "col": 5,
       "row": 13,
-      "name": "Шиты (броня)",
-      "description": "",
+      "name": "Бортовые щиты",
+      "description": "Вдоль бортов, как на старых драккарах, висят круглые щиты с железными умбонами. Стрелы и пули теперь чаще стучат по дереву и железу, чем по гномам.",
       "cost": 1000,
       "turns": 1,
       "tier": null,
-      "icon": null,
+      "icon": "ui/buildings/icons/tww3_mtb_tree_side_shields.png",
       "prev": null,
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Защита от вытсрелов бараки +5%","icon":null,"good":true},
-        {"id":"e2","text":"Скорость бараки -1%","icon":null,"good":true}
+        {"id":"e1","kind":"missile_resist","value":5,"text":"Защита барки от выстрелов: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e2","kind":"battle_speed","value":-1,"text":"Скорость барки на поле боя: -1 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false}
       ],
       "crew": [],
       "units": [],
@@ -540,7 +546,7 @@
       ],
       "branch": null,
       "mod_key": null,
-      "note": "",
+      "note": "→ сделано: название «Бортовые щиты», описание, значок. Щиты → щиты на шаре → броня двигателя теперь одна линейка «обшивки» (уровни I–III с наследованием): каждая следующая требует прошлую и ничего больше её не открывает, числа растут как итог уровня (защита 5 → 12 → 20 %, скорость −1 → −3 → −10 %), детали на корабле при этом остаются все три. Так же экономятся два слота орды из 15. Если задумано, что три постройки складываются (итог защиты 37 %, скорости −14 %), — «Разорвать линейку» у «Щитов на шаре» и «Брони двигателя».",
       "requires": ["airship_hull_3"]
     },
     {
@@ -552,15 +558,15 @@
       "cost": 1400,
       "turns": 1,
       "tier": 4,
-      "icon": "ui/buildings/icons/dwarf_spirit_of_grungni_engineering_workshop.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_engineering_workshop_2.png",
       "prev": "engineering_workshop_1",
       "inherit": true,
-      "hide": ["engineering_workshop_1/e1"],
+      "hide": [],
       "effects": [
-        {"id":"e1","kind":"range","target":"rifles","value":5,"text":"Дальность стрельбы стрелков: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e2","text":"Скорость перезрядки для стрелков -6%","icon":null,"good":true,"replaces":"engineering_workshop_1/e4"},
-        {"id":"e3","text":"Урон в дальней атаке для всех стреков бараки +8%","icon":null,"good":true,"replaces":"engineering_workshop_1/e2"},
-        {"id":"e4","text":"Число иненеров +1","icon":null,"good":true}
+        {"id":"e1","kind":"range","target":"rifles","value":5,"text":"Дальность стрельбы стрелков барки: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e2","kind":"reload","target":"rifles","value":-6,"text":"Время перезарядки стрелков барки: -6 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engineering_workshop_1/e4"},
+        {"id":"e3","kind":"damage","target":"rifles","value":8,"text":"Урон выстрела стрелков барки: +8 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engineering_workshop_1/e2"},
+        {"id":"e4","kind":"game","effect":"wh_main_effect_agent_cap_increase_engineer","value":1,"text":"Численность героев: +1 для опытных инженеров","icon":"ui/campaign ui/effect_bundles/engineer.png","good":true}
       ],
       "crew": [],
       "units": [],
@@ -579,12 +585,12 @@
       "cost": 3300,
       "turns": 2,
       "tier": 3,
-      "icon": "ui/buildings/icons/dwarf_spirit_of_grungni_artillery_workshop.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_artillery_workshop_2.png",
       "prev": "artillery_workshop_1",
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_region_resource_iron_production","value":60,"text":"Производство железа (слитки): 120","icon":"ui/campaign ui/effect_bundles/resource_iron.png","good":true,"own_text":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_region_resource_iron_production","value":120,"text":"Производство железа (слитки): 120","icon":"ui/campaign ui/effect_bundles/resource_iron.png","good":true}
       ],
       "crew": [],
       "units": ["wh_main_dwf_art_cannon"],
@@ -598,18 +604,18 @@
       "id": "n2",
       "col": 5,
       "row": 19,
-      "name": "Новая постройка",
-      "description": "",
+      "name": "Щиты на шаре",
+      "description": "Самое уязвимое место барки — шар над головой. Его бока закрыли клёпаными щитами: тяжело, зато оболочку не продырявит ни стрела, ни пуля.",
       "cost": 1000,
       "turns": 1,
       "tier": null,
-      "icon": null,
-      "prev": null,
-      "inherit": false,
+      "icon": "ui/buildings/icons/tww3_mtb_tree_balloon_shields.png",
+      "prev": "n1",
+      "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Защита от вытсрелов бараки +12%","icon":null,"good":true},
-        {"id":"e2","text":"Скорость бараки -3%","icon":null,"good":true}
+        {"id":"e1","kind":"missile_resist","value":12,"text":"Защита барки от выстрелов: +12 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e2","kind":"battle_speed","value":-3,"text":"Скорость барки на поле боя: -3 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false}
       ],
       "crew": [],
       "units": [],
@@ -618,7 +624,7 @@
       ],
       "branch": null,
       "mod_key": null,
-      "note": "",
+      "note": "→ сделано: название «Щиты на шаре» вместо «Новая постройка», описание, значок; уровень II линейки обшивки.",
       "requires": ["n1"]
     },
     {
@@ -635,7 +641,7 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"ДАет +30% боезопасов для бомбовых люков","icon":null,"good":true}
+        {"id":"e1","kind":"ammo","target":"bombs","value":30,"text":"Боезапас бомбовых люков барки: +30 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [
         {"group":"rifles","option":"torpedoes"}
@@ -661,8 +667,8 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e3","text":"Дальность перемещения по карте кампании: +20%","icon":"ui/campaign ui/effect_bundles/campaign_movement.png","good":true,"replaces":"engines_1/e2"},
-        {"id":"e4","text":"Скорость барки на поле боя: +20 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engines_1/e3"}
+        {"id":"e3","kind":"campaign_movement","value":20,"text":"Дальность перемещения по карте кампании: +20%","icon":"ui/campaign ui/effect_bundles/campaign_movement.png","good":true,"replaces":"engines_1/e2"},
+        {"id":"e4","kind":"battle_speed","value":20,"text":"Скорость барки на поле боя: +20 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engines_1/e3"}
       ],
       "crew": [],
       "units": [],
@@ -676,17 +682,17 @@
       "id": "n3",
       "col": 1,
       "row": 20,
-      "name": "ТОбливыне абки для форсажа ",
-      "description": "",
+      "name": "Баки форсажа",
+      "description": "У привода винта встал бак высокого давления с красным вентилем. Котёл копит в нём пар впрок, а когда вентиль открывают, барка рвётся вперёд, будто её подтолкнул сам Грунгни.",
       "cost": 1200,
       "turns": 1,
       "tier": null,
-      "icon": null,
+      "icon": "ui/buildings/icons/tww3_mtb_tree_forsage_tanks.png",
       "prev": null,
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Форсаж как сопособность","icon":null,"good":true}
+        {"id":"e1","kind":"ability","target":"mtb_forsage","value":1,"text":"Способность «Форсаж»","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [],
       "units": [],
@@ -695,7 +701,7 @@
       ],
       "branch": null,
       "mod_key": null,
-      "note": "Навзние сам отредач",
+      "note": "Навзние сам отредач\n→ сделано: название «Баки форсажа», описание, значок; строка — эффект «Способность в бою: Форсаж» (способность mtb_forsage уже есть в моде, сейчас её дают «Повышенная мощность двигателя» и «Большие пропеллеры» — при переносе enabled_by сменить на эту постройку). Деталь — «Бак «Форсажа» с красным вентилем».",
       "requires": ["engineering_workshop_2"]
     },
     {
@@ -711,14 +717,14 @@
       "prev": null,
       "inherit": false,
       "hide": [],
-      "effects": [
-        {"id":"e1","text":"Крепление: орудийные порты, 2 места, пока без оружия. Оружие открывают другие постройки, ставится в панели экипажа","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
-      ],
+      "effects": [],
       "crew": [
         {"group":"cannons","option":"empty"}
       ],
       "units": [],
-      "parts": [],
+      "parts": [
+        {"part":"port"}
+      ],
       "branch": null,
       "mod_key": "mtb_guns_1",
       "note": "",
@@ -738,7 +744,7 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Точность -30% от стоковой ","icon":null,"good":true}
+        {"id":"e1","kind":"accuracy","target":"cannons","value":-30,"text":"Меткость орудий барки: -30 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false}
       ],
       "crew": [
         {"group":"cannons","option":"clatter"},
@@ -789,18 +795,18 @@
       "inherit": true,
       "hide": ["cargo_hold_2/e4","cargo_hold_2/e5"],
       "effects": [
-        {"id":"e1","text":"Скорость восполнения потерь: +10%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"replaces":"cargo_hold_2/e1"},
-        {"id":"e2","text":"Небоевые потери: -40% во всех случаях","icon":"ui/campaign ui/effect_bundles/attrition.png","good":true,"replaces":"cargo_hold_2/e2"},
-        {"id":"e4","text":"Боезапас каждой команды: +100 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e3","text":"Рост орды: +20","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"replaces":"cargo_hold_2/e3"},
-        {"id":"e5","text":"Скорость барки на поле боя: -25 %","icon":null,"good":true,"replaces":"cargo_hold_2/e6"}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":10,"text":"Скорость восполнения потерь: +10%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"replaces":"cargo_hold_2/e1"},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_force_army_campaign_attrition_all_resistance","value":-40,"text":"Небоевые потери: -40% во всех случаях","icon":"ui/campaign ui/effect_bundles/attrition.png","good":true,"replaces":"cargo_hold_2/e2"},
+        {"id":"e4","kind":"ammo","target":"all","value":100,"text":"Боезапас каждой команды барки: +100 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e3","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":20,"text":"Рост орды: +20","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"replaces":"cargo_hold_2/e3"},
+        {"id":"e5","kind":"battle_speed","value":-25,"text":"Скорость барки на поле боя: -25 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false,"replaces":"cargo_hold_2/e6"}
       ],
       "crew": [],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "cargo_hold_3",
-      "note": "Бонсу всем и бонусы по отдельности стакаются",
+      "note": "Бонсу всем и бонусы по отдельности стакаются\n→ сделано: на странице «каждой команды» и строка одной команды складываются (web/js/crew_model.mjs, тест tools/tests/crew_model_test.mjs): Люк +100 % всем и Торпедная галерея +30 % люкам дают люкам +130 %.\n→ вопрос: на этом уровне убраны унаследованные «Боезапас стрелков +30 %» и «Боезапас куполов +30 %» Хранилища — у стрелков и куполов будет +100 %, а не +130 %. Так задумано? Если нет — «вернуть» их в унаследованных строках.",
       "requires": ["cargo_hold_2","airship_hull_4","engineering_workshop_2"]
     },
     {
@@ -817,9 +823,9 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e4","text":"Рост орды: +30","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"replaces":"airship_hull_4/e2"},
-        {"id":"e1","text":"+2000 единиц здороя бараки","icon":null,"good":true,"replaces":"airship_hull_3/e3"},
-        {"id":"e3","text":"Зашита от выстрелов бараки +15%","icon":null,"good":true,"replaces":"airship_hull_4/e4"}
+        {"id":"e4","kind":"game","effect":"wh_main_effect_hordebuilding_growth_core","value":30,"text":"Рост орды: +30","icon":"ui/campaign ui/effect_bundles/growth.png","good":true,"replaces":"airship_hull_4/e2"},
+        {"id":"e1","kind":"hp","value":2000,"text":"Здоровье барки: +2000","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"airship_hull_3/e3"},
+        {"id":"e3","kind":"missile_resist","value":15,"text":"Защита барки от выстрелов: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"airship_hull_4/e4"}
       ],
       "crew": [],
       "units": [],
@@ -843,17 +849,17 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Опыт за ход: +880","icon":"ui/campaign ui/effect_bundles/experience.png","good":true,"replaces":"crew_weapons_2/e1"},
-        {"id":"e3","text":"Меткость стрелков: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"crew_weapons_2/e2"},
-        {"id":"e2","text":"Точность орудуий +30% (невилируем те 30 процентов тчо забрали) + 15% (накидываем сверху)","icon":null,"good":true},
-        {"id":"e4","text":"Скорость перезарядки оруждий -3%","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_dlc05_effect_building_army_xp_gain","value":880,"text":"Опыт за ход: +880","icon":"ui/campaign ui/effect_bundles/experience.png","good":true,"replaces":"crew_weapons_2/e1"},
+        {"id":"e3","kind":"accuracy","target":"rifles","value":15,"text":"Меткость стрелков барки: +15 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"crew_weapons_2/e2"},
+        {"id":"e2","kind":"accuracy","target":"cannons","value":45,"text":"Меткость орудий барки: +45 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e4","kind":"reload","target":"cannons","value":-3,"text":"Время перезарядки орудий барки: -3 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "crew_weapons_3",
-      "note": "",
+      "note": "«Точность орудий +30% (нивелируем те 30 процентов что забрали) + 15% (накидываем сверху)» → одна строка «Меткость орудий барки: +45 %». Проценты одного вида в игре складываются: −30 % «Орудийной палубы» + 45 % = +15 % к стоку, как и задумано.",
       "requires": ["crew_weapons_2","mtb_guns_2"]
     },
     {
@@ -870,7 +876,7 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","text":"Размер зоны влияния: +50%","icon":"ui/campaign ui/effect_bundles/sphere_of_influence_size.png","good":true,"replaces":"support_radius_1/e1"},
+        {"id":"e1","kind":"influence","value":50,"text":"Размер зоны влияния: +50%","icon":"ui/campaign ui/effect_bundles/sphere_of_influence_size.png","good":true,"replaces":"support_radius_1/e1"},
         {"id":"e5","kind":"game","effect":"wh_main_effect_force_all_campaign_replenishment_rate","value":5,"text":"Скорость восполнения потерь: +5%","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true},
         {"id":"e2","kind":"game","effect":"wh_main_effect_province_growth_building","value":40,"text":"Рост: +40","icon":"ui/campaign ui/effect_bundles/growth.png","good":true}
       ],
@@ -896,8 +902,8 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e3","text":"Дальность перемещения по карте кампании: +40%","icon":"ui/campaign ui/effect_bundles/campaign_movement.png","good":true,"replaces":"engines_2/e3"},
-        {"id":"e4","text":"Скорость барки на поле боя: +50 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engines_2/e4"}
+        {"id":"e3","kind":"campaign_movement","value":40,"text":"Дальность перемещения по карте кампании: +40%","icon":"ui/campaign ui/effect_bundles/campaign_movement.png","good":true,"replaces":"engines_2/e3"},
+        {"id":"e4","kind":"battle_speed","value":60,"text":"Скорость барки на поле боя: +60 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engines_2/e4"}
       ],
       "crew": [],
       "units": [],
@@ -905,7 +911,7 @@
       "branch": null,
       "mod_key": "engines_3",
       "note": "",
-      "requires": ["engines_2"]
+      "requires": ["engines_2","airship_hull_5"]
     },
     {
       "id": "engineering_workshop_3",
@@ -916,18 +922,18 @@
       "cost": 3300,
       "turns": 2,
       "tier": 5,
-      "icon": "ui/buildings/icons/dwarf_spirit_of_grungni_engineering_workshop.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_engineering_workshop_3.png",
       "prev": "engineering_workshop_2",
       "inherit": true,
-      "hide": ["engineering_workshop_2/e4"],
+      "hide": [],
       "effects": [
-        {"id":"e1","text":"Численность героев: +2 для опытных инженеров","icon":"ui/campaign ui/effect_bundles/engineer.png","good":true},
-        {"id":"e2","kind":"range","target":"rifles","value":10,"text":"Дальность стрельбы стрелков: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
-        {"id":"e3","text":"Скорость перезрядки для стрелков -10%","icon":null,"good":true,"replaces":"engineering_workshop_2/e2"},
-        {"id":"e4","text":"Урон в дальней атаке для всех стреков бараки +10%","icon":null,"good":true,"replaces":"engineering_workshop_2/e3"},
-        {"id":"e5","text":"Скорость перзарядки для орудий -10% ","icon":null,"good":true},
-        {"id":"e6","text":"Урон орудий +5% ","icon":null,"good":true},
-        {"id":"e7","text":"Дальность орудий +10%","icon":null,"good":true}
+        {"id":"e1","kind":"game","effect":"wh_main_effect_agent_cap_increase_engineer","value":2,"text":"Численность героев: +2 для опытных инженеров","icon":"ui/campaign ui/effect_bundles/engineer.png","good":true},
+        {"id":"e2","kind":"range","target":"rifles","value":10,"text":"Дальность стрельбы стрелков барки: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e3","kind":"reload","target":"rifles","value":-10,"text":"Время перезарядки стрелков барки: -10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engineering_workshop_2/e2"},
+        {"id":"e4","kind":"damage","target":"rifles","value":10,"text":"Урон выстрела стрелков барки: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"engineering_workshop_2/e3"},
+        {"id":"e5","kind":"reload","target":"cannons","value":-10,"text":"Время перезарядки орудий барки: -10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e6","kind":"damage","target":"cannons","value":5,"text":"Урон выстрела орудий барки: +5 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
+        {"id":"e7","kind":"range","target":"cannons","value":10,"text":"Дальность стрельбы орудий барки: +10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
       ],
       "crew": [],
       "units": [],
@@ -946,20 +952,150 @@
       "cost": 5000,
       "turns": 2,
       "tier": 4,
-      "icon": "ui/buildings/icons/dwarf_spirit_of_grungni_artillery_workshop.png",
+      "icon": "ui/buildings/icons/tww3_mtb_tree_artillery_workshop_3.png",
       "prev": "artillery_workshop_2",
       "inherit": true,
       "hide": [],
       "effects": [
         {"id":"e1","kind":"game","effect":"wh_main_effect_region_resource_iron_production","value":200,"text":"Производство железа (слитки): 200","icon":"ui/campaign ui/effect_bundles/resource_iron.png","good":true}
       ],
-      "crew": [],
+      "crew": [
+        {"group":"cupolas","option":"stock"}
+      ],
       "units": [],
       "parts": [],
       "branch": null,
       "mod_key": "artillery_workshop_3",
       "note": "",
       "requires": ["artillery_workshop_2"]
+    },
+    {
+      "id": "beer_hall_3",
+      "col": -3,
+      "row": 23,
+      "name": "Воздушная винокурня",
+      "description": "Когда пиво всегда под рукой, пьянка становится неотъемлемой частью работы и почти обязательным ее условием.",
+      "cost": 5000,
+      "turns": 1,
+      "tier": 4,
+      "icon": "ui/buildings/icons/tww3_mtb_beer_hall_3.png",
+      "prev": "beer_hall_2",
+      "inherit": true,
+      "hide": [],
+      "effects": [
+        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-30,"text":"Стоимость найма: -30%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true,"replaces":"beer_hall_2/e1"},
+        {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_upkeep","value":-25,"text":"Содержание: -25%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true,"replaces":"beer_hall_2/e2"},
+        {"id":"e4","kind":"morale","value":30,"text":"Боевой дух барки: +30","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"beer_hall_2/e4"},
+        {"id":"e5","kind":"game","effect":"wh_main_effect_region_resource_wine_production","value":36,"text":"Производство вина (бочки): 36","icon":"ui/campaign ui/effect_bundles/resource_wine.png","good":true}
+      ],
+      "crew": [],
+      "units": [],
+      "parts": [],
+      "branch": null,
+      "mod_key": "beer_hall_3",
+      "note": "«Содержание: -25% (для армии героя)» → эффект игры wh_main_effect_force_all_campaign_upkeep, область force_to_force_own: это и есть армия Малакая.",
+      "requires": ["beer_hall_2","airship_hull_5"]
+    },
+    {
+      "id": "n4",
+      "col": 5,
+      "row": 24,
+      "name": "Броня двигателя",
+      "description": "К корме вернулись доски-закрылки с железными накладками. Они прикрывают привод винта от выстрелов и служат рулём, хотя барка от них заметно тяжелеет.",
+      "cost": 3700,
+      "turns": 1,
+      "tier": null,
+      "icon": "ui/buildings/icons/tww3_mtb_tree_engine_armour.png",
+      "prev": "n2",
+      "inherit": true,
+      "hide": [],
+      "effects": [
+        {"id":"e1","kind":"battle_speed","value":-10,"text":"Скорость барки на поле боя: -10 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":false},
+        {"id":"e2","kind":"missile_resist","value":20,"text":"Защита барки от выстрелов: +20 %","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
+      ],
+      "crew": [],
+      "units": [],
+      "parts": [
+        {"part":"stern_armour"}
+      ],
+      "branch": null,
+      "mod_key": null,
+      "note": "Эти закрылки мы выпиливали в блендере тут мы их воразашаем не нашел их в что появится на коробле\n→ сделано: это снятые с корпуса кормовые доски-руль (деталь чертежа stern_armour, в списке она называлась «Кормовые доски-руль», переименована в «Кормовая броня-руль (закрылки у винта)») — привязана. Название «Броня двигателя», описание, значок; уровень III линейки обшивки.\n→ вопрос: по решению 06.11 эта постройка даёт и манёвренность. Строки манёвренности нет: в игре эффекта на скорость поворота отряда нет, только через свою способность. Добавлять?",
+      "requires": ["n2","airship_hull_5"]
+    },
+    {
+      "id": "mtb_hatches_2",
+      "col": 0,
+      "row": 25,
+      "name": "Зажигательная укладка",
+      "description": "Делящиеся огненные бомбы.",
+      "cost": 4000,
+      "turns": 1,
+      "tier": 4,
+      "icon": "ui/buildings/icons/tww3_mtb_mtb_hatches_3.png",
+      "prev": "mtb_hatches_1",
+      "inherit": true,
+      "hide": [],
+      "effects": [],
+      "crew": [
+        {"group":"bombs","option":"fire"}
+      ],
+      "units": [],
+      "parts": [],
+      "branch": null,
+      "mod_key": "mtb_hatches_2",
+      "note": "",
+      "requires": ["mtb_hatches_1","n5"]
+    },
+    {
+      "id": "n5",
+      "col": -1,
+      "row": 24,
+      "name": "Крюйт-камера",
+      "description": "Пороховой погреб обшит медью, чтобы ни одна искра не высеклась о гвоздь. Свет сюда идёт только через толстое стекло фонаря: без такой камеры огненную смесь под шаром не возят.",
+      "cost": 3500,
+      "turns": 1,
+      "tier": null,
+      "icon": "ui/buildings/icons/tww3_mtb_tree_powder_room.png",
+      "prev": null,
+      "inherit": false,
+      "hide": [],
+      "effects": [],
+      "crew": [
+        {"group":"cupolas","option":"stock"},
+        {"group":"cannons","option":"flaming"},
+        {"group":"cannons","option":"flame"}
+      ],
+      "units": [],
+      "parts": [],
+      "branch": null,
+      "mod_key": null,
+      "note": "→ сделано: описание и значок (пороховой погреб в медной обшивке, фонарь за стеклом). Название твоё.\n→ вопрос: гранаты куполов открывают и она, и «Автоматизированная плавильня» — оставить одной из них?",
+      "requires": ["airship_hull_5","engineering_workshop_3","artillery_workshop_3"]
+    },
+    {
+      "id": "mtb_guns_3",
+      "col": -2,
+      "row": 24,
+      "name": "Палата органных орудий",
+      "description": "Четыре ствола на одном лафете бьют залпом, а заряжает их целая команда. Когда органное орудие заговорит, внизу замолкает всё остальное.",
+      "cost": 5000,
+      "turns": 2,
+      "tier": 5,
+      "icon": "ui/buildings/icons/tww3_mtb_mtb_guns_4.png",
+      "prev": "mtb_guns_2",
+      "inherit": true,
+      "hide": [],
+      "effects": [],
+      "crew": [
+        {"group":"cannons","option":"organ"}
+      ],
+      "units": [],
+      "parts": [],
+      "branch": null,
+      "mod_key": "mtb_guns_3",
+      "note": "",
+      "requires": ["mtb_guns_2","engineering_workshop_3","support_radius_2","artillery_workshop_3"]
     }
   ]
 }

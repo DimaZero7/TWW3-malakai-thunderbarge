@@ -102,6 +102,13 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     const fxCtx = {groups: data.groups, gameEffects: Object.fromEntries((catalog.game_effects || []).map(g => [g.key, g]))};
     const armyUnits = Object.fromEntries((catalog.army_units || []).map(u => [u.key, u]));
     const unitName = k => (armyUnits[k] ? armyUnits[k].name : k);
+    fxCtx.unitName = unitName;          // the names of the units in an army effect's line
+    // the army units the tree opens, by the line that opens them (its first level's id): the addressees an army effect picks from
+    const unitLines = () => {
+        const d = cur(), out = new Map();
+        for (const n of d.nodes) for (const u of n.units || []) { const root = T.lineOf(d, n.id).ids[0]; if (!out.has(root)) out.set(root, []); if (!out.get(root).includes(u)) out.get(root).push(u); }
+        return out;
+    };
     const partsInfo = T.shipParts(blueprint, {...(art.places || {}), ...((data.art && data.art.layers) || {})});
     const partName = k => (partsInfo[k] ? partsInfo[k].name : k);
     const checkCtx = {modKeys, units: unitsOf, unitName, partKnown: k => !!partsInfo[k], partDrawn: k => !!(partsInfo[k] && partsInfo[k].drawn), partName};
@@ -1048,13 +1055,16 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                     goodBtn.textContent = x.good ? 'зелёная' : 'красная';
                 });
                 value.addEventListener('blur', () => { value.value = T.byId(cur(), n.id).effects[i].value; flushField(); });
-                const isCrew = FX.CREW_KINDS.includes(e.kind);
+                const isCrew = FX.CREW_KINDS.includes(e.kind), isArmy = FX.ARMY_KINDS.includes(e.kind), valueless = FX.KINDS[e.kind].valueless;
                 const target = isCrew ? h('select', {'data-field': `fxt_${i}`, title: 'На кого действует', onchange: ev => setFx(i, 'Эффект: на кого', x => { x.target = ev.target.value; })},
-                    ['all', ...FX.SHOOTING(data.groups)].map(t => h('option', {value: t, selected: e.target === t}, t === 'all' ? 'все команды' : data.groups[t].name))) : null;
+                    ['all', ...FX.SHOOTING(data.groups)].map(t => h('option', {value: t, selected: e.target === t}, t === 'all' ? 'все команды' : data.groups[t].name)))
+                    : e.kind === 'ability' ? h('select', {'data-field': `fxt_${i}`, title: 'Какая способность', onchange: ev => setFx(i, 'Эффект: способность', x => { x.target = ev.target.value; })},
+                        Object.entries(FX.ABILITIES).map(([k, a]) => h('option', {value: k, selected: e.target === k}, a.name))) : null;
                 row.append(h('div', {class: 'fxmeta'},
-                    h('span', {class: 'kind', title: FX.labelOf(e, fxCtx)}, isCrew ? FX.KINDS[e.kind].name : FX.labelOf(e, fxCtx)), target, value,
-                    h('span', {class: 'unit'}, FX.KINDS[e.kind].percent || /%\+?n%/.test(((fxCtx.gameEffects[e.effect || (FX.KINDS[e.kind] || {}).game] || {}).text) || '') ? '%' : ''),
+                    h('span', {class: 'kind', title: FX.labelOf(e, fxCtx)}, isCrew || isArmy || e.kind === 'ability' ? FX.KINDS[e.kind].name : FX.labelOf(e, fxCtx)), target, valueless ? null : value,
+                    h('span', {class: 'unit'}, valueless ? '' : FX.KINDS[e.kind].percent || /%\+?n%/.test(((fxCtx.gameEffects[e.effect || (FX.KINDS[e.kind] || {}).game] || {}).text) || '') ? '%' : ''),
                     statusBadge(FX.statusOf(e, fxCtx))));
+                if (isArmy) row.append(armyUnitsEditor(n, i, e, setFx));
             } else {
                 const prop = FX.proposal(e, fxCtx);
                 if (prop && !dismissed(n.id, e.text)) {
@@ -1082,11 +1092,27 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             h('button', {onclick: () => { commit('Новая строка', d => { T.byId(d, n.id).effects.push({text: '', icon: null, good: true}); }); const el = props.querySelector(`[data-field="effect_${n.effects.length}"]`); if (el) el.focus(); }, title: 'Свободная строка текста'}, '+ Строка')));
         return box;
     }
+    // An army effect's addressees: a ready set (the units a line of the tree opens) or units one by one, of those the tree opens; none: the whole army
+    function armyUnitsEditor(n, i, e, setFx) {
+        const lines = unitLines(), all = [...new Set([...lines.values()].flat())];
+        const preset = h('select', {'data-field': `fxu_${i}`, title: 'Готовый набор: отряды, которые открывает линейка дерева', onchange: ev => {
+            const v = ev.target.value;
+            if (v === '') return;
+            setFx(i, 'Эффект: отряды', x => { if (v === '*') { x.units = []; delete x.units_from; } else { x.units = [...lines.get(v)]; x.units_from = v; } });
+        }}, h('option', {value: ''}, e.units_from && lines.has(e.units_from) ? `отряды линейки «${T.label(T.byId(cur(), e.units_from))}»` : 'набор отрядов…'),
+            [...lines.entries()].map(([root, us]) => h('option', {value: root}, `отряды линейки «${T.label(T.byId(cur(), root))}» (${us.length})`)),
+            h('option', {value: '*'}, 'вся армия (без выбора)'));
+        const chips = (e.units || []).map(k => h('span', {class: 'cx-chip army', title: k}, armyUnits[k] ? h('img', {src: url(armyUnits[k].card.picture), alt: ''}) : null, unitName(k),
+            h('button', {class: 'mini', title: 'Убрать отряд', onclick: () => setFx(i, 'Эффект: отряды', x => { x.units = x.units.filter(y => y !== k); delete x.units_from; })}, '×')));
+        const add = h('select', {title: 'Добавить отряд из тех, что открывает дерево', onchange: ev => { const k = ev.target.value; if (k) setFx(i, 'Эффект: отряды', x => { x.units = [...(x.units || []), k]; delete x.units_from; }); }},
+            h('option', {value: ''}, '+ отряд…'), all.filter(k => !(e.units || []).includes(k)).map(k => h('option', {value: k}, unitName(k))));
+        return h('div', {class: 'fxunits'}, h('span', {class: 'kind'}, 'Для отрядов:'), preset, h('div', {class: 'cx-chips'}, chips.length ? chips : h('span', {class: 'help'}, 'вся армия')), add);
+    }
     // The inherited lines of the level below (its full set), each in its place: kept (muted; a number of the catalogue typed in place makes it this
     // level's own, of the same kind and target), changed here (the own line, editable; «вернуть» gives the inherited back), removed on this level
     // (struck; «вернуть»).
     // an effect with a number (a game effect without %n in its text, «Возможность найма героя», has none)
-    const valued = e => e.kind !== 'game' || /%\+?n/.test(((fxCtx.gameEffects[e.effect] || {}).text) || '%n');
+    const valued = e => (e.kind !== 'game' ? !(FX.KINDS[e.kind] || {}).valueless : /%\+?n/.test(((fxCtx.gameEffects[e.effect] || {}).text) || '%n'));
     function inheritedEffects(n, res) {
         const prev = T.byId(cur(), n.prev);
         const box = h('div', {class: 'cx-inherited'}, h('div', {class: 'cx-inh-head'}, `от «${T.label(prev)}» (${T.roman(T.levelOf(cur(), prev.id))})`,
@@ -1242,7 +1268,10 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         const take = (entry, target) => {
             closeModal();
             const n0 = T.byId(cur(), id);
-            const e = entry.kind === 'text' ? {text: '', icon: null, good: true} : FX.newEffect(entry.kind, {target, effect: entry.effect}, fxCtx);
+            // an army effect starts with the units this building's line opens (or the whole army when it opens none)
+            const root = T.lineOf(cur(), id).ids[0], own = unitLines().get(root);
+            const e = entry.kind === 'text' ? {text: '', icon: null, good: true}
+                : FX.newEffect(entry.kind, {target: target || entry.target, effect: entry.effect, ...(FX.ARMY_KINDS.includes(entry.kind) && own ? {units: own, units_from: root} : {})}, fxCtx);
             commit(entry.kind === 'text' ? 'Новая строка' : `Эффект: ${FX.labelOf(e, fxCtx)}`, d => { T.byId(d, id).effects.push(e); });
             const el = props.querySelector(`[data-field="${entry.kind === 'text' ? 'effect' : 'fxv'}_${n0.effects.length}"]`);
             if (el) { el.focus(); if (el.select) el.select(); }
@@ -1253,7 +1282,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const words = q.split(/\s+/).filter(Boolean);
             const hit = x => words.every(w => x.search.includes(w));
             body.innerHTML = '';
-            for (const sec of ['crew', 'ship', 'game', 'text']) {
+            for (const sec of ['crew', 'ship', 'game', 'army', 'text']) {
                 let list = all.filter(x => x.section === sec && hit(x));
                 if (!list.length) continue;
                 body.append(h('h4', {}, FX.SECTIONS[sec] + (sec === 'game' ? ` (${list.length})` : '')));

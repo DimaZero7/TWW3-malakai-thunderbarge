@@ -203,9 +203,9 @@
    "source": "build/solid_hull_porthole/porthole_part"
   },
   "stern_armour": {
-   "name": "Кормовые доски-руль",
+   "name": "Кормовая броня-руль (закрылки у винта)",
    "building": null,
-   "planned": "постройка руля: броня привода и манёвренность; в данных мода её ещё нет",
+   "planned": "«Броня двигателя» дерева построек (web/data/tree_design.json, n4): броня привода и руль; в данных мода её ещё нет",
    "enabled": false,
    "pencil": "stern_armour_pencil",
    "build": "stern_armour_build",
@@ -223,7 +223,7 @@
   "forsage_tank": {
    "name": "Бак «Форсажа» с красным вентилем",
    "building": "engines_2",
-   "planned": "«Форсаж» (engines_2 и engines_3)",
+   "planned": "«Баки форсажа» дерева построек (n3); в моде «Форсаж» пока дают engines_2 и engines_3",
    "enabled": false,
    "pencil": null,
    "build": null,
@@ -261,7 +261,7 @@
   "side_shields": {
    "name": "Круглые щиты на борту",
    "building": null,
-   "planned": "обшивка; в данных мода её ещё нет",
+   "planned": "«Бортовые щиты» дерева построек (n1); в данных мода её ещё нет",
    "enabled": false,
    "pencil": "side_shields_pencil",
    "build": "side_shields_build",
@@ -279,7 +279,7 @@
   "balloon_shields": {
    "name": "Круглые щиты на шаре",
    "building": null,
-   "planned": "обшивка; в данных мода её ещё нет",
+   "planned": "«Щиты на шаре» дерева построек (n2); в данных мода её ещё нет",
    "enabled": false,
    "pencil": null,
    "build": null,

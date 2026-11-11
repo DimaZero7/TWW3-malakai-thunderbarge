@@ -424,20 +424,36 @@ def airship_hull_2(a):
 
 
 def airship_hull_3(a):
-    x0, x1, cy, H = 6, 62, 37, 25
-    a.ink(fins(x1, cy, H))
-    b = hull(x0, x1, cy, H)
-    a.cut(b.buffer(.6))
-    a.ink(b.difference(b.buffer(-2.6)), gap=0)
-    for x in (13, 20.5, 28, 35.5, 43, 50.5):
-        h = hh(x, x0, x1, H)
-        a.ink(L(BEZ((x, cy + h), (x + 1.4, cy + h * .35), (x + 1.4, cy - h * .35), (x, cy - h)), 1.9, cap=FLAT), gap=0)
-    for f in (-.58, .58):
-        a.ink(L(hull_line(x0, x1, cy, H, f, x0 + 3, x1 - 2), 1.5, cap=FLAT), gap=0)
-    plaque = RR(14.5, cy - 9.5, 50.5, cy + 9.5, 3.5)
-    a.ink(plaque)
-    for k, x in (("a", 23), ("b", 32.5), ("c", 42)):
-        a.cut(rune(k, x, cy, 13, 1.75))
+    # A ship's iron frame seen from the side: keel, stem and stern posts, open ribs under a rail, rune plates on the stringer.
+    rail = BEZ((8, 28), (24, 31), (48, 31), (65.6, 25.6))
+    bow = BEZ((8, 28), (8.6, 42), (12.4, 53), (22, 56))
+    keel = [(22, 56), (52, 56)]
+    stern = BEZ((52, 56), (60.6, 56), (65, 46), (65.6, 25.6))
+    shape = Polygon(rail + stern[::-1] + keel[::-1] + bow[::-1]).buffer(0)
+
+    def span(x):
+        seg = LineString([(x, 0), (x, 74)]).intersection(shape)
+        ys = [p[1] for p in seg.coords]
+        return min(ys), max(ys)
+
+    ribs = (15.4, 22.6, 29.8, 37, 44.2, 51.4, 58.6)
+    for x in ribs:
+        y0, y1 = span(x)
+        a.ink(L([(x, y0), (x, y1)], 2.6, cap=FLAT), gap=0)
+    sy = lambda x: span(x)[0] + (span(x)[1] - span(x)[0]) * .45
+    a.ink(L([(x, sy(x)) for x in np.linspace(10.6, 63.6, 40)], 2.0, cap=FLAT), gap=0)
+    a.ink(L(rail, 3.0, cap=FLAT), gap=0)
+    a.ink(L(bow + keel[1:] + stern[1:], 4.2, cap=FLAT, join=1), gap=0)
+    # the stem rises above the rail and the keel runs out into a ram
+    a.ink(L(BEZ((8, 30), (6, 23), (6.8, 18), (10.4, 14.6)), 3.0, cap=FLAT), gap=0)
+    a.ink(L(BEZ((65.6, 27.6), (66.6, 21), (66.2, 17.6), (63.6, 14.6)), 3.0, cap=FLAT), gap=0)
+    a.ink(P((14.6, 54), (5.6, 60.4), (17.4, 59.4)), gap=.6)
+    for k, x in (("a", 22.6), ("b", 37), ("c", 51.4)):
+        y = sy(x)
+        a.ink(RR(x - 5.4, y - 7.4, x + 5.4, y + 7.4, 1.4), gap=.9)
+        a.cut(rune(k, x, y, 9.8, 1.45))
+    a.riv([(x, span(x)[0] + .1) for x in ribs], .7)
+    a.riv([(x, span(x)[1] - .3) for x in ribs[1:-1]], .8)
 
 
 def airship_hull_4(a):
@@ -1179,6 +1195,379 @@ def torpedo_gallery_1(a):
         a.ink(P((x - 3.8, 62.2), (x + 3.8, 62.2), (x + 2.6, 52.6), (x - 2.6, 52.6)), gap=.6)
 
 
+# ---------------------------------------------------------------- workshops of the building tree
+def crossbow(s=1.0):
+    """Crossbow pointing up, the butt at (0, 0): stock, prod across the front, string to the nut."""
+    stock = U([P((-2.6 * s, 0), (2.6 * s, 0), (1.5 * s, -11 * s), (-1.5 * s, -11 * s)), R(-1.3 * s, -33 * s, 1.3 * s, -10 * s),
+               L([(1.2 * s, -14 * s), (3.4 * s, -11.6 * s)], 1.1 * s, cap=FLAT)])
+    prod = L(BEZ((-13 * s, -21 * s), (-8 * s, -29.5 * s), (8 * s, -29.5 * s), (13 * s, -21 * s)), 2.5 * s, cap=ROUND)
+    string = L([(-12.6 * s, -21 * s), (0, -15.5 * s), (12.6 * s, -21 * s)], .95 * s, cap=FLAT, join=2)
+    stirrup = RING(0, -35.4 * s, 2.6 * s, 1.1 * s)
+    return U([stock, prod, string, stirrup])
+
+
+def axe(s=1.0, flip=1):
+    """A dwarf axe standing on its butt at (0, 0), the bearded blade at the top, facing +x when flip is 1."""
+    haft = L([(0, 0), (0, -36 * s)], 2.2 * s, cap=FLAT)
+    blade = Polygon(BEZ((0, -33 * s), (4 * s, -34 * s), (8 * s, -37 * s), (10.5 * s, -40.5 * s)) +
+                    BEZ((10.5 * s, -40.5 * s), (12.6 * s, -33 * s), (12.4 * s, -25 * s), (9.6 * s, -18.5 * s)) +
+                    BEZ((9.6 * s, -18.5 * s), (7.6 * s, -23 * s), (4 * s, -26.5 * s), (0, -27 * s))).buffer(0)
+    back = P((0, -34 * s), (-4.2 * s, -32.4 * s), (-4.2 * s, -28 * s), (0, -27.6 * s))
+    knob = R(-2 * s, -38.4 * s, 2 * s, -35.4 * s)
+    g = U([haft, blade, back, knob, R(-1.8 * s, -1.6 * s, 1.8 * s, 0)])
+    return g if flip > 0 else mir(g, 0)
+
+
+def wrench(x0, y0, x1, y1, w=2.4):
+    """Open-ended spanner from (x0, y0) to the jaw at (x1, y1)."""
+    ln = math.hypot(x1 - x0, y1 - y0)
+    g = U([L([(0, 0), (ln - 2, 0)], w, cap=ROUND), C(ln, 0, w * 1.55)]).difference(R(ln - .4, -w * .55, ln + w * 2, w * .55))
+    g = U([g, C(0, 0, w * .95)]).difference(C(0, 0, w * .38))
+    return mv(rot(g, math.degrees(math.atan2(y1 - y0, x1 - x0)), (0, 0)), x0, y0)
+
+
+def shield(a, x, y, r, t=T1, gap=GAP):
+    """Round shield face-on: rim, boards, iron boss."""
+    a.ink(C(x, y, r), t, gap)
+    a.cut(RING(x, y, r - r * .2, max(r * .11, .85)))
+    a.cut(U([L([(x + dx, y - r * .7), (x + dx, y + r * .7)], .8, cap=FLAT) for dx in (-r * .42, r * .42)]))
+    a.cut(C(x, y, r * .40))
+    a.ink(C(x, y, r * .28), t, gap=0)
+
+
+def ship_side(x0, x1, top, bot):
+    """A hull side seen from abeam: the rail at top, a curved belly, the stem and stern rising at the ends."""
+    xs = np.linspace(x0, x1, 60)
+    belly = [(x, top + (bot - top) * max(0.0, math.sin(math.pi * (x - x0) / (x1 - x0))) ** .45) for x in xs]
+    return Polygon([(x0 - 2, top - 5), (x0 + 3, top)] + [(x1 - 3, top), (x1 + 2, top - 5)] + belly[::-1]).buffer(0)
+
+
+def infantry_workshop_1(a):
+    # A weapon stand: two crossbows leaned together into a pyramid, an axe each side, on a low trestle.
+    a.ink(R(8, 61, 66, 65), gap=.6)
+    a.cut(U([L([(x, 60.5), (x, 65.5)], .9, cap=FLAT) for x in (24, 50)]))
+    for x in (12, 62):
+        a.ink(R(x - 2.2, 65, x + 2.2, 68), gap=.4)
+    a.ink(U([L([(37, 8.6), (16, 61)], 2.2, cap=FLAT), L([(37, 8.6), (58, 61)], 2.2, cap=FLAT), R(20, 41.6, 54, 43.8)]), T2, gap=0)
+    a.ink(mv(axe(.98, 1), 12.6, 60.4), gap=1.1)
+    a.ink(mv(axe(.98, -1), 61.4, 60.4), gap=1.1)
+    a.ink(mv(crossbow(1.0), 37, 60.4), gap=1.2)
+
+
+def infantry_workshop_2(a):
+    # The armoury wall: rifles and crossbows in a rack between pegged rails, chests of more below.
+    a.ink(U([R(7, 7, 10.4, 67), R(63.6, 7, 67, 67)]), gap=.6)
+    a.ink(R(7, 7, 67, 10.6), gap=.6)
+    a.ink(R(7, 45.6, 67, 48.6), gap=.6)
+    a.riv([(8.7, 8.8), (65.3, 8.8), (8.7, 47.1), (65.3, 47.1)], .7)
+    for x in (17, 37, 57):
+        g = rot(sc(rifle_shape(46), .8), -90, (0, 0))
+        a.ink(mv(g, x - 1.6, 45.4), gap=1.0)
+    for x in (27, 47):
+        a.ink(mv(crossbow(.8), x, 45), gap=1.0)
+    a.ink(R(8, 12.6, 66, 13.6), T3, gap=0)
+    crate(a, 11.6, 51.8, 33, 66.6)
+    crate(a, 35, 55, 49, 66.6, brace=False)
+    keg(a, 56.6, 59.4, 11.2, 14.4, staves=2)
+
+
+def engineering_workshop_1(a):
+    # The engineer's bench: a vice on it, a spanner and a drawing with dividers pinned above.
+    sheet = P((33, 7.5), (64.5, 9.5), (63, 34), (34.5, 33))
+    a.ink(sheet, T2, gap=0)
+    a.cut(RING(48.5, 21, 7.6, 1.0))
+    a.cut(U([L([(48.5, 11.5), (48.5, 30.5)], .8, cap=FLAT), L([(37.5, 21), (60, 21)], .8, cap=FLAT)]))
+    # dividers on the drawing
+    a.ink(U([L([(48.5, 9.6), (41.6, 31.6)], 1.7, cap=FLAT), L([(48.5, 9.6), (56.4, 31)], 1.7, cap=FLAT),
+             C(48.5, 9.8, 2.6), R(47.7, 4.8, 49.3, 8)]), gap=.8)
+    a.cut(C(48.5, 9.8, .9))
+    # the spanner hanging on the wall
+    a.ink(wrench(41.6, 36.6, 61, 36.6, 2.3), gap=.9)
+    # the bench
+    a.ink(R(7, 40.4, 67, 45.4))
+    a.cut(U([L([(x, 40), (x, 46)], .9, cap=FLAT) for x in (37,)]))
+    for x in (11.5, 62.5):
+        a.ink(R(x - 2.6, 45.4, x + 2.6, 67.4), gap=.5)
+    a.ink(R(14, 60.4, 60, 63), T2, gap=.4)
+    a.ink(R(40, 45.4, 59.6, 53.6), gap=.5)
+    a.cutl([(46, 49.4), (53.6, 49.4)], 1.2)
+    # the vice
+    a.ink(R(15, 36, 31, 40.4), gap=.5)
+    a.ink(R(16.2, 25.4, 21.6, 36), gap=.5)
+    a.ink(R(24.6, 25.4, 30, 36), gap=.5)
+    a.cut(U([L([(16.2, y), (21.6, y)], .8, cap=FLAT) for y in (27.4, 29.4)] + [L([(24.6, y), (30, y)], .8, cap=FLAT) for y in (27.4, 29.4)]))
+    a.ink(L([(30, 31.2), (36.2, 31.2)], 1.9, cap=FLAT), gap=.5)
+    a.ink(L([(36.2, 25.6), (36.2, 36.8)], 1.7), gap=.4)
+    a.ink(R(21.6, 21.6, 24.6, 29), T2, gap=.3)
+
+
+def gyrocopter(a, cx, cy, s=1.0, t=T1):
+    """Side view, nose to the left: pod, mast, a long rotor, tail boom and pusher screw. (cx, cy) is the pod centre."""
+    def p(x, y):
+        return (cx + x * s, cy + y * s)
+    rotor = L([p(-27, -21), p(27, -21)], 2.6 * s, cap=ROUND)
+    a.ink(rotor, t)
+    a.ink(R(*p(-2.4, -23.4), *p(2.4, -19.6)), t, gap=.6)
+    a.ink(L([p(0, -19), p(1.5, -8)], 2.2 * s, cap=FLAT), t, gap=.6)
+    boom = P(p(6, -4), p(25, -2.6), p(25, 1), p(6, 4))
+    fin = P(p(19, -1), p(22, -11), p(26.6, -11), p(26, 1))
+    a.ink(U([boom, fin]), t)
+    a.ink(R(*p(26.2, -7.4), *p(28.6, 5.4)), t, gap=.6)
+    pod = Polygon(BEZ(p(-15, 1), p(-15, -9), p(-3, -10.5), p(8, -5)) + BEZ(p(8, -5), p(12, -2), p(11, 6), p(4, 7.4)) +
+                  BEZ(p(4, 7.4), p(-4, 9), p(-13, 8), p(-15, 1))).buffer(0)
+    a.ink(pod, t)
+    a.cut(Polygon(BEZ(p(-12, -1), p(-12, -6.6), p(-5, -8), p(-2, -6.4)) + [p(-2, -1)]).buffer(0))
+    a.cutl([p(-14, 3), p(10, 3)], .9)
+    a.ink(U([L([p(-8, 8), p(-10, 13)], 1.6 * s, cap=FLAT), L([p(4, 7), p(6, 13)], 1.6 * s, cap=FLAT),
+             L([p(-15, 13), p(10, 13)], 1.8 * s, cap=ROUND)]), t, gap=.5)
+
+
+def engineering_workshop_2(a):
+    # The engineer's bay packed with flying machines: a gyrocopter on the stand, another hung up behind.
+    a.ink(U([R(7, 7, 10.4, 67), R(63.6, 7, 67, 67), R(7, 7, 67, 10.4)]), gap=.6)
+    gyrocopter(a, 41, 21.5, .62, T2)
+    a.ink(R(38.8, 10.4, 40.6, 11.6), T2, gap=0)
+    gyrocopter(a, 33.5, 44.8, .9)
+    # the stand under it
+    a.ink(R(12, 57.8, 55, 60.6), gap=.6)
+    for x in (18, 49):
+        a.ink(P((x - 3.4, 60.6), (x + 3.4, 60.6), (x + 4.6, 67), (x - 4.6, 67)), gap=.5)
+    a.ink(wrench(59, 66, 59.6, 41, 2.3), gap=.8)
+
+
+def engineering_workshop_3(a):
+    # The assembly line: a belt on rollers carrying the same shell casing three times, gears and an arm above.
+    for gx, gy, r, n in ((19, 15, 9.4, 10), (32.4, 19.4, 6.2, 8)):
+        a.ink(gear(gx, gy, r, teeth=n, th=2.2), T2, gap=.6)
+        a.cut(C(gx, gy, r * .3))
+    a.ink(R(7, 7, 67, 9.8), gap=.6)
+    # the arm: from the rail down, an elbow, a claw over the middle casing
+    a.ink(R(48, 9.8, 54, 13.4), gap=.5)
+    a.ink(L([(51, 13), (58, 23), (46.6, 30.4)], 3.0, cap=FLAT, join=1), gap=.6)
+    a.ink(C(58, 23, 2.6), gap=.4)
+    a.cut(C(58, 23, .9))
+    a.ink(U([L([(46.6, 30.4), (42.6, 33.2), (42.8, 36.4)], 1.6, cap=FLAT), L([(46.6, 30.4), (48.2, 34.6), (47, 37)], 1.6, cap=FLAT)]), gap=.4)
+    for x in (18, 37, 56):
+        s = shell(x, 33 if x != 37 else 38, 50.6, 8.6)
+        a.ink(s, gap=.9)
+        a.cutl([(x - 5, 46.4), (x + 5, 46.4)], .9)
+    # the belt over its rollers
+    belt = RR(7, 51, 67, 59.4, 4.2)
+    a.ink(belt, gap=.9)
+    a.cut(U([RING(x, 55.2, 2.8, .85) for x in (11.2, 20.8, 30.4, 40, 49.6, 59.2)]))
+    for x in (14, 60):
+        a.ink(P((x - 2.6, 59.4), (x + 2.6, 59.4), (x + 3.6, 67), (x - 3.6, 67)), gap=.5)
+    a.ink(R(18, 62.4, 56, 64.6), T2, gap=.4)
+
+
+def anvil(x, y, s=1.0):
+    """Anvil on (x, y) its foot centre, the horn to the left."""
+    def p(dx, dy):
+        return (x + dx * s, y + dy * s)
+    top = Polygon([p(-6, -17)] + BEZ(p(-6, -17), p(-12, -17), p(-17, -16), p(-20, -19.5)) +
+                  BEZ(p(-20, -19.5), p(-17, -12.6), p(-11, -11.6), p(-6, -11.6)) + [p(-5, -9), p(5, -9), p(6, -11.6), p(12, -11.6), p(13, -17)]).buffer(0)
+    waist = P(p(-5, -9.4), p(5, -9.4), p(4, -4.6), p(-4, -4.6))
+    foot = P(p(-4.6, -5), p(4.6, -5), p(9, 0), p(-9, 0))
+    return U([top, waist, foot])
+
+
+def artillery_workshop_1(a):
+    # A small forge: an anvil on its block with the hammer on it, a hearth glowing behind.
+    a.ink(R(7, 62.6, 67, 66.6))
+    a.cut(U([L([(x, 62), (x, 67.2)], .9, cap=FLAT) for x in (22, 52)]))
+    # hearth and hood on the left
+    a.ink(P((12.4, 20), (24.6, 20), (31.4, 34), (5.6, 34)).union(R(15, 6.6, 22, 20.4)), T2, gap=.6)
+    a.ink(R(7, 34, 30, 62.6), gap=.7)
+    a.cut(R(10.4, 37, 26.6, 47.4))
+    a.ink(flame_small(18.5, 47, 13, 13.4), gap=0)
+    a.cut(U([L([(7, y), (30, y)], .9, cap=FLAT) for y in (52.6, 57.6)]))
+    a.cut(U([L([(x, 52.6), (x, 57.6)], .9, cap=FLAT) for x in (14, 23)] + [L([(18.5, 57.6), (18.5, 62.6)], .9, cap=FLAT)]))
+    # the block and the anvil
+    a.ink(P((40, 50.8), (58, 50.8), (59.6, 62.6), (38.4, 62.6)), gap=.7)
+    a.cutl([(41, 55.6), (57, 55.6)], .9)
+    a.ink(anvil(49, 50.8, 1.06), gap=1.0)
+    # the hammer resting across the face
+    hm = U([L([(0, 0), (0, 19)], 2.2, cap=ROUND), R(-5.6, -4, 5.6, 1.6)])
+    a.ink(mv(rot(hm, 40, (0, 0)), 52, 28), gap=1.0)
+
+
+def artillery_workshop_2(a):
+    # Light smelters: a compact furnace, a crucible on a hanger pouring into an ingot mould.
+    a.ink(R(7, 62.6, 67, 66.6))
+    a.cut(U([L([(x, 62), (x, 67.2)], .9, cap=FLAT) for x in (24, 50)]))
+    # furnace
+    a.ink(R(12.6, 6.6, 19, 18), gap=.6)
+    a.ink(P((9, 18), (23, 18), (27, 27), (27, 62.6), (5.6, 62.6), (5.6, 27)).union(R(5.6, 27, 27, 62.6)), gap=.7)
+    a.cut(RR(9.4, 33, 23.2, 48, 5))
+    a.ink(flame_small(16.3, 48, 11, 12.6), gap=0)
+    a.cut(U([L([(5.6, y), (27, y)], .9, cap=FLAT) for y in (52.6, 57.6)]))
+    a.riv([(9, 23.6), (23, 23.6)], .8)
+    # the hanger: post, arm, chain
+    a.ink(R(58.6, 12, 62, 62.6), T2, gap=.5)
+    a.ink(R(33, 10, 64, 13.4), gap=.6)
+    a.ink(L([(56, 13.4), (61, 20)], 1.6, cap=FLAT), T2, gap=0)
+    a.ink(L([(41, 13.4), (41, 20.5)], 1.4, cap=FLAT), gap=.4)
+    # the crucible tipped over the mould
+    cru = U([P((-7.4, -7.4), (7.4, -7.4), (5.4, 6.6), (-5.4, 6.6)), R(-8.6, -8.6, 8.6, -6.4)])
+    yoke = L([(-8.6, -4), (0, -12.4), (8.6, -4)], 1.4, cap=FLAT, join=2)
+    g = mv(rot(U([cru, yoke]), -38, (0, -12.4)), 41, 33)
+    a.ink(g, gap=.9)
+    a.cut(mv(rot(L([(-5.6, -1), (5.6, -1)], .9, cap=FLAT), -38, (0, -12.4)), 41, 33))
+    a.ink(L(BEZ((32.4, 33.2), (30.4, 38), (34, 44), (34.6, 54)), 2.8, cap=ROUND), gap=.7)
+    a.ink(U([C(30.6, 50.4, 1.0), C(38.6, 49.4, .9)]), gap=.3)
+    # the ingot mould
+    a.ink(R(29, 53.2, 55, 62.6), gap=.7)
+    a.cut(U([R(31.6, 55, 39.4, 57.6), R(42.6, 55, 50.4, 57.6)]))
+    a.ink(R(32, 55, 39, 57.6), gap=0)
+
+
+def artillery_workshop_3(a):
+    # The automated smelter: a furnace feeding a steam hammer that strikes by itself, driven by gears and pipes.
+    a.ink(R(7, 62.6, 67, 66.6))
+    a.cut(U([L([(x, 62), (x, 67.2)], .9, cap=FLAT) for x in (24, 50)]))
+    a.ink(R(10, 6.6, 15.6, 22), gap=.6)
+    a.ink(R(6.4, 22, 28, 62.6), gap=.7)
+    a.cut(RR(9.6, 27, 24.8, 42.6, 4.4))
+    a.ink(flame_small(17.2, 42.6, 11.4, 12.4), gap=0)
+    a.cut(U([L([(6.4, y), (28, y)], .9, cap=FLAT) for y in (48, 53, 58)]))
+    # the pipe from the furnace over to the cylinder
+    a.ink(L([(24, 22), (24, 12.4), (49, 12.4), (49, 15.6)], 3.0, cap=FLAT, join=1), gap=.6)
+    a.cutl([(35, 10.4), (35, 14.4)], .9)
+    # the hammer frame: two columns, the cylinder, the ram over an anvil
+    for x in (36, 62):
+        a.ink(R(x - 1.8, 15.6, x + 1.8, 62.6), T2, gap=.5)
+    a.ink(R(33, 15.6, 65, 19.6), gap=.6)
+    a.ink(RR(43.6, 19.6, 54.4, 32, 1.2), gap=.6)
+    a.cut(U([L([(43, y), (55, y)], .9, cap=FLAT) for y in (24, 27.6)]))
+    a.ink(R(47.6, 32, 50.4, 38), gap=.5)
+    a.ink(R(42, 38, 56, 46), gap=.7)
+    a.cutl([(42, 42), (56, 42)], .9)
+    a.ink(R(46, 53.6, 52, 62.6), gap=.6)
+    a.ink(R(41.6, 49.6, 56.4, 53.6), gap=.6)
+    a.ink(R(43.6, 47.6, 54.4, 49.6), T2, gap=.4)
+    # the drive gear on the frame
+    g = gear(31, 50, 7.4, teeth=9, th=2.0)
+    a.ink(g, gap=.8)
+    a.cut(C(31, 50, 2))
+    a.ink(L([(31, 50), (44, 41)], 1.6, cap=FLAT), gap=.4)
+
+
+def side_shields(a):
+    # The hull side abeam with a row of round shields hung along the rail, as on a longship.
+    a.ink(R(36, 7, 38.6, 34), T2, gap=0)
+    a.ink(L([(37.3, 9.4), (13, 33)], 1.0, cap=FLAT), T2, gap=0)
+    a.ink(L([(37.3, 9.4), (61.6, 33)], 1.0, cap=FLAT), T2, gap=0)
+    a.ink(R(26, 13, 48.6, 16), T2, gap=0)
+    hull_g = Polygon(BEZ((7, 33), (9.4, 52), (16, 60), (28, 61)) + [(46, 61)] + BEZ((46, 61), (58, 60), (64.6, 52), (67, 33)) + [(62, 40), (12, 40)]).buffer(0)
+    a.ink(hull_g, gap=.6)
+    a.ink(L(BEZ((7, 35), (6.4, 27), (7.6, 21), (11.6, 19.4)), 3.0, cap=FLAT), gap=.6)
+    a.ink(L(BEZ((67, 35), (67.6, 27), (66.4, 21), (62.4, 19.4)), 3.0, cap=FLAT), gap=.6)
+    a.ink(C(11.6, 19.4, 2.2), gap=.3)
+    a.ink(C(62.4, 19.4, 2.2), gap=.3)
+    for y in (51, 56):
+        a.cut(L([(x, y) for x in np.linspace(4, 70, 20)], .9, cap=FLAT))
+    for x in (17, 27.6, 38.2, 48.8, 59.4):
+        shield(a, x - 1.2, 41.6, 6.8, gap=.9)
+
+
+def balloon_shields(a):
+    # The gas envelope with round armour shields bolted round its side.
+    env = Polygon(ARC(37, 30, 26, 150, 390, 90, ry=23) + BEZ((37 + 26 * math.cos(math.radians(30)), 30 + 23 * .5), (56, 46), (46, 55), (42, 57.6)) +
+                  [(32, 57.6)] + BEZ((32, 57.6), (28, 55), (18, 46), (37 - 26 * math.cos(math.radians(30)), 30 + 23 * .5))).buffer(0)
+    a.ink(env)
+    for dx in (-13, 0, 13):
+        a.cut(L(BEZ((37 + dx * .3, 7.6), (37 + dx * 1.7, 18), (37 + dx * 1.6, 40), (37 + dx * .25, 57)), .9, cap=FLAT))
+    for x, y, r in ((18.4, 31, 6.4), (37, 33.6, 7.4), (55.6, 31, 6.4), (27.4, 16.6, 5.0), (46.6, 16.6, 5.0)):
+        a.cut(C(x, y, r + .9))
+        shield(a, x, y, r, gap=0)
+    a.ink(R(32, 57.6, 42, 60), gap=.4)
+    a.ink(U([L([(33, 60), (26, 66)], 1.2, cap=FLAT), L([(41, 60), (48, 66)], 1.2, cap=FLAT), L([(37, 60), (37, 66)], 1.2, cap=FLAT)]), gap=.3)
+    a.ink(R(22, 65.4, 52, 68), gap=.4)
+
+
+def forsage_tanks(a):
+    # A high-pressure tank on its clamps, a big handwheel valve on top, a gauge, and the pipe off to the engine.
+    tank = RR(7.6, 33, 52, 55.6, 11.3)
+    a.ink(tank, gap=.8)
+    for x in (19, 40.6):
+        a.cut(R(x - 3.4, 32, x + 3.4, 57))
+        a.ink(R(x - 2.4, 31.2, x + 2.4, 57.4), gap=0)
+        a.riv([(x, 34.6), (x, 54)], .7)
+    a.cutl([(12.6, 39.4), (48, 39.4)], .9)
+    for x in (19, 40.6):
+        a.ink(P((x - 5.4, 57.4), (x + 5.4, 57.4), (x + 7, 62.4), (x - 7, 62.4)), gap=.5)
+    a.ink(R(7, 62.4, 67, 66.6))
+    # the valve: stem and a heavy handwheel
+    a.ink(R(27.6, 23, 32.4, 33), gap=.5)
+    a.ink(R(25.4, 25.4, 34.6, 27.6), gap=.3)
+    a.ink(C(30, 15.2, 10.2), gap=.9)
+    a.cut(C(30, 15.2, 7.6))
+    a.ink(U([rot(L([(30, 15.2), (30, 6.2)], 1.8, cap=FLAT), d, (30, 15.2)) for d in (0, 72, 144, 216, 288)]), gap=0)
+    a.ink(C(30, 15.2, 3), gap=.5)
+    a.cut(C(30, 15.2, 1))
+    a.riv([(30 + 8.9 * math.cos(math.radians(d)), 15.2 + 8.9 * math.sin(math.radians(d))) for d in (54, 126, 198, 270, 342)], .55)
+    # the gauge
+    a.ink(R(11.8, 26.6, 14.6, 33), gap=.4)
+    a.ink(C(13.2, 20.4, 6.4), gap=.8)
+    a.cut(C(13.2, 20.4, 4.6))
+    a.ink(L([(13.2, 20.4), (16, 17.2)], 1.2, cap=FLAT), gap=0)
+    a.ink(C(13.2, 20.4, 1.1), gap=0)
+    # the pipe to the engine
+    a.ink(L([(51.6, 44.4), (59.6, 44.4), (59.6, 22)], 3.4, cap=FLAT, join=1), gap=.7)
+    a.cutl([(57.4, 33), (61.8, 33)], .9)
+    g = gear(59.6, 17.6, 7.6, teeth=9, th=2.0)
+    a.ink(g, gap=.8)
+    a.cut(C(59.6, 17.6, 2.2))
+
+
+def engine_armour(a):
+    # The pusher screw astern seen from behind, between two rudder boards shod with iron.
+    cx, cy = 37, 36
+    a.ink(RING(cx, cy, 15.8, 1.4), T2, gap=0)
+    for d in (45, 135, 225, 315):
+        b = rot(mv(sc(blade(40, 19), .44), cx, cy), d, (cx, cy))
+        a.ink(b, gap=1.1)
+    a.ink(C(cx, cy, 5), gap=1.0)
+    a.cut(C(cx, cy, 1.5))
+    a.ink(P((35.4, 41), (38.6, 41), (40.4, 66.6), (33.6, 66.6)), T2, gap=.6)
+    for x0 in (7, 52.6):
+        x1 = x0 + 14.4
+        a.ink(R(x0, 8, x1, 64), gap=1.0)
+        a.cut(U([L([(x0 + 4.8 * i, 7), (x0 + 4.8 * i, 65)], .85, cap=FLAT) for i in (1, 2)]))
+        for y0 in (8, 30.4, 53.4):
+            a.ink(R(x0 - .6, y0, x1 + .6, y0 + 4.6 if y0 != 53.4 else 64), gap=.7)
+            a.riv([(x0 + 3, y0 + 2.3), (x1 - 3, y0 + 2.3)], .72)
+        a.ink(R(x1, cy - 1.6, 31.6, cy + 1.6) if x0 < 30 else R(42.4, cy - 1.6, x0, cy + 1.6), T2, gap=0)
+
+
+def powder_room(a):
+    # The powder room: kegs stacked behind copper sheathing, the lamp shut in a glazed box.
+    a.ink(R(7, 7, 67, 62.6), T3, gap=0)
+    a.cut(U([L([(x, 6), (x, 63)], 1.0, cap=FLAT) for x in (27, 47)] + [L([(6, y), (68, y)], 1.0, cap=FLAT) for y in (26, 45)]))
+    a.riv([(x, y) for x in (9.4, 24.6, 29.4, 44.6) for y in (9.4, 23.6, 28.4, 42.6)], .75)
+    a.ink(R(7, 62.6, 67, 66.6), gap=.6)
+    a.cut(U([L([(x, 62), (x, 67.2)], .9, cap=FLAT) for x in (24, 50)]))
+    keg(a, 18.6, 52.2, 17, 20.2, staves=2)
+    keg(a, 38, 52.2, 17, 20.2, staves=2)
+    # the keg on top marked with fire
+    b = barrel(28.4, 30.6, 18.6, 22.2)
+    a.ink(b, gap=1.1)
+    for dy in (-.36, .36):
+        a.cutl([(18, 30.6 + dy * 22.2), (39, 30.6 + dy * 22.2)], .9)
+    a.cut(flame_small(28.4, 36, 9.4, 10.8))
+    # the lamp in its glass box
+    a.ink(R(55.4, 8, 57.6, 13.6), gap=.4)
+    a.ink(RING(56.5, 8.8, 2.6, 1.0), gap=.3)
+    a.ink(R(48.6, 13.6, 64.4, 17), gap=.6)
+    a.ink(R(48.6, 37, 64.4, 40.4), gap=.6)
+    a.ink(R(48.6, 17, 64.4, 37), gap=0)
+    a.cut(R(51, 17, 62, 37))
+    a.ink(R(56, 17, 57, 21), gap=0)
+    a.ink(teardrop(56.5, 33, 5.2, 10), gap=.7)
+    a.ink(R(54.2, 33, 58.8, 36), gap=0)
+    a.ink(R(55.4, 40.4, 57.6, 62.6), T2, gap=.4)
+
+
 # ---------------------------------------------------------------- the list
 ICONS = [
     ("airship_hull_1", GREY, "Заготовка под корабль", "Фюзеляж", airship_hull_1, False),
@@ -1212,6 +1601,19 @@ ICONS = [
     ("mtb_hatches_3", GREEN, "Зажигательная укладка", "Люки", bomb_bay_3, True),
     ("mtb_harpoon_1", GREEN, "Гарпунная лебёдка", "Гарпун", harpoon_winch_1, True),
     ("mtb_torpedoes_1", GREEN, "Торпедная галерея", "Торпеды", torpedo_gallery_1, True),
+    ("tree_infantry_workshop_1", GREEN, "Склад оружия", "Склад оружия", infantry_workshop_1, True),
+    ("tree_infantry_workshop_2", GREEN, "Оружейный склад", "Склад оружия", infantry_workshop_2, True),
+    ("tree_engineering_workshop_1", GREEN, "Верстак инженера", "Мастерская инженера", engineering_workshop_1, True),
+    ("tree_engineering_workshop_2", GREEN, "Отсек инженера", "Мастерская инженера", engineering_workshop_2, True),
+    ("tree_engineering_workshop_3", GREEN, "Сборочная линия", "Мастерская инженера", engineering_workshop_3, True),
+    ("tree_artillery_workshop_1", GREEN, "Маленькая кузница", "Кузница", artillery_workshop_1, True),
+    ("tree_artillery_workshop_2", GREEN, "Облегчённые плавильни", "Кузница", artillery_workshop_2, True),
+    ("tree_artillery_workshop_3", GREEN, "Автоматизированная плавильня", "Кузница", artillery_workshop_3, True),
+    ("tree_side_shields", GREEN, "Бортовые щиты", "Обшивка", side_shields, True),
+    ("tree_balloon_shields", GREEN, "Щиты на шаре", "Обшивка", balloon_shields, True),
+    ("tree_forsage_tanks", GREEN, "Баки форсажа", "Двигатели", forsage_tanks, True),
+    ("tree_engine_armour", GREEN, "Броня двигателя", "Двигатели", engine_armour, True),
+    ("tree_powder_room", GREEN, "Крюйт-камера", "Пушки", powder_room, True),
 ]
 VANILLA = ["airship_hull", "crew_weapons_training", "support_radius", "engines", "cargo_hold", "beer_hall"]
 

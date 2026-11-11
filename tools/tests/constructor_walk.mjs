@@ -779,13 +779,13 @@ async function walkCaps() {
     await sleep(200);
     let hold = await nodeByName('Трюм');
     let fx = hold.effects[hold.effects.length - 1];
-    check('caps: the ammunition of the riflemen added from the catalogue', fx.kind === 'ammo' && fx.target === 'rifles' && fx.text === 'Боезапас стрелков: +5 %', fx);
+    check('caps: the ammunition of the riflemen added from the catalogue', fx.kind === 'ammo' && fx.target === 'rifles' && fx.text === 'Боезапас стрелков барки: +5 %', fx);
     await b.key('a', 'ctrl'); await b.type('30');
     await sleep(300);
     hold = await nodeByName('Трюм'); fx = hold.effects[hold.effects.length - 1];
-    check('caps: the value typed, the line follows it', fx.value === 30 && fx.text === 'Боезапас стрелков: +30 %', fx);
+    check('caps: the value typed, the line follows it', fx.value === 30 && fx.text === 'Боезапас стрелков барки: +30 %', fx);
     await savedOk();
-    check('caps: the file keeps the effect whole', JSON.stringify({...fileNode('Трюм').effects.slice(-1)[0], id: undefined}) === JSON.stringify({kind: 'ammo', target: 'rifles', value: 30, text: 'Боезапас стрелков: +30 %', icon: fx.icon, good: true}), fileNode('Трюм').effects.slice(-1)[0]);
+    check('caps: the file keeps the effect whole', JSON.stringify({...fileNode('Трюм').effects.slice(-1)[0], id: undefined}) === JSON.stringify({kind: 'ammo', target: 'rifles', value: 30, text: 'Боезапас стрелков барки: +30 %', icon: fx.icon, good: true}), fileNode('Трюм').effects.slice(-1)[0]);
     await b.key('z', 'ctrl'); await sleep(200);
     hold = await nodeByName('Трюм');
     check('caps: Ctrl+Z takes the value back', hold.effects.slice(-1)[0].value === 5, hold.effects.slice(-1)[0]);
@@ -818,6 +818,45 @@ async function walkCaps() {
     await b.key('z', 'ctrl'); await sleep(200);
     sp = (await nodeByName('Трюм')).effects.find(e => e.text === 'Скорость бараки на поле боя -5%');
     check('caps: Ctrl+Z gives the free line back as it was', sp && !sp.kind && sp.good);
+    await savedOk();
+
+    // ---- the audit's kinds (docs/design/tree-audit.md): the barge's protection, an ability, an army effect for the units of a line ----
+    const holdBefore = JSON.stringify(await nodeByName('Трюм'));
+    const fromCatalogue = async (query, rowText) => {
+        await clickText('.cx-props .cx-effects .cx-actions button', '+ Эффект');
+        await b.until('!!document.querySelector(".cx-fxlist")');
+        await b.type(query); await sleep(250);
+        const r = await at(`[...document.querySelectorAll('.cx-fxlist .fxrow.pick')].find(x => x.textContent.includes(${JSON.stringify(rowText)}))`);
+        if (!r) throw new Error('no catalogue row ' + rowText);
+        await b.click(r.x, r.y); await sleep(250);
+        return (await nodeByName('Трюм')).effects.slice(-1)[0];
+    };
+    let ax = await fromCatalogue('защита', 'Защита барки от выстрелов');
+    check('audit: «Защита барки от выстрелов» from the catalogue: green, a percent, «нужна разработка»', ax.kind === 'missile_resist' && ax.good && /^Защита барки от выстрелов: \+5 %$/.test(ax.text), ax);
+    ax = await fromCatalogue('форсаж', 'Форсаж');
+    check('audit: an ability from the catalogue: «Способность «Форсаж»», no number field', ax.kind === 'ability' && ax.target === 'mtb_forsage' && ax.text === 'Способность «Форсаж»'
+        && !(await b.eval(`!![...document.querySelectorAll('.cx-props .cx-effects > .e')].pop().querySelector('input.v')`)), ax);
+    // a unit opened by the hold, then the army effect: its addressee starts as the units of the hold's own line
+    const ub = await at(`[...document.querySelectorAll('.cx-props button')].find(x => x.textContent === 'Выбрать…' && x.nextElementSibling && /Обычные отряды армии/.test(x.nextElementSibling.textContent))`);
+    await b.click(ub.x, ub.y);
+    await b.until('!!document.querySelector(".cx-crewlist")');
+    const qb = await at(`[...document.querySelectorAll('.cx-crewlist label')].find(l => l.title === 'wh_main_dwf_inf_quarrellers_0').querySelector('input')`);
+    await b.click(qb.x, qb.y); await sleep(200);
+    await b.key('Escape'); await sleep(200);
+    ax = await fromCatalogue('восполнения', 'для выбранных отрядов');
+    check('audit: an army effect starts with the units of the building\'s own line, their names in the line', ax.kind === 'army_replenish' && ax.units.join() === 'wh_main_dwf_inf_quarrellers_0' && /для отрядов: Забияки$/.test(ax.text) && ax.units_from === (await nodeByName('Трюм')).id, ax);
+    const rowSel = `[...document.querySelectorAll('.cx-props .cx-effects > .e')].pop()`;
+    check('audit: the army effect shows its units as chips and a ready set «отряды линейки «Трюм»»', await b.eval(`(() => { const r = ${rowSel}; return !!r.querySelector('.fxunits .cx-chip') && /отряды линейки «Трюм»/.test(r.querySelector('.fxunits select').textContent); })()`));
+    const chipX = await at(`${rowSel}.querySelector('.fxunits .cx-chip button')`);
+    await b.click(chipX.x, chipX.y); await sleep(200);
+    ax = (await nodeByName('Трюм')).effects.slice(-1)[0];
+    check('audit: a unit taken off the effect: the whole army, the line says so', !ax.units.length && !ax.units_from && /для всех отрядов армии$/.test(ax.text), ax);
+    await b.shot(join(SHOTS, 'audit_army_effect.png'));
+    // all of it undone: the hold as it was
+    await b.eval(`document.querySelector('.cx-canvas').focus()`);
+    for (let i = 0; i < 8 && JSON.stringify(await nodeByName('Трюм')) !== holdBefore; i++) { await b.key('z', 'ctrl'); await sleep(150); }
+    check('audit: Ctrl+Z takes the audit\'s effects and the unit back', JSON.stringify(await nodeByName('Трюм')) === holdBefore);
+    await clickCanvasEmpty(); await sleep(100); await pick('cargo_hold_1');
     await savedOk();
 
     // ---- in the game: the riflemen's panel counts the hold's ammunition, says where it comes from ----
@@ -1081,7 +1120,7 @@ async function walkChains() {
     await b.click(keep.x, keep.y); await b.key('End'); await b.type(' (свежее)'); await sleep(250); await b.key('Tab'); await sleep(200);
     const full3 = await resolveTexts(vin);
     check('chains: III sees II\'s numbers (+25 %, -20%, 8 barrels) and I\'s line II did not change, as I has it now (live)',
-        full3.includes('Боезапас стрелков: +25 %') && full3.some(x => /Стоимость найма: -20%/.test(x)) && full3.some(x => /: 8$/.test(x)) && full3.some(x => /Содержание.*\(свежее\)/.test(x)), full3);
+        full3.some(x => /^Боезапас стрелков( барки)?: \+25 %$/.test(x)) && full3.some(x => /Стоимость найма: -20%/.test(x)) && full3.some(x => /: 8$/.test(x)) && full3.some(x => /Содержание.*\(свежее\)/.test(x)), full3);
     // a line removed on III and given back
     await selectNode(vin);
     await b.eval(`${inhRow('/Содержание/', ".querySelectorAll('.ebtns button')[1]")}.scrollIntoView({block: 'center'})`);
@@ -1178,7 +1217,7 @@ async function walkChains() {
     const tv = await inSight('Винокурня');
     await b.move(tv.x, tv.y, 4); await sleep(350);
     const info = await infoText();
-    check('chains: game: III\'s window shows the whole set: inherited and own', /Боезапас стрелков: \+25 %/.test(info) && /Стоимость найма: -20%/.test(info) && /: 8/.test(info), info);
+    check('chains: game: III\'s window shows the whole set: inherited and own', /Боезапас стрелков( барки)?: \+25 %/.test(info) && /Стоимость найма: -20%/.test(info) && /: 8/.test(info), info);
     await b.shot(join(SHOTS, 'chain_game_info.png'));
     const lvls = await b.eval(`['Пивной чертог', 'Таверна', 'Винокурня'].map(n => { const v = mtb.panel.view.tree.find(t => t.node.name === n); return v.level ? v.level.path.split('_').pop() : ''; })`);
     check('chains: game: the slots carry the numerals I, II, III', lvls.join() === '1.png,2.png,3.png', lvls);

@@ -169,6 +169,12 @@ body[data-mode="constructor"] #constructor { display: flex; }
 #constructor .cx-effects .fxmeta select { width: auto; flex: 1 1 90px; min-width: 0; padding: 2px 4px; font-size: 13px; }
 #constructor .cx-effects .fxmeta input.v { width: 64px; flex: none; color: var(--cx-text); padding: 2px 5px; }
 .cx-effects .fxmeta .unit { color: var(--cx-dim); font-size: 13px; min-width: 10px; }
+/* an army effect: the units it acts on, a ready set of a line or one by one */
+.cx-effects .fxunits { grid-column: 2; display: flex; gap: 5px; align-items: center; min-width: 0; flex-wrap: wrap; }
+.cx-effects .fxunits .kind { font-size: 12.5px; color: var(--cx-brass-hi); white-space: nowrap; }
+#constructor .cx-effects .fxunits select { width: auto; flex: 1 1 120px; min-width: 0; padding: 2px 4px; font-size: 13px; }
+.cx-effects .fxunits .cx-chips { flex: 1 1 100%; }
+.cx-effects .fxunits .cx-chip img { width: 22px; height: 22px; }
 /* the proposal of a free line: one line under the field across the row */
 .cx-effects .propose { grid-column: 1 / -1; display: flex; gap: 5px; align-items: center; min-width: 0; padding: 2px 4px 2px 8px; background: #2c2a1c;
                        border: 1px dashed #6a6034; border-radius: 3px; }

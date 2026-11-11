@@ -39,3 +39,16 @@
 | `mtb_hatches_3.png` | Зажигательная укладка | Люки | новый |
 | `mtb_harpoon_1.png` | Гарпунная лебёдка | Гарпун | новый |
 | `mtb_torpedoes_1.png` | Торпедная галерея | Торпеды | новый |
+| `tree_infantry_workshop_1.png` | Склад оружия | Склад оружия | новый |
+| `tree_infantry_workshop_2.png` | Оружейный склад | Склад оружия | новый |
+| `tree_engineering_workshop_1.png` | Верстак инженера | Мастерская инженера | новый |
+| `tree_engineering_workshop_2.png` | Отсек инженера | Мастерская инженера | новый |
+| `tree_engineering_workshop_3.png` | Сборочная линия | Мастерская инженера | новый |
+| `tree_artillery_workshop_1.png` | Маленькая кузница | Кузница | новый |
+| `tree_artillery_workshop_2.png` | Облегчённые плавильни | Кузница | новый |
+| `tree_artillery_workshop_3.png` | Автоматизированная плавильня | Кузница | новый |
+| `tree_side_shields.png` | Бортовые щиты | Обшивка | новый |
+| `tree_balloon_shields.png` | Щиты на шаре | Обшивка | новый |
+| `tree_forsage_tanks.png` | Баки форсажа | Двигатели | новый |
+| `tree_engine_armour.png` | Броня двигателя | Двигатели | новый |
+| `tree_powder_room.png` | Крюйт-камера | Пушки | новый |

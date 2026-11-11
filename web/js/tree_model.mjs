@@ -7,8 +7,9 @@
 //   {_about, format: 2, nodes: [node]}
 //   node {id, col, row, name, description, cost, turns, tier, icon, effects: [effect], crew: [{group, option}], units: [unit key], parts: [part],
 //         branch, mod_key, note, requires: [id]}
-//     effects    the green and red lines: {text, icon, good} a free line, or an effect of the catalogue {kind, target, effect, value, text, icon, good,
-//                own_text, own_good} (web/js/effects_model.mjs)
+//     effects    the green and red lines: {text, icon, good} a free line, or an effect of the catalogue {kind, target, effect, units, units_from, value,
+//                text, icon, good, own_text, own_good} (web/js/effects_model.mjs); units: the army units an army effect acts on, units_from: the node
+//                whose line they were taken from; target of an ability: its key
 //     units      the army units of the game the building opens for recruitment (main_units keys, build/web/catalog.json army_units): shown only
 //     parts      what appears on the ship with the building, no hire, no choice: {part: a key of web/data/blueprint.json parts} or a new detail
 //                {part: null, name, zone, what, figures, note} (ZONES, WHAT)
@@ -33,8 +34,8 @@ export const GRID = 106, NODE = 74;
 export const BRANCHES = [null, 'gold', 'blue', 'green', 'red'];
 export const ABOUT = 'The tree of the barge\'s buildings, made in the page\'s constructor (web/js/constructor.js, model web/js/tree_model.mjs). '
     + 'nodes: id; col, row: the place on the game\'s grid (106 px a step, row 0 the lowest, the tree grows up); name, description, cost, turns; '
-    + 'tier: the hull tier needed (null none); icon: pack path; effects: the lines, a free one {text, icon, good} or an effect of the catalogue {kind, target, effect, value, '
-    + 'text, icon, good, own_text, own_good} (web/js/effects_model.mjs); crew: what the building opens in the crew (data/crew_options.json); '
+    + 'tier: the hull tier needed (null none); icon: pack path; effects: the lines, a free one {text, icon, good} or an effect of the catalogue {kind, target, effect, units, units_from, value, '
+    + 'text, icon, good, own_text, own_good} (web/js/effects_model.mjs; units: the army units an army effect acts on, units_from: the node whose line they come from); crew: what the building opens in the crew (data/crew_options.json); '
     + 'units: the army units it opens for recruitment (main_units keys); parts: what appears on the ship with it, {part: a key of web/data/blueprint.json parts} or a new one '
     + '{part: null, name, zone, what, figures, note}; prev: the level it continues in its line (null: none); inherit: it gives all its previous level '
     + 'gives (live), its own lines over it; hide: the inherited things removed on it (an effect "<node>/<effect id>", "crew:<group>:<option>", "unit:<key>", '
@@ -46,8 +47,10 @@ const NODE_KEYS = ['id', 'col', 'row', 'name', 'description', 'cost', 'turns', '
 // a new detail of the ship: where it is and what it is (the constructor's choices)
 export const ZONES = {balloon: 'шар и вороньи гнёзда', deck: 'палуба', side: 'борт', bow: 'нос', stern: 'корма', hold: 'трюм', bottom: 'днище'};
 export const WHAT = {figures: 'фигуры гномов без оружия', item: 'предмет', hull: 'часть корпуса'};
-const EFFECT_KEYS = ['id', 'kind', 'target', 'effect', 'value', 'text', 'icon', 'good', 'own_text', 'own_good', 'replaces'];
-const EFFECT_KINDS = new Set(['ammo', 'accuracy', 'range', 'reload', 'damage', 'battle_speed', 'campaign_movement', 'sight', 'influence', 'game']);
+const EFFECT_KEYS = ['id', 'kind', 'target', 'effect', 'units', 'units_from', 'value', 'text', 'icon', 'good', 'own_text', 'own_good', 'replaces'];
+const ARMY_KINDS = ['army_replenish', 'army_cost', 'army_upkeep'];
+const EFFECT_KINDS = new Set(['ammo', 'accuracy', 'range', 'reload', 'damage', 'battle_speed', 'missile_resist', 'hp', 'morale', 'ability', 'campaign_movement', 'sight', 'influence',
+    ...ARMY_KINDS, 'game']);
 // an effect as read: a free line keeps only its three fields; an effect of the catalogue all of its own, each of its kind
 export function normalizeEffect(e) {
     if (!e || typeof e !== 'object') return null;
@@ -56,6 +59,9 @@ export function normalizeEffect(e) {
     if (!EFFECT_KINDS.has(e.kind)) return tail(base);
     const out = {kind: e.kind};
     if (['ammo', 'accuracy', 'range', 'reload', 'damage'].includes(e.kind)) out.target = e.target ? str(e.target) : 'all';
+    if (e.kind === 'ability') { if (!e.target) return tail(base); out.target = str(e.target); }
+    // an army effect: the units it acts on (main_units keys; none: the whole army) and the line of the tree they were taken from
+    if (ARMY_KINDS.includes(e.kind)) { out.units = [...new Set((Array.isArray(e.units) ? e.units : []).filter(u => typeof u === 'string' && u))]; if (e.units_from) out.units_from = str(e.units_from); }
     if (e.kind === 'game') { if (!e.effect) return tail(base); out.effect = str(e.effect); }
     out.value = Number.isFinite(Number(e.value)) && e.value !== null && e.value !== '' ? Number(e.value) : 0;
     Object.assign(out, base);
@@ -673,7 +679,7 @@ export function canContinue(d, id, prev) {
     return {ok: true};
 }
 // the same effect of the catalogue: its kind and whom it acts on (a free line has none)
-export const effectSig = e => (e && e.kind && EFFECT_KINDS.has(e.kind) ? `${e.kind}|${e.target || ''}|${e.effect || ''}` : null);
+export const effectSig = e => (e && e.kind && EFFECT_KINDS.has(e.kind) ? `${e.kind}|${e.target || ''}|${e.effect || ''}` + (ARMY_KINDS.includes(e.kind) ? `|${[...(e.units || [])].sort().join(',')}` : '') : null);
 const crewKey = c => `crew:${c.group}:${c.option}`, unitKey = u => `unit:${u}`, partKey = p => (p.part ? `part:${p.part}` : `part:new:${p.name}`);
 // What a node gives with its line: its previous level's full set when it inherits (live, along the line), less what it hides, its own over it.
 // An own effect of the catalogue stands for the inherited one of its kind and target, an own free line for the one it replaces; what stands for

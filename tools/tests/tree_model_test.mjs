@@ -215,9 +215,9 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     check('format 1 reads: units and parts empty, the line as it was', r.from === 1 && r.design.format === T.FORMAT && !r.design.nodes[0].units.length && !r.design.nodes[0].parts.length && r.design.nodes[0].effects[0].text === 'Строка');
     // the crew's effects by group
     const ammo = FX.complete({kind: 'ammo', target: 'rifles', value: 25}, ctx);
-    check('ammo of the riflemen: the line after the mod\'s pattern, green', ammo.text === 'Боезапас стрелков: +25 %' && ammo.good, ammo.text);
+    check('ammo of the riflemen: the line after the mod\'s pattern, green', ammo.text === 'Боезапас стрелков барки: +25 %' && ammo.good, ammo.text);
     const all = FX.complete({kind: 'ammo', target: 'all', value: 25}, ctx);
-    check('ammo of every crew', all.text === 'Боезапас каждой команды: +25 %');
+    check('ammo of every crew', all.text === 'Боезапас каждой команды барки: +25 %');
     const reload = FX.complete({kind: 'reload', target: 'cannons', value: -10}, ctx);
     check('a shorter reload is green, a longer one red', reload.good && !FX.complete({kind: 'reload', target: 'cannons', value: 10}, ctx).good);
     const slow = FX.complete({kind: 'battle_speed', value: -5}, ctx);
@@ -240,6 +240,25 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     check('"+10" alone does not read', rec('+10') === '');
     const prop = FX.proposal({text: 'Скорость бараки на поле боя -5%', icon: null, good: true}, ctx);
     check('the proposal keeps the author\'s text and turns it red', prop && prop.effects[0].text === 'Скорость бараки на поле боя -5%' && !prop.effects[0].good && prop.colour === 'станет красной', JSON.stringify(prop));
+    // the barge's own kinds, an ability, the army's chosen units (the audit of the author's tree, docs/design/tree-audit.md)
+    const uctx = {...ctx, unitName: k => (catalog.army_units.find(u => u.key === k) || {}).name || k};
+    check('missile protection of the barge: +10 % green, -5 % red', FX.complete({kind: 'missile_resist', value: 10}, ctx).text === 'Защита барки от выстрелов: +10 %' && !FX.complete({kind: 'missile_resist', value: -5}, ctx).good);
+    check('health of the barge: a number, not a percent', FX.complete({kind: 'hp', value: 1000}, ctx).text === 'Здоровье барки: +1000');
+    check('an ability: no number, its name', FX.complete({kind: 'ability', target: 'mtb_forsage'}, ctx).text === 'Способность «Форсаж»' && FX.statusOf({kind: 'ability', target: 'mtb_forsage'}, ctx)[0] === 'have');
+    const rep = FX.complete({kind: 'army_replenish', value: 1, units: ['wh_main_dwf_inf_quarrellers_0', 'wh_main_dwf_inf_quarrellers_1', 'wh_dlc06_dwf_inf_rangers_0']}, uctx);
+    check('an army effect for chosen units: the names once each, without the variant', rep.text === 'Скорость восполнения потерь: +1% для отрядов: Забияки, Егеря' && rep.good, rep.text);
+    check('an army effect without units is for the whole army; a lower upkeep is green', FX.complete({kind: 'army_upkeep', value: -5, units: []}, uctx).text === 'Содержание: -5% для всех отрядов армии' && FX.complete({kind: 'army_upkeep', value: -5}, uctx).good);
+    check('the catalogue has the ship\'s new kinds and the army section', ['missile_resist', 'hp', 'morale', 'ability'].every(k => FX.catalogue(ctx).some(x => x.kind === k)) && FX.catalogue(ctx).filter(x => x.section === 'army').length === 3);
+    check('"Защита от вытсрелов бараки +5%"', rec('Защита от вытсрелов бараки +5%') === 'missile_resist=5', rec('Защита от вытсрелов бараки +5%'));
+    check('"+1000 единиц здороя бараки"', rec('+1000 единиц здороя бараки') === 'hp=1000', rec('+1000 единиц здороя бараки'));
+    check('"Скорость бараки -10%"', rec('Скорость бараки -10%') === 'battle_speed=-10', rec('Скорость бараки -10%'));
+    check('"Форсаж как сопособность"', rec('Форсаж как сопособность') === 'ability:mtb_forsage=1', rec('Форсаж как сопособность'));
+    check('"Скорость перезрядки для стрелков -5%"', rec('Скорость перезрядки для стрелков -5%') === 'reload:rifles=-5', rec('Скорость перезрядки для стрелков -5%'));
+    check('"Точность -30% от стоковой" has no addressee: not read', rec('Точность -30% от стоковой ') === '', rec('Точность -30% от стоковой '));
+    // the same units in another order are the same effect for the line of levels; other units are another
+    check('the signature of an army effect: its units, in any order', T.effectSig({kind: 'army_replenish', units: ['a', 'b']}) === T.effectSig({kind: 'army_replenish', units: ['b', 'a']}) && T.effectSig({kind: 'army_replenish', units: ['a']}) !== T.effectSig({kind: 'army_replenish', units: ['b']}));
+    const back2 = T.normalize(JSON.parse(T.serialize({nodes: [T.blankNode({id: 'x', name: 'X', cost: 1, effects: [rep, FX.complete({kind: 'ability', target: 'mtb_forsage'}, ctx)]})]}))).design.nodes[0];
+    check('the file keeps an army effect\'s units and an ability\'s key', back2.effects[0].units.length === 3 && back2.effects[0].kind === 'army_replenish' && back2.effects[1].target === 'mtb_forsage', JSON.stringify(back2.effects));
     // the file keeps the structure
     const d = T.emptyDesign();
     const id = T.addNode(d, {name: 'Трюм', cost: 100, effects: [ammo, {text: 'Своя', icon: null, good: false}], units: ['wh_main_dwf_art_cannon'],
