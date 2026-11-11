@@ -5,17 +5,20 @@
 <title>Дух Грунгни: экран корабля</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/css/page.css">
+<link rel="stylesheet" href="/css/constructor.css">
 <script type="importmap">
 {"imports": {"three": "/build/vendor/three/build/three.module.js", "three/addons/": "/build/vendor/three/examples/jsm/"}}
 </script>
 </head>
 <body>
 <header id="bar">
-  <span class="tag">Проверка без игры</span>
-  <span id="turn">Ход 1</span>
-  <button id="end_turn" title="Кнопка игры: конец хода. Постройки идут на ход вперёд">Конец хода</button>
-  <button id="build_to" class="debug" title="Отладка: сразу построить выбранную постройку и всё, что ей нужно, без ходов и золота">Построить до выбранной</button>
-  <span class="debug-gold" title="Отладка: задать золото фракции">Золото:
+  <span id="mode"><button data-mode="constructor" title="Собрать дерево построек: узлы, связи, тексты">Конструктор</button><button data-mode="game" title="Экран корабля: дерево из файла, заказы и ходы">Игра</button></span>
+  <span id="cx_tools"></span>
+  <span class="tag game-only">Проверка без игры</span>
+  <span id="turn" class="game-only">Ход 1</span>
+  <button id="end_turn" class="game-only" title="Кнопка игры: конец хода. Постройки идут на ход вперёд">Конец хода</button>
+  <button id="build_to" class="debug game-only" title="Отладка: сразу построить выбранную постройку и всё, что ей нужно, без ходов и золота">Построить до выбранной</button>
+  <span class="debug-gold game-only" title="Отладка: задать золото фракции">Золото:
     <input id="gold_value" type="number" min="0" step="100">
     <button id="gold_set" class="debug">Задать</button>
     <button class="debug gold_quick" data-gold="0">0</button>
@@ -23,8 +26,8 @@
     <button class="debug gold_quick" data-gold="1000">1000</button>
     <button class="debug gold_quick" data-gold="6000">6000</button>
   </span>
-  <button id="reset_all" class="debug" title="Отладка: забыть сохранённое состояние страницы и начать заново">Сбросить всё</button>
-  <ul id="log"></ul>
+  <button id="reset_all" class="debug game-only" title="Отладка: забыть сохранённое состояние страницы и начать заново">Сбросить всё</button>
+  <ul id="log" class="game-only"></ul>
 </header>
 <main>
   <section id="left"><div id="screen"></div><div id="overview"></div></section>
@@ -42,6 +45,7 @@
     <div id="no_ship" style="display:none"></div>
   </section>
 </main>
+<div id="constructor"></div>
 <script type="module" src="/js/main.js"></script>
 </body>
 </html>

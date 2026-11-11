@@ -657,9 +657,11 @@ def export_overview():
                     "requires": [{"key": n, "name": name_of(n)} for n in need],
                     "effects": effs, "opens": opens, "units": units, "abilities": abilities.get(key, []), "parts": parts_of.get(key, []),
                     "ours": key.removeprefix(prefix).startswith("mtb_")}
+            # only what the player sees counts: the game's hidden effects and the ones the mod switches off are never shown
+            seen = [e for e in effs if not e["hidden"] and not e["off"]]
             for field, bad in (("name", card["name"] is None), ("icon", icon_url is None), ("cost", not card["cost"] and r["level"] > 0),
-                               ("effect text", any(e["text"] is None for e in effs)), ("description", not card["text"]),
-                               ("effect text not in Russian", any(e["text"] and not re.search("[а-яА-Я]", e["text"]) for e in effs))):
+                               ("effect text", any(e["text"] is None for e in seen)), ("description", not card["text"]),
+                               ("effect text not in Russian", any(e["text"] and not re.search("[а-яА-Я]", e["text"]) for e in seen))):
                 if bad:
                     missing.add(field)
             icons.extend(x["icon"] for x in effs if x["icon"])

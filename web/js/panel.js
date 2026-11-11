@@ -3,6 +3,7 @@
 // Reads only the module (web/js/barge_buildings.js); a click calls it, refresh() reads it back.
 
 import {turnsText} from './barge_buildings.js';
+import {linkSegments, slotsBlock, GRID} from './tree_model.mjs';
 
 const LAYOUTS = 'ui/tww3_mtb/';
 const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they would be ui/tww3_mtb/<name>.png like the others
@@ -241,13 +242,21 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view.head = text(column, 'head', 'text_head', 14, 6, column_w - 28, 28, 'Корабль');
     view.about = text(column, 'about', 'text_body', 14, 32, column_w - 28, 40, '');
     // a stage with a tree of buildings (blueprint.json, tree; ?tree=demo the example) shows it instead of rows
-    const treeMode = !!(blueprint.tree || (flags.tree === 'demo' && blueprint.tree_demo));
+    const treeMode = !!(blueprint.tree || data.tree_rows || (flags.tree === 'demo' && blueprint.tree_demo));
     // with the tree at the game's size (slots of 74, 106 from one to the next) the column is tight: the tree starts right under the caption and the note
     // at the foot takes only its three lines
     const rows_top = 80, row_gap = 4, foot_h = treeMode ? 56 : 82;
     const row_h = Math.min(92, Math.floor((scheme_h - rows_top - foot_h - row_gap * (MAX_ROWS - 1) - 8) / MAX_ROWS));
     view.detail_top = rows_top;
-    if (treeMode) {
+    if (treeMode && data.tree_rows) {
+        // the tree of the constructor's file (web/data/tree_design.json): its own places, in a window of the column that pans when the tree is larger
+        const tree_bottom = scheme_h - foot_h - 42 - 30 - 56 - 6;
+        // opened, the tree's window spans the panel from the drawing's left edge to the column's, between the column's head and its commands
+        const wide = {x: sx - cx, y: 40, w: cx - sx + column_w - 14, h: tree_bottom - 40};
+        view.detail_top = rows_top - 8 + makeFileTree(column, view, M, blueprint, flags, 14, rows_top - 8, column_w - 28, tree_bottom - (rows_top - 8), wide) + 6;
+        view.selName = text(column, 'sel_name', 'text_head', 14, 0, column_w - 28, 26, '');
+        view.selMeta = text(column, 'sel_meta', 'text_line', 14, 0, column_w - 28, 20, '');
+    } else if (treeMode) {
         view.detail_top = rows_top - 8 + makeTree(column, view, M, blueprint, flags, 14, rows_top - 8, column_w - 28) + 6;
         view.selName = text(column, 'sel_name', 'text_head', 14, 0, column_w - 28, 26, '');
         view.selMeta = text(column, 'sel_meta', 'text_line', 14, 0, column_w - 28, 20, '');
@@ -279,6 +288,7 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     }
     if (!view.tree) view.selected = view.levels.length ? view.levels[0].key : null;
     if (view.tree && flags.tree === 'demo') view.about.SetStateText('Пример дерева (?tree=demo): узлы и связи придуманы, не из данных.');
+    else if (data.tree_rows) { /* the file's tree wrote its own line (makeFileTree) */ }
     else if (blueprint.caption) view.about.SetStateText(blueprint.caption);
     else if (view.levels.length) view.about.SetStateText(blueprint.first_only && !flags.full ? `Первая постройка линейки пушек: «${view.levels[0].name}».` : 'Линейка пушек: порты, палуба, арсенал, органы.');
 
@@ -353,29 +363,21 @@ function slotUnitCard(parent, id, x, y, uc, colour, outline) {
 //   instruction_window            a window of its own under the first, overlapping it by 8 (the list's spacing 0, -8): tooltip_frame.png, margins 16
 //                                 and 20; body_12, 13 / 10 across, 13 above, 10 below; the reason why the building cannot be built, red
 // The game's window has no cost and no time: they stand by the slot (the cost banner; the turns in the panel's line of the selected building).
-const INFO_W = 400, INFO_EFFECTS = 10, INFO_UNITS = 4;
+// The rows of effects and of the crew are made as many as a building has (none is ever dropped); a window that would be taller than the screen
+// keeps every row and shortens its description, with "…" (the constructor warns of it before: tree_model.mjs, INFO).
+const INFO_W = 400;
 function makeInfoTip(parent, id) {
-    const D = 'ui/skins/default/';
     const tip = make(parent, id, 'tooltip_frame');
     size(tip, INFO_W, 100);
-    const t = {tip, w: INFO_W};
+    const t = {tip, w: INFO_W, effects: [], units: [], id};
     t.title = text(tip, 'dy_title', 'text_info_title', 10, 1 + 2, INFO_W - 20, 38, '');      // 12 above and 8 below the text: its middle 2 under the box's
     t.hbar = make(tip, 'hbar', 'separator_skull');
     size(t.hbar, 380, 14);
     at(t.hbar, 10, 33);
     t.chain = text(tip, 'dy_secondary_title', 'text_info_centre', 8, 39 + 12 - 4, INFO_W - 16, 22, '');   // 30 tall with 12 above and 2 below: 16 left for a line of 22, it sits 4 higher
     t.description = text(tip, 'description_window', 'text_info_italic', 14, 0, INFO_W - 28, 16, '');
-    t.effects = [];
-    for (let i = 0; i < INFO_EFFECTS; i++) {
-        t.effects.push({icon: image(tip, 'effect_icon_' + i, D + 'replenishement_positive.png', 10, 0, 24, 24), text: text(tip, 'effect_' + i, 'text_info', 36, 0, INFO_W - 36 - 8, 16, '')});
-    }
-    t.opensIcon = image(tip, 'effect_icon', D + 'replenishement_positive.png', 10, 0, 24, 24);
+    t.opensIcon = image(tip, 'effect_icon', 'ui/skins/default/replenishement_positive.png', 10, 0, 24, 24);
     t.opensTitle = text(tip, 'tx_enables', 'text_info', 38, 0, INFO_W - 38 - 10, 16, 'Открывает в экипаже:');
-    t.units = [];
-    for (let i = 0; i < INFO_UNITS; i++) {
-        const holder = image(tip, 'unit_cat_frame_' + i, D + 'unit_cat_holder_round.png', 24, 0, 26, 26);
-        t.units.push({holder, icon: image(holder, 'unit_category_icon', D + 'replenishement_positive.png', 2, 2, 22, 22), name: text(tip, 'unit_name_' + i, 'text_info', 52, 0, INFO_W - 52 - 10, 16, '')});
-    }
     t.instruction = make(parent, id + '_instruction', 'tooltip_instruction');
     t.reason = text(t.instruction, 'reason', 'text_info', 13, 13, INFO_W - 23, 16, '');
     tip.SetLayer('hover');
@@ -384,52 +386,81 @@ function makeInfoTip(parent, id) {
     t.instruction.SetVisible(false);
     return t;
 }
+function infoRows(t, effects, units) {
+    const D = 'ui/skins/default/';
+    while (t.effects.length < effects) {
+        const i = t.effects.length;
+        t.effects.push({icon: image(t.tip, 'effect_icon_' + i, D + 'replenishement_positive.png', 10, 0, 24, 24), text: text(t.tip, 'effect_' + i, 'text_info', 36, 0, INFO_W - 36 - 8, 16, '')});
+    }
+    while (t.units.length < units) {
+        const i = t.units.length;
+        const holder = image(t.tip, 'unit_cat_frame_' + i, D + 'unit_cat_holder_round.png', 24, 0, 26, 26);
+        t.units.push({holder, icon: image(holder, 'unit_category_icon', D + 'replenishement_positive.png', 2, 2, 22, 22), name: text(t.tip, 'unit_name_' + i, 'text_info', 52, 0, INFO_W - 52 - 10, 16, '')});
+    }
+}
 
 // Fills the window and stacks its blocks as the template's lists do. content: {title, chain, description, effects: [{icon, text, good}],
-// opens: [{category, text}], reason}. Returns the height of the whole (with the instruction window).
+// opens: [{category, text}], reason, maxH}. Returns the height of the whole (with the instruction window).
 function fillInfoTip(t, content) {
     const tall = c => c.TextDimensions()[1];
     const put = (c, x, y) => { at(c, x, y); size(c, c.Width(), Math.max(22, tall(c))); };
+    const effects = content.effects || [], opens = content.opens || [];
+    infoRows(t, effects.length, opens.length);
     t.title.SetStateText(content.title || '');
     t.chain.SetStateText(content.chain || '');
-    let y = 39 + 30;
-    t.description.SetStateText(content.description || '');
-    t.description.SetVisible(!!content.description);
-    if (content.description) {
-        put(t.description, 14, y + 20);
-        y += Math.max(52, 20 + tall(t.description) + 16);
+    t.reason.SetStateText(content.reason ? `[[col:game_red]]${content.reason}[[/col]]` : '');
+    const reasonH = content.reason ? 13 + Math.max(22, tall(t.reason)) + 10 - 8 : 0;
+    const layout = desc => {
+        let y = 39 + 30;
+        t.description.SetStateText(desc);
+        t.description.SetVisible(!!desc);
+        if (desc) {
+            put(t.description, 14, y + 20);
+            y += Math.max(52, 20 + tall(t.description) + 16);
+        }
+        t.effects.forEach((row, i) => {
+            const e = effects[i];
+            row.icon.SetVisible(!!e); row.text.SetVisible(!!e);
+            if (!e) return;
+            row.icon.SetImagePath(e.icon || 'ui/skins/default/replenishement_positive.png', 0);
+            row.text.SetStateText(`[[col:${e.good === false ? 'game_red' : 'game_green'}]]${e.text}[[/col]]`);
+            at(row.icon, 10, y);
+            put(row.text, 36, y + 6);
+            y += Math.max(30, 6 + tall(row.text) + 8);
+        });
+        t.opensIcon.SetVisible(!!opens.length); t.opensTitle.SetVisible(!!opens.length);
+        if (opens.length) {
+            at(t.opensIcon, 10, y);
+            put(t.opensTitle, 38, y + 6);
+            y += 24;
+        }
+        t.units.forEach((row, i) => {
+            const o = opens[i];
+            row.holder.SetVisible(!!o); row.name.SetVisible(!!o);
+            if (!o) return;
+            if (o.category) row.icon.SetImagePath(o.category, 0);
+            row.name.SetStateText(o.text);
+            at(row.holder, 24, y + 4);
+            put(row.name, 52, y + 11);
+            y += Math.max(50, 11 + tall(row.name) + 4);
+        });
+        return y + 17;
+    };
+    const full = content.description || '';
+    let y = layout(full);
+    t.cut = false;
+    if (content.maxH && y + reasonH > content.maxH && full) {
+        // the longest start of the description, cut at a word, that lets the window fit
+        let lo = 0, hi = full.length;
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            if (layout(full.slice(0, mid).replace(/\s+\S*$/, '') + '…') + reasonH <= content.maxH) lo = mid; else hi = mid - 1;
+        }
+        y = layout(lo ? full.slice(0, lo).replace(/\s+\S*$/, '') + '…' : '');
+        t.cut = true;
     }
-    t.effects.forEach((row, i) => {
-        const e = (content.effects || [])[i];
-        row.icon.SetVisible(!!e); row.text.SetVisible(!!e);
-        if (!e) return;
-        if (e.icon) row.icon.SetImagePath(e.icon, 0);
-        row.text.SetStateText(`[[col:${e.good === false ? 'game_red' : 'game_green'}]]${e.text}[[/col]]`);
-        at(row.icon, 10, y);
-        put(row.text, 36, y + 6);
-        y += Math.max(30, 6 + tall(row.text) + 8);
-    });
-    const opens = content.opens || [];
-    t.opensIcon.SetVisible(!!opens.length); t.opensTitle.SetVisible(!!opens.length);
-    if (opens.length) {
-        at(t.opensIcon, 10, y);
-        put(t.opensTitle, 38, y + 6);
-        y += 24;
-    }
-    t.units.forEach((row, i) => {
-        const o = opens[i];
-        row.holder.SetVisible(!!o); row.name.SetVisible(!!o);
-        if (!o) return;
-        if (o.category) row.icon.SetImagePath(o.category, 0);
-        row.name.SetStateText(o.text);
-        at(row.holder, 24, y + 4);
-        put(row.name, 52, y + 11);
-        y += Math.max(50, 11 + tall(row.name) + 4);
-    });
-    y += 17;
     size(t.tip, t.w, y);
     t.h = y;
-    t.reason.SetStateText(content.reason ? `[[col:game_red]]${content.reason}[[/col]]` : '');
     t.has_reason = !!content.reason;
     t.reason_h = 0;
     if (content.reason) {
@@ -758,6 +789,182 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
     return height + 20;      // the cost banner under the lowest row
 }
 
+// The tree of the constructor's file: every node at its own place (col, row of the game's grid of 106, the tree growing up), the lines of
+// tree_model.mjs linkSegments (the same as the constructor draws), the small crew cards of what each node opens. The column is narrow: the tree
+// lies in a window that pans by dragging (and by the wheel) when it is larger; "Всё" shows the whole of it smaller, "1:1" back to the game's
+// size. Nothing of the slot changes its size at 1:1.
+function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide) {
+    const rows = view.data.tree_rows;
+    const D = 'ui/skins/default/';
+    const win = make(parent, 'tree_window', 'tree_window');
+    size(win, w, h);
+    at(win, x, y);
+    const holder = make(win, 'tree_holder', 'tree_holder');
+    const pan = view.pan = {x: 0, y: 0, z: 1, win, holder};
+    const c0 = rows.length ? Math.min(...rows.map(r => r.col)) : 0, r1 = rows.length ? Math.max(...rows.map(r => r.row)) : 0;
+    const pos = {};
+    // 24 above the highest row for the crew cards (22 over the slot), 8 on the left; the holder's (0, 0) is the content's corner
+    for (const r of rows) pos[r.key] = {x: 8 + (r.col - c0) * GRID, y: 24 + (r1 - r.row) * GRID};
+    const cw = rows.length ? Math.max(...Object.values(pos).map(p => p.x)) + NODE + 17 + 8 : 0;
+    const ch = rows.length ? Math.max(...Object.values(pos).map(p => p.y)) + NODE + 22 + 4 : 0;
+    size(holder, Math.max(1, cw), Math.max(1, ch));
+    pan.cw = cw; pan.ch = ch; pan.w = w; pan.h = h;
+    let seg = 0;
+    const line = (x0, y0, x1, y1, colour) => image(holder, `tree_line_${seg++}`, WEB_ART + (colour ? `tree_line_${colour}.png` : 'tree_line.png'),
+        Math.min(x0, x1) - LINE / 2, Math.min(y0, y1) - LINE / 2, Math.abs(x1 - x0) + LINE, Math.abs(y1 - y0) + LINE);
+    const blocked = slotsBlock(Object.values(pos));
+    for (const r of rows) for (const p of r.requires) {
+        if (!pos[p]) continue;
+        for (const [x0, y0, x1, y1] of linkSegments(pos[p], pos[r.key], blocked)) line(x0, y0, x1, y1, r.branch);
+    }
+    const nodes = rows.map(r => ({key: r.key, name: r.name, icon: r.icon_path, needs: r.requires, branch: r.branch ? {colour: r.branch} : null, row: r}));
+    view.tree = nodes.map((n, i) => {
+        const {x: nx, y: ny} = pos[n.key];
+        const b = image(holder, TREE + i, D + 'building_frame.png', nx, ny, NODE, NODE);
+        b.SetInteractive(true);
+        const v = {node: n, button: b};
+        v.icon = image(b, 'icon', n.icon || D + 'icon_check.png', 0, 0, NODE, NODE);
+        v.plain = image(b, 'plain', n.branch ? WEB_ART + `branch_frame_${n.branch.colour}.png` : D + 'building_frame_plain.png', 0, 0, NODE, NODE);
+        v.branch = n.branch;
+        v.frameSelected = image(b, 'selected', n.branch ? WEB_ART + `branch_frame_${n.branch.colour}_selected.png` : D + 'building_frame_selected.png', 0, 0, NODE, NODE);
+        v.constructing = image(b, 'constructing', D + 'constructing_1.png', 6, 6, NODE - 12, NODE - 12);
+        v.constructing.SetImageColour(255, 255, 255, 0x64);
+        v.check = image(b, 'check', D + 'icon_check_green.png', 44, 48, 31, 28);
+        v.padlock = image(b, 'padlock', D + 'padlock.png', NODE - 24, 2, 20, 25);
+        v.hover = image(b, 'hover', D + 'building_frame_hover.png', -NODE * 8 / 74, -NODE * 8 / 74, NODE * 90 / 74, NODE * 90 / 74);
+        v.hoverSelected = image(b, 'hover_selected', D + 'building_frame_selected_hover.png', 0, 0, NODE, NODE);
+        v.hoverSelected.SetVisible(false);
+        b.SetHoverChild(v.hover);
+        b.SetHoverBrighten(0.4);
+        v.turnsBanner = image(b, 'turns_banner', D + 'turns_banner_queued.png', -6, NODE - 16, NODE + 12, 20);
+        v.turns = text(b, 'turns', 'text_line', 20, NODE - 16, NODE - 14, 20, '');
+        v.cost = image(holder, TREE + 'cost_' + i, D + 'icon_banner_bg.png', nx + 3, ny + NODE + 2, 62, 18);
+        v.costRed = image(v.cost, 'red', D + 'red_text_banner_shadow.png', 0, 0, 62, 18);
+        image(v.cost, 'coins', D + 'icon_treasury.png', 4, 1, 16, 16);
+        v.costText = text(v.cost, 'value', 'text_line', 22, -1, 40, 20, '');
+        v.info = makeInfoTip(parent.parent, 'building_information_' + i);
+        b.AddHoverChild(v.info.tip);
+        return v;
+    });
+    view.wipe = 1;
+    setInterval(() => {
+        view.wipe = view.wipe % 12 + 1;
+        for (const v of view.tree || []) if (v.constructing.Visible()) v.constructing.SetImagePath(D + `constructing_${view.wipe}.png`, 0);
+    }, 120);
+    // the crew each node opens, as the game's small unit cards by its slot (see makeTree): what has a unit card and is not the group's mount
+    view.crew = [];
+    const frame = parent.parent;
+    const clips = Object.fromEntries((blueprint.crew_cards || []).map(c => [c.group + ':' + c.option, c]));
+    for (const v of view.tree) {
+        const list = v.node.row.unlocks.map(u => ({...u, group_data: view.data.groups[u.group]})).map(u => ({...u, option_data: u.group_data && u.group_data.options[u.option]}))
+            .filter(u => u.option_data && u.option_data.unit_card && u.option !== u.group_data.mount);
+        list.forEach((u, i) => {
+            const row_w = CARD_W + (list.length - 1) * (CARD_W - CARD_OVERLAP);
+            const cx = v.button.x + NODE + 17 - row_w + i * (CARD_W - CARD_OVERLAP), cy = v.button.y - 22;
+            const card = slotUnitCard(holder, `mtb_crew_card_${v.node.row.short}_${u.option}`, cx, cy, u.option_data.unit_card, u.group_data.card_frame || 'gold', flags.aboard === 'outline');
+            const waiting = image(card, 'waiting', D + 'icon_hourglass.png', CARD_W - 15, CARD_H - 17, 16, 16);
+            const standing = image(card, 'standing', D + 'icon_check_green.png', CARD_W - 16, CARD_H - 15, 17, 15);
+            const clip = clips[u.group + ':' + u.option] || {};
+            const info = unitInfo(frame, `crew_info_${v.node.row.short}_${u.option}`, {option: u.option_data, group_data: u.group_data, movie: clip.movie || u.option + '_demo', text: clip.text || u.option_data.about || ''}, flags);
+            info.hook(card);
+            view.crew.push({card, info, tip: info.panel, building: v.node.key, group: u.group, option: u.option, waiting, standing, v, cardY: cy});
+        });
+    }
+    // "Всё" / "1:1": the whole tree smaller, or the game's size; shown only when the tree is larger than its window
+    // in the column's head row, right of its title: never over the tree
+    const fitBtn = makeButton(parent, 'mtb_tree_fit', x + w - 64, 4, 64, 26, 'Всё');
+    pan.fitBtn = fitBtn;
+    pan.fits = cw <= w && ch <= h;
+    fitBtn.button.SetVisible(!pan.fits);
+    // «Развернуть дерево»: the window opens over the drawing, across the whole panel, at the game's size; «Свернуть» back into the column
+    const openBtn = makeButton(parent, 'mtb_tree_expand', x + w - 64 - 8 - 150, 4, 150, 26, 'Развернуть дерево');
+    openBtn.button.SetVisible(!pan.fits);
+    openBtn.button.SetTooltipText('Дерево поверх чертежа на всю панель, в игровом размере', true);
+    pan.open = false;
+    pan.expand = () => {
+        pan.open = !pan.open;
+        const r = pan.open ? wide : {x, y, w, h};
+        size(win, r.w, r.h); at(win, r.x, r.y);
+        pan.w = r.w; pan.h = r.h;
+        win.el.classList.toggle('open', pan.open);
+        openBtn.label.SetStateText(pan.open ? 'Свернуть дерево' : 'Развернуть дерево');
+        pan.fits = cw <= pan.w && ch <= pan.h;
+        fitBtn.button.SetVisible(!pan.fits || pan.z < 1);
+        pan.home();
+    };
+    fitBtn.button.SetTooltipText('Показать всё дерево или вернуть игровой размер. Дерево двигается перетаскиванием и колесом мыши', true);
+    pan.clamp = () => {
+        const sw = cw * pan.z, sh = ch * pan.z, W = pan.w, H = pan.h;
+        pan.x = sw <= W ? (W - sw) / 2 : Math.min(0, Math.max(W - sw, pan.x));
+        pan.y = sh <= H ? 0 : Math.min(0, Math.max(H - sh, pan.y));
+        holder.el.style.transformOrigin = '0 0';
+        holder.el.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${pan.z})`;
+        placeTips(view);
+    };
+    pan.home = () => {
+        // the root's end in sight: the lowest row at the window's foot, the lowest node (the root) in the middle across
+        pan.z = 1;
+        const low = rows.length ? rows.reduce((m, r) => (r.row < m.row ? r : m), rows[0]) : null;
+        pan.x = low ? pan.w / 2 - (pos[low.key].x + NODE / 2) : (pan.w - cw) / 2;
+        pan.y = pan.h - ch;
+        pan.clamp();
+        fitBtn.label.SetStateText('Всё');
+    };
+    pan.toggle = () => {
+        if (pan.z < 1) { pan.home(); return; }
+        pan.z = Math.min(1, pan.w / cw, pan.h / ch);
+        pan.x = 0; pan.y = 0;
+        pan.clamp();
+        fitBtn.label.SetStateText('1:1');
+    };
+    // drag to pan; a drag is not a click on what it started on
+    let drag = null, dragged = false;
+    win.el.addEventListener('mousedown', e => { if (e.button === 0 && !pan.fits) { drag = {x: e.clientX, y: e.clientY, px: pan.x, py: pan.y}; dragged = false; } });
+    window.addEventListener('mousemove', e => {
+        if (!drag) return;
+        if (!(e.buttons & 1)) { drag = null; win.el.style.cursor = ''; return; }
+        const k = win.el.getBoundingClientRect().width / pan.w || 1;
+        const dx = (e.clientX - drag.x) / k, dy = (e.clientY - drag.y) / k;
+        if (!dragged && Math.hypot(dx, dy) < 4) return;
+        dragged = true;
+        win.el.style.cursor = 'grabbing';
+        pan.x = drag.px + dx; pan.y = drag.py + dy;
+        pan.clamp();
+    });
+    window.addEventListener('mouseup', () => { drag = null; win.el.style.cursor = ''; });
+    // the end of a drag: not a click on the node it began on (the capture stops it before the node's own handler, and the window's listener too)
+    win.el.addEventListener('mouseup', e => { if (dragged) e.stopPropagation(); drag = null; dragged = false; win.el.style.cursor = ''; }, true);
+    win.el.addEventListener('wheel', e => {
+        if (pan.fits) return;
+        e.preventDefault();
+        pan.y -= e.deltaY; pan.x -= e.deltaX;
+        pan.clamp();
+    }, {passive: false});
+    pan.home();
+    view.selected = nodes.length ? nodes[0].key : null;
+    view.about.SetStateText(`Построек: ${rows.length}.`);
+    return h;
+}
+
+// Where a node's slot is on the panel's frame, through the tree's window (its pan and zoom): for the windows shown beside it.
+function slotOnFrame(view, v) {
+    const p = view.pan, col = p.win.parent;
+    return {x: col.x + p.win.x + p.x + v.button.x * p.z, y: col.y + p.win.y + p.y + v.button.y * p.z, k: p.z};
+}
+
+// the crew cards' panels of the file's tree: left of the tree's window, level with the card, inside the screen
+function placeTips(view) {
+    for (const c of view.crew || []) {
+        if (!c.v || !c.info.total) continue;
+        const s = slotOnFrame(view, c.v), frame = c.info.panel.parent;
+        const cy = s.y + (c.cardY - c.v.button.y + CARD_H / 2) * s.k;
+        // left of the tree's window; with the window opened over the drawing, right of the card
+        let px = view.pan.win.parent.x + view.pan.win.x - 10 - UNIT_INFO_W;
+        if (px < 4) px = Math.min(frame.Width() - 8 - UNIT_INFO_W, s.x + (c.card.x - c.v.button.x + CARD_W + 10) * s.k);
+        c.info.place(px, Math.max(70, Math.min(cy - c.info.total / 2, frame.Height() - 8 - c.info.total)));
+    }
+}
+
 function nodeStatus(M, n) {
     return n.demo ? {state: 'demo'} : M.status(n.key);
 }
@@ -767,6 +974,20 @@ function nodeStatus(M, n) {
 //   normal    can be ordered, or ordered: colour #FFFFFFB4 (a little see-through); the game also pulses it (glow_pulse_t0), not done here;
 //   greyed    needs an earlier building: greyscale and #FFFFFF80 (half see-through);
 //   short of gold: the slot as normal, the cost banner red (building_cost, state red). Which slot state the horde's tree takes then is to check in the game.
+// The building window of a node of the file: its own name, text, lines and crew; the chain's name of the mod for a node of the mod.
+function fileInfo(view, row, card, reason) {
+    const D = 'ui/skins/default/';
+    return {
+        title: row.name, chain: (card && card.chain_title) || '', description: row.text,
+        effects: (row.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good})),
+        opens: row.unlocks.map(u => ({g: view.data.groups[u.group], u})).filter(({g, u}) => g && g.options[u.option] && g.options[u.option].unit_card && u.option !== g.mount).map(({g, u}) => {
+            const o = g.options[u.option], money = [o.hire ? `найм ${o.hire}` : '', o.upkeep ? `содержание ${o.upkeep} за ход` : ''].filter(Boolean).join(', ');
+            return {category: o.unit_card.category, text: o.name + (money ? ` (${money})` : '')};
+        }),
+        reason,
+    };
+}
+
 function refreshTree(view, M) {
     // the small unit cards: their marks and their panels (left of the tree's leftmost slot, level with the card, inside the screen)
     for (const c of view.crew || []) {
@@ -775,9 +996,11 @@ function refreshTree(view, M) {
         c.waiting.SetVisible(M.crew_order(c.group) === c.option);
         c.standing.SetVisible(M.crew(c.group) === c.option && M.crew_order(c.group) !== c.option);
         c.info.set(unitDyn(M, view.data, c.group, c.option, o));
+        if (c.v) continue;          // the file's tree: placeTips, through the window's pan
         const frame = c.info.panel.parent;
         c.info.place(c.x, Math.max(70, Math.min(c.cy - c.info.total / 2, frame.Height() - 8 - c.info.total)));      // under the screen's title
     }
+    if (view.pan) placeTips(view);
     for (const v of view.tree) {
         const st = nodeStatus(M, v.node);
         const poor = st.state === 'locked' && st.poor;
@@ -811,7 +1034,8 @@ function refreshTree(view, M) {
         const card = view.cards[v.node.key];
         const opens = ((card && card.opens) || []).filter(o => o.panel !== false && !o.mount);
         const reason = st.state === 'locked' ? (poor ? `Не хватает золота: нужно ${row.cost}.` : (st.why || 'Недоступно') + '.') : '';
-        fillInfoTip(v.info, {
+        if (v.node.row) fillInfoTip(v.info, {...fileInfo(view, v.node.row, card, reason), maxH: v.info.tip.parent.parent.Height() - 8});
+        else fillInfoTip(v.info, {
             title: v.node.name, chain: (card && card.chain_title) || '', description: firstPart(row.text || (card && card.text)),
             // a line of the mod that only names what the crew block below shows is not repeated
             effects: (card ? card.effects.filter(e => !e.hidden && !e.off && !opens.some(o => (e.text || '').includes(o.name))) : row.lines.map(l => ({text: l})))
@@ -825,10 +1049,11 @@ function refreshTree(view, M) {
         // Beside the slot as the game puts it (docs/feedback/01-building-tooltip.png): right of the slot and of its unit cards (17 beyond the slot), the
         // lower edge 28 under the slot's; on the left of the slot when the screen ends, and kept inside the screen. Offsets from the panel's frame.
         const frame = v.info.tip.parent, col = v.button.parent, root = frame.parent;
-        const sx = col.x + v.button.x, sy = col.y + v.button.y;
-        let x = sx + NODE + 17;
+        const on = view.pan ? slotOnFrame(view, v) : {x: col.x + v.button.x, y: col.y + v.button.y, k: 1};
+        const sx = on.x, sy = on.y;
+        let x = sx + (NODE + 17) * on.k;
         if (frame.x + x + INFO_W > root.Width() - 4) x = sx - 8 - INFO_W;
-        let y = Math.max(4 - frame.y, Math.min(root.Height() - 4 - frame.y, sy + NODE + 28) - v.info.h);
+        let y = Math.max(4 - frame.y, Math.min(root.Height() - 4 - frame.y, sy + (NODE + 28) * on.k) - v.info.h);
         // an open choice of the crew: the window goes above it when there is room (it is over the choice in any case, by its layer)
         const pk = view.crewArea && view.crewArea.open ? view.crewArea.pick : null;
         if (pk) {
@@ -1110,6 +1335,10 @@ function click(view, M, c) {
         // the window's own backing
     } else if (id === 'scheme') {
         if (view.crewArea) view.crewArea.open = false;
+    } else if (id === 'mtb_tree_expand') {
+        if (view.pan) view.pan.expand();
+    } else if (id === 'mtb_tree_fit') {
+        if (view.pan) view.pan.toggle();
     } else if (id.startsWith(TREE)) {
         const v = view.tree[Number(id.slice(TREE.length))];
         if (v) view.selected = v.node.key;

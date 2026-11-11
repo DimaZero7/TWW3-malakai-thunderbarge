@@ -15,8 +15,11 @@ export function makeBuildings(data, game, parts) {
     const levels = {};
     for (const row of data.hull) levels[row.key] = row;
     for (const chain of data.chains) for (const row of chain.levels) levels[row.key] = row;
+    // the hull's levels and their tier: the hull chain's level n is tier n + 1; a tree of the constructor (web/js/tree_model.mjs, gameData) names
+    // its hull nodes itself (hull_tiers: key -> tier)
+    const hullTier = data.hull_tiers || Object.fromEntries(data.hull.map(row => [row.key, row.level + 1]));
     const hullByTier = {};
-    for (const row of data.hull) hullByTier[row.level + 1] = row;     // the hull chain's level n is the tree's row n + 1
+    for (const [key, tier] of Object.entries(hullTier)) hullByTier[tier] ||= levels[key];
 
     let message = null;     // the last thing that happened, for the panel's line of news
     const changed = [];
@@ -29,7 +32,7 @@ export function makeBuildings(data, game, parts) {
     M.chain = key => (key === 'hull' || (data.hull[0] && key === data.hull[0].chain) ? hullChain : data.chains.find(c => c.key === key));
     M.hull_tier = () => {
         let tier = 0;
-        for (const row of data.hull) if (game.has_building(row.key)) tier = Math.max(tier, row.level + 1);
+        for (const [key, t] of Object.entries(hullTier)) if (game.has_building(key)) tier = Math.max(tier, t);
         return tier;
     };
 
@@ -41,7 +44,7 @@ export function makeBuildings(data, game, parts) {
         const turns = game.under_construction(row.key);
         if (turns !== null) return {state: 'building', turns};
         // the hull's own levels need only the level below them (checked next); a side chain needs the hull's tier
-        if (row.chain !== hullChain.levels[0].chain && row.tier > M.hull_tier()) return {state: 'locked', why: `Нужен корпус «${hullByTier[row.tier].name}»`};
+        if (!(row.key in hullTier) && row.tier > M.hull_tier()) return {state: 'locked', why: hullByTier[row.tier] ? `Нужен корпус «${hullByTier[row.tier].name}»` : `Нужен корпус яруса ${row.tier}`};
         const chain = M.chain(row.chain);
         if (chain) {
             const below = chain.levels.find(l => l.level === row.level - 1);
@@ -49,9 +52,9 @@ export function makeBuildings(data, game, parts) {
             const busy = chain.levels.find(l => game.under_construction(l.key) !== null);
             if (busy) return {state: 'locked', why: `Уже строится «${busy.name}»`};
         }
-        for (const need of row.requires) {
-            if (!game.has_building(need)) return {state: 'locked', why: `Нужна постройка «${M.level(need) ? M.level(need).name : need.slice(prefix.length)}»`};
-        }
+        // every building it requires (a node of the tree may have several parents): all that are missing are named
+        const missing = row.requires.filter(need => !game.has_building(need)).map(need => `«${M.level(need) ? M.level(need).name : need.slice(prefix.length)}»`);
+        if (missing.length) return {state: 'locked', why: missing.length === 1 ? `Нужна постройка ${missing[0]}` : `Нужны постройки ${missing.join(', ')}`, missing: row.requires.filter(need => !game.has_building(need))};
         for (const need of M.extra_requires[row.key] || []) {
             if (!game.has_building(need)) return {state: 'locked', why: `Нужен: ${M.level(need) ? M.level(need).name : need.slice(prefix.length)}`};
         }
@@ -176,18 +179,22 @@ export function makeBuildings(data, game, parts) {
     // taken always is the hire of the order that waits.
     // GAME: tww3_mtb_crew.choose(group, option) / .get() / .orders() / .unlocked(); the treasury through cm:treasury_mod.
     const crew = {};            // group -> {standing, order: null | {option, paid}} (crew_model.mjs)
-    const openedBy = {};        // group -> option -> the building level that opens it
-    for (const row of Object.values(levels)) for (const u of row.unlocks || []) (openedBy[u.group] ||= {})[u.option] = row;
+    // group -> option -> the building levels that open it (a tree of the constructor may give one kind to several buildings: any of them opens it)
+    const openers = {};
+    for (const row of Object.values(levels)) for (const u of row.unlocks || []) ((openers[u.group] ||= {})[u.option] ||= []).push(row);
+    const cheap = r => r.tier * 100000 + r.cost;
+    // the one to name: a standing one, else the cheapest
+    const opener = (g, o) => { const list = (openers[g] || {})[o]; return list ? list.find(r => game.has_building(r.key)) || [...list].sort((a, b) => cheap(a) - cheap(b))[0] : null; };
     const stateOf = g => crew[g] || {standing: data.groups[g].start, order: null};
     const ctxOf = g => ({start: data.groups[g].start, gold: game.treasury(), hire: o => (data.groups[g].options[o] || {}).hire || 0,
-                         unlocked: o => o === data.groups[g].start || (!!(openedBy[g] || {})[o] && game.has_building(openedBy[g][o].key))});
+                         unlocked: o => o === data.groups[g].start || ((openers[g] || {})[o] || []).some(r => game.has_building(r.key))});
     M.crew = group => stateOf(group).standing;
     M.crew_order = group => (stateOf(group).order ? stateOf(group).order.option : null);
     M.crew_options = group => {
         const g = data.groups[group], ctx = ctxOf(group);
-        const rank = k => { const b = (openedBy[group] || {})[k]; return b ? b.tier * 100000 + b.cost : 0; };
-        return Object.entries(g.options).filter(([k, o]) => !o.hidden && (k === g.start || (openedBy[group] || {})[k]))
-            .map(([key, o], i) => ({key, i, ...o, empty: key === g.start, building: (openedBy[group] || {})[key] || null, unlocked: ctx.unlocked(key)}))
+        const rank = k => { const b = opener(group, k); return b ? cheap(b) : 0; };
+        return Object.entries(g.options).filter(([k, o]) => !o.hidden && (k === g.start || opener(group, k)))
+            .map(([key, o], i) => ({key, i, ...o, empty: key === g.start, building: opener(group, key), unlocked: ctx.unlocked(key)}))
             .sort((a, b) => (a.empty ? -1 : b.empty ? 1 : rank(a.key) - rank(b.key) || a.i - b.i));
     };
     const upkeepOf = (g, o) => (data.groups[g].options[o] || {}).upkeep || 0;
@@ -198,7 +205,7 @@ export function makeBuildings(data, game, parts) {
     const nameOf = (g, o) => (o === data.groups[g].start ? 'пустые борта' : `«${data.groups[g].options[o].name}»`);
     const sayResult = (g, r, done) => {
         const n = nameOf(g, r.option), start = data.groups[g].start;
-        if (r.kind === 'locked') return {bad: true, text: `Заперто: ${n} откроет постройка «${openedBy[g][r.option].name}»`};
+        if (r.kind === 'locked') return {bad: true, text: `Заперто: ${n} откроет постройка «${opener(g, r.option).name}»`};
         if (r.kind === 'poor') return {bad: true, text: `Не хватает золота на ${n}: найм ${r.hire}, есть ${r.have}`};
         if (r.kind === 'kept') return {text: r.why === 'ordered' ? (r.option === start ? 'Экипаж уже сходит в начале хода' : `${n} уже в найме`) : r.option === start ? 'У бортов никого' : `${n} уже у бортов`};
         const back = r.back ? `, вернулось ${r.back}` : '', willBack = r.back ? `, вернётся ${r.back}` : '';

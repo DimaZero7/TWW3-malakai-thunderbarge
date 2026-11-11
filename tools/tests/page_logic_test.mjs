@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {GameSim} from '../../web/js/game_sim.js';
 import {makeBuildings} from '../../web/js/barge_buildings.js';
+import * as T from '../../web/js/tree_model.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const json = p => JSON.parse(readFileSync(join(root, p), 'utf-8'));
@@ -90,6 +91,50 @@ const cost = (M, k) => M.level(k).cost;
     check('all the rifle crews count 11', kinds.every(([, o]) => o.unit_card.men === 11), kinds.map(([k, o]) => k + ':' + o.unit_card.men).join(' '));
     check('hire and upkeep are multiples of ten', kinds.every(([, o]) => o.hire % 10 === 0 && o.upkeep % 10 === 0));
     check('every kind has its weapon numbers', kinds.every(([, o]) => o.numbers && o.numbers.range > 0 && o.numbers.ammo > 0));
+}
+// 4. the tree of the constructor's file (web/data/tree_design.json, tree_model.mjs gameData): the start file, then a tree with a node of two parents,
+// new buildings that the mod does not have, and a crew opened by a node of the file
+{
+    const start = T.normalize(json('web/data/tree_design.json')).design;
+    const gd = T.gameData(start, data);
+    const game = new GameSim(gd, {...sim, gold: 6000, built: [], demolish: stage.demolish_mode});
+    const M = makeBuildings(gd, game, stage.parts);
+    const P = data.prefix;
+    check('file: the beer hall needs the hull 2 (tier and link)', M.status(P + 'beer_hall_1').state === 'locked');
+    M.debug_build_to(P + 'crew_weapons_1');
+    check('file: built up to the dummies, the parts of the drawing found by key', M.stage('pub') === 'ink' && M.stage('barge') === 'ink' && M.stage('frame') === 'ink');
+    check('file: the dummies open the crossbows', M.set_crew('rifles', 'quarrellers').kind === 'ordered');
+
+    const d = T.normalize(start).design;
+    const hall = d.nodes.find(n => n.mod_key === 'beer_hall_1').id, hull2 = d.nodes.find(n => n.mod_key === 'airship_hull_2').id;
+    const a = T.addNode(d, {name: 'Кузня', cost: 1000, turns: 2, col: 3, row: 2, crew: []});
+    const b = T.addNode(d, {name: 'Пороховой склад', cost: 800, turns: 1, col: 1, row: 4, crew: [{group: 'rifles', option: 'thunderers'}]});
+    T.addEdge(d, hull2, a); T.addEdge(d, hall, b); T.addEdge(d, a, b);
+    const g2 = T.gameData(d, data);
+    const game2 = new GameSim(g2, {...sim, gold: 20000, built: [], demolish: stage.demolish_mode});
+    const M2 = makeBuildings(g2, game2, stage.parts);
+    const K = id => g2.key_of[id];
+    let ledger = 20000;
+    const build = id => { const r = M2.order(K(id)); if (r.ok) ledger -= M2.level(K(id)).cost; for (let i = 0; i < M2.level(K(id)).turns; i++) game2.end_turn(); return r.ok; };
+    for (const id of [d.nodes[0].id, hull2]) build(id);
+    const s0 = M2.status(K(b));
+    check('two parents: locked while both are missing, both named', s0.state === 'locked' && /Кузня/.test(s0.why) && /Пивной/.test(s0.why), s0.why);
+    check('a new building (not in the mod) can be ordered', M2.status(K(a)).state === 'open' && build(a) && M2.status(K(a)).state === 'built');
+    const s1 = M2.status(K(b));
+    check('two parents: one stands, the other is named', s1.state === 'locked' && /Пивной/.test(s1.why) && !/Кузня/.test(s1.why), s1.why);
+    check('thunderers locked before the node that opens them', M2.set_crew('rifles', 'thunderers').kind === 'locked');
+    check('beer hall built', build(hall));
+    check('two parents: open once both stand', M2.status(K(b)).state === 'open');
+    check('order, cancel gives the price back', M2.order(K(b)).ok && M2.cancel(K(b)).ok && game2.treasury() === ledger);
+    game2.gold = 100;
+    check('short of gold: locked with the price', M2.status(K(b)).state === 'locked' && M2.status(K(b)).poor);
+    game2.gold = ledger;
+    check('the two-parent node built', build(b) && M2.status(K(b)).state === 'built');
+    check('a crew opened by a node of the file', M2.set_crew('rifles', 'thunderers').kind === 'ordered');
+    check('a parent cannot go while the child stands', !M2.can_demolish(K(a)).ok && !M2.can_demolish(K(hall)).ok);
+    check('the child demolished, then the parent', M2.demolish(K(b)).ok && M2.demolish(K(a)).ok);
+    check('the order of the crew came back with the child gone', M2.crew_order('rifles') === null);
+    check('treasury matches the ledger', game2.treasury() === ledger, `${game2.treasury()} vs ${ledger}`);
 }
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);
