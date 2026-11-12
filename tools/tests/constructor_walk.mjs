@@ -798,7 +798,7 @@ async function walkCaps() {
     await sleep(200);
     await b.key('Enter'); await sleep(250);
     hold = await nodeByName('Трюм');
-    check('caps: Enter in the search takes the first: a game effect with the game\'s text', hold.effects.slice(-1)[0].kind === 'game' && /Стоимость найма/.test(hold.effects.slice(-1)[0].text) && !(await b.eval('!!document.querySelector(".cx-shade")')), hold.effects.slice(-1)[0]);
+    check('caps: Enter in the search takes the first: a game effect with the game\'s text', ['game', 'horde_cost'].includes(hold.effects.slice(-1)[0].kind) && /Стоимость найма/.test(hold.effects.slice(-1)[0].text) && !(await b.eval('!!document.querySelector(".cx-shade")')), hold.effects.slice(-1)[0]);
     await clickText('.cx-props .cx-effects .cx-actions button', '+ Эффект');
     await b.until('!!document.querySelector(".cx-fxlist")');
     await b.key('ArrowDown'); await b.key('ArrowDown');
@@ -1075,7 +1075,7 @@ async function walkChains() {
     const make = await at(`[...document.querySelectorAll('.cx-props .cx-effects > .e')].find(e => /Стоимость найма/.test(e.querySelector('input') ? e.querySelector('input').value : '')).querySelector('.propose button')`);
     await b.click(make.x, make.y); await sleep(200);
     const bh = await node('beer_hall_1');
-    check('chains: I: ammunition of the riflemen +10 and the recruitment cost an effect of the catalogue', bh.effects.some(e => e.kind === 'ammo' && e.value === 10) && bh.effects.some(e => e.kind === 'game' && /recruitment_cost/.test(e.effect)), bh.effects.map(e => e.kind || 'text'));
+    check('chains: I: ammunition of the riflemen +10 and the recruitment cost an effect of the catalogue', bh.effects.some(e => e.kind === 'ammo' && e.value === 10) && bh.effects.some(e => e.kind === 'horde_cost' || (e.kind === 'game' && /recruitment_cost/.test(e.effect))), bh.effects.map(e => e.kind || 'text'));
     // II and III by «+ Следующий уровень»
     await btnIn('.cx-props .cx-line button', '+ Следующий уровень');
     await b.type('Таверна'); await sleep(250);
@@ -1097,7 +1097,7 @@ async function walkChains() {
     await b.click(q2.x, q2.y); await b.key('a', 'ctrl'); await b.type('-20'); await sleep(250);
     await b.key('Tab'); await sleep(250);
     t = await node(tav);
-    check('chains: II: two numbers typed in the inherited lines: own effects of the same kind, nothing doubled', t.effects.length === 2 && t.effects.some(e => e.kind === 'ammo' && e.value === 25) && t.effects.some(e => e.kind === 'game' && e.value === -20), t.effects);
+    check('chains: II: two numbers typed in the inherited lines: own effects of the same kind, nothing doubled', t.effects.length === 2 && t.effects.some(e => e.kind === 'ammo' && e.value === 25) && t.effects.some(e => ['game', 'horde_cost'].includes(e.kind) && e.value === -20), t.effects);
     await b.eval(`document.querySelector('.cx-canvas').focus()`);
     await b.key('z', 'ctrl'); await sleep(250);
     check('chains: Ctrl+Z takes the last number back: the inherited line acts again', (await node(tav)).effects.length === 1, (await node(tav)).effects);

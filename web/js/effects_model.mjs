@@ -73,13 +73,19 @@ export const KINDS = {
                 sample: 'wh2_main_effect_resource_recruitment_cost_reduction_dwf_quarreler_ranger_grudge_boltthrower'},
     army_upkeep: {section: 'army', name: 'Содержание', percent: true, positiveGood: false, icon: GI + 'military_spending.png', bonus: 'upkeep_mod',
                   sample: 'wh2_main_effect_resource_upkeep_cost_reduction_dwf_quarreler_ranger_grudge_boltthrower'},
+    // the recruitment into the barge's own army: the horde's slots of recruitment («Резерв найма орды», for the dwarfs «Резерв найма команд воздушного
+    // корабля»), the units its buildings allow (building_units_allowed). The game's own effect of the Spirit of Grungni's beer hall, scope force_to_force_own
+    horde_cost: {section: 'horde', name: 'Стоимость найма в барке', game: 'wh_main_effect_force_all_campaign_recruitment_cost', scope: 'force_to_force_own',
+                 status: () => ['have', 'эффект игры wh_main_effect_force_all_campaign_recruitment_cost с областью force_to_force_own, как у ванильного «Пивного чертога» I–II: скидка на найм в эту армию — '
+                     + 'в слоты найма орды, из отрядов, которые разрешают её постройки (building_units_allowed). Не фракция и не провинция. Текст строки — игры: «Стоимость найма: %+n%»']},
     game: {section: 'game', name: 'Эффект игры'},
 };
 export const CREW_KINDS = ['ammo', 'accuracy', 'range', 'reload', 'damage'];
 export const SHIP_KINDS = ['battle_speed', 'missile_resist', 'hp', 'morale', 'ability', 'campaign_movement', 'sight', 'influence'];
 export const ARMY_KINDS = ['army_replenish', 'army_cost', 'army_upkeep'];
+export const HORDE_KINDS = ['horde_cost'];
 for (const k of ARMY_KINDS) KINDS[k].status = () => ['dev', `в игре есть: bonus_value ${KINDS[k].bonus} на набор отрядов (образец ${KINDS[k].sample}). Нужен свой набор из выбранных отрядов (unit_sets, unit_set_to_unit_junctions), эффект на него (effect_bonus_value_ids_unit_sets) и строка постройки`];
-export const SECTIONS = {crew: 'Экипаж', ship: 'Корабль', army: 'Армия: выбранные отряды', game: 'Игра', text: 'Своя строка'};
+export const SECTIONS = {crew: 'Экипаж', ship: 'Корабль', horde: 'Найм в барке', army: 'Армия: выбранные отряды', game: 'Игра', text: 'Своя строка'};
 // the abilities a building can open: the mod's own (data/crew_options.json, abilities; ctx.abilities over them)
 export const ABILITIES = {mtb_forsage: {name: 'Форсаж', mod: true}};
 const abilityOf = (t, ctx = {}) => ({...(ABILITIES[t] || {name: t || '…', mod: false}), ...((ctx.abilities || {})[t] || {})});
@@ -201,11 +207,15 @@ export function catalogue(ctx = {}) {
         const e = {kind, value: kind === 'hp' ? 500 : 5};
         out.push({section: 'ship', kind, title: KINDS[kind].name, sub: KINDS[kind].game ? 'эффект игры' : 'барка в бою', icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx)});
     }
+    for (const kind of HORDE_KINDS) {
+        const e = {kind, value: -10};
+        out.push({section: 'horde', kind, title: KINDS[kind].name, sub: 'эффект игры, своя армия-орда', icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx)});
+    }
     for (const kind of ARMY_KINDS) {
         const e = {kind, units: [], value: KINDS[kind].positiveGood ? 5 : -10};
         out.push({section: 'army', kind, title: KINDS[kind].name, sub: 'для выбранных отрядов', icon: iconOf(e, ctx), status: statusOf(e, ctx), sample: makeText(e, ctx).replace('для всех отрядов армии', 'для выбранных отрядов')});
     }
-    const shipKeys = new Set(SHIP_KINDS.map(k => KINDS[k].game).filter(Boolean));
+    const shipKeys = new Set([...SHIP_KINDS, ...HORDE_KINDS].map(k => KINDS[k].game).filter(Boolean));
     for (const g of Object.values(ctx.gameEffects || {})) {
         if (shipKeys.has(g.key)) continue;
         const e = {kind: 'game', effect: g.key, value: g.values && g.values.length ? g.values[Math.floor(g.values.length / 2)] : 1};
@@ -260,8 +270,8 @@ export function recognize(text, ctx = {}) {
         const m = re.exec(s.replace(/−/g, '-'));
         if (!m) continue;
         const value = m[1] !== undefined ? Number(m[1].replace(',', '.').replace('−', '-')) : (g.values && g.values[0]) ?? 1;
-        return [complete({kind: g.key === KINDS.campaign_movement.game ? 'campaign_movement' : g.key === KINDS.sight.game ? 'sight' : g.key === KINDS.influence.game ? 'influence' : 'game',
-                          effect: g.key, value}, ctx)];
+        const own = [...SHIP_KINDS, ...HORDE_KINDS].find(k => KINDS[k].game === g.key);
+        return [complete({kind: own || 'game', effect: g.key, value}, ctx)];
     }
     return [];
 }

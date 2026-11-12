@@ -60,7 +60,7 @@ line('airship_hull_5', 'e3', {kind: 'missile_resist', value: 15});
 note('airship_hull_3', '→ сделано: значок перерисован — металлический каркас с открытыми рёбрами и рунными пластинами (tools/draw_building_icons.py, airship_hull_3). Каркас теперь наследует строки «Прочного корпуса»: резерв найма +1 не пропадает между I и IV.');
 
 // ---- the beer hall ----
-line('beer_hall_1', 'e1', G(GAME.cost, -10));
+line('beer_hall_1', 'e1', {kind: 'horde_cost', value: -10});
 line('beer_hall_1', 'e2', G(GAME.upkeep, -5));
 line('beer_hall_1', 'e3', G(GAME.beer, 5));
 drop('beer_hall_1', 'e4');                            // «Открывает цепочку экипажа»: a line of the mod's old tree, the crew block says it now
@@ -71,11 +71,11 @@ note('beer_hall_1', '→ сделано: «Возможность найма» �
     + '«Столовая» теперь наследует строки чертога — возможность и численность не пропадают на II и III. Итог при всём дереве: 1 (чертог) + 2 (корпус IV–V) = 3 драконоборца, в стоке 2.\n'
     + '→ вопрос: «Дисциплина барки максимальная» записана как «Боевой дух барки» (в игре величины «дисциплина» нет). Если имелось в виду другое — скажи.');
 N('beer_hall_2').inherit = true;
-line('beer_hall_2', 'e1', G(GAME.cost, -15));
+line('beer_hall_2', 'e1', {kind: 'horde_cost', value: -15});
 line('beer_hall_2', 'e2', G(GAME.upkeep, -7));
 line('beer_hall_2', 'e3', G(GAME.beer, 10));
 line('beer_hall_2', 'e4', {kind: 'morale', value: 15});
-line('beer_hall_3', 'e1', G(GAME.cost, -30));
+line('beer_hall_3', 'e1', {kind: 'horde_cost', value: -30});
 line('beer_hall_3', 'e2', G(GAME.upkeep, -25));
 line('beer_hall_3', 'e4', {kind: 'morale', value: 30});
 note('beer_hall_3', '«Содержание: -25% (для армии героя)» → эффект игры wh_main_effect_force_all_campaign_upkeep, область force_to_force_own: это и есть армия Малакая.');
@@ -99,12 +99,12 @@ note('crew_weapons_3', '«Точность орудий +30% (нивелируе
 
 // ---- the weapon stores: replenishment of the shooters of the dummies' line only (the author's note) ----
 const dummyUnits = N('crew_weapons_1').units;               // crossbows: Забияки, Егеря (no gunpowder in this store)
-line('infantry_workshop_1', 'e1', G(GAME.cost, -10));
+line('infantry_workshop_1', 'e1', {kind: 'horde_cost', value: -10});
 line('infantry_workshop_1', 'e2', {kind: 'army_replenish', units: [...dummyUnits], value: 1, own_text: true, text: 'Скорость восполнения потерь: +1% для забияк и егерей'});
 note('infantry_workshop_1', '→ сделано: строка — эффект «Скорость восполнения потерь» с адресатом «выбранные отряды»: Забияки и Егеря (обе версии), их открывает «Манекен для учебной стрельбы». '
     + 'Пираты и громобои не входят. В игре так делается эффектом на набор отрядов (bonus_value replenishment_percentage_bonus, образец wh3_dlc25_effect_force_replenishment_rate_dwf_arty_warmachines); в моде нужна разработка: свой набор отрядов и эффект на него.');
 const lineUnits = [...new Set([...N('crew_weapons_1').units, ...N('crew_weapons_2').units, ...N('crew_weapons_3').units])];
-line('infantry_workshop_2', 'e1', G(GAME.cost, -15));
+line('infantry_workshop_2', 'e1', {kind: 'horde_cost', value: -15});
 line('infantry_workshop_2', 'e2', {kind: 'army_replenish', units: lineUnits, units_from: 'crew_weapons_1', value: 2, own_text: true, text: 'Скорость восполнения потерь: +2% для забияк, егерей, громобоев и злопыхателей'});
 note('infantry_workshop_2', '«Скорость восполнения потерь: +2% (по аналогии с прошлой, только адаптировано под будущих стрелков этой ветки)» → эффект на отряды линейки «Манекен для учебной стрельбы»: '
     + 'арбалетчики первого склада и громобои со злопыхателями «Тира».\n→ вопрос: на втором складе огнестрел уже есть? Если нет — оставить только Забияк и Егерей (тогда +2% заменит +1% тем же отрядам).');

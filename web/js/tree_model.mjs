@@ -50,7 +50,7 @@ export const WHAT = {figures: 'фигуры гномов без оружия', i
 const EFFECT_KEYS = ['id', 'kind', 'target', 'effect', 'units', 'units_from', 'value', 'text', 'icon', 'good', 'own_text', 'own_good', 'replaces'];
 const ARMY_KINDS = ['army_replenish', 'army_cost', 'army_upkeep'];
 const EFFECT_KINDS = new Set(['ammo', 'accuracy', 'range', 'reload', 'damage', 'battle_speed', 'missile_resist', 'hp', 'morale', 'ability', 'campaign_movement', 'sight', 'influence',
-    ...ARMY_KINDS, 'game']);
+    'horde_cost', ...ARMY_KINDS, 'game']);
 // an effect as read: a free line keeps only its three fields; an effect of the catalogue all of its own, each of its kind
 export function normalizeEffect(e) {
     if (!e || typeof e !== 'object') return null;

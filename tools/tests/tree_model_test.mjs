@@ -235,7 +235,12 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     check('"Даотность пермешения пок арте компании +20%"', rec('Даотность пермешения пок арте компании +20%') === 'campaign_movement=20', rec('Даотность пермешения пок арте компании +20%'));
     check('"Скорость на карте кмопании -5% скорость"', rec('Скорость на карте кмопании -5% скорость') === 'campaign_movement=-5');
     check('"Обзор на карте кампании: +5%"', rec('Обзор на карте кампании: +5%') === 'sight=5');
-    check('"Стоимость найма: -10%" by the game\'s template', rec('Стоимость найма: -10%') === 'game:wh_main_effect_force_all_campaign_recruitment_cost=-10', rec('Стоимость найма: -10%'));
+    check('"Стоимость найма: -10%" by the game\'s template: the recruitment into the barge (the beer hall\'s own effect, force_to_force_own)', rec('Стоимость найма: -10%') === 'horde_cost=-10', rec('Стоимость найма: -10%'));
+    const hc = FX.complete({kind: 'horde_cost', value: -15}, ctx);
+    check('the recruitment into the barge: the game\'s text and icon, green, the game\'s own key and scope, «есть в моде»', hc.text === 'Стоимость найма: -15%' && hc.good && /treasury/.test(hc.icon)
+        && FX.KINDS.horde_cost.game === 'wh_main_effect_force_all_campaign_recruitment_cost' && FX.KINDS.horde_cost.scope === 'force_to_force_own' && FX.statusOf(hc, ctx)[0] === 'have', JSON.stringify(hc));
+    check('the catalogue: the recruitment into the barge in its own section, the plain game effect of the same key not twice', FX.catalogue(ctx).filter(x => x.kind === 'horde_cost').length === 1
+        && !FX.catalogue(ctx).some(x => x.kind === 'game' && x.effect === 'wh_main_effect_force_all_campaign_recruitment_cost'));
     check('"Опыт за ход: +250"', /^game:.*=250$/.test(rec('Опыт за ход: +250')), rec('Опыт за ход: +250'));
     check('"+10" alone does not read', rec('+10') === '');
     const prop = FX.proposal({text: 'Скорость бараки на поле боя -5%', icon: null, good: true}, ctx);

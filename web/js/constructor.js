@@ -1282,7 +1282,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const words = q.split(/\s+/).filter(Boolean);
             const hit = x => words.every(w => x.search.includes(w));
             body.innerHTML = '';
-            for (const sec of ['crew', 'ship', 'game', 'army', 'text']) {
+            for (const sec of ['crew', 'ship', 'horde', 'game', 'army', 'text']) {
                 let list = all.filter(x => x.section === sec && hit(x));
                 if (!list.length) continue;
                 body.append(h('h4', {}, FX.SECTIONS[sec] + (sec === 'game' ? ` (${list.length})` : '')));

@@ -67,7 +67,7 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-10,"text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e1","kind":"horde_cost","value":-10,"text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
         {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_upkeep","value":-5,"text":"Содержание: -5%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true},
         {"id":"e3","kind":"game","effect":"wh_main_effect_region_resource_beer_production","value":5,"text":"Производство гномьего пива (бочонки): 5","icon":"ui/campaign ui/effect_bundles/resource_dwarf_beer.png","good":true},
         {"id":"e5","kind":"morale","value":10,"text":"Боевой дух барки: +10","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true},
@@ -83,7 +83,7 @@
       ],
       "branch": null,
       "mod_key": "beer_hall_1",
-      "note": "Тут надо проверить возможость нама героя но что бы он в стоке можно было 1 нанаять а то возможность будет а поо факту нет\n→ сделано: «Возможность найма» в игре только открывает найм, а нанять можно столько, сколько даёт «Численность героев» (эффект agent_cap, на фракцию). В стоке первая численность драконоборцев — у «Каркаса с рунами» (+1), а возможность — у «Прочного корпуса»: между ними нанять некого. Добавлена строка «Численность героев: +1 для драконоборцев». «Столовая» теперь наследует строки чертога — возможность и численность не пропадают на II и III. Итог при всём дереве: 1 (чертог) + 2 (корпус IV–V) = 3 драконоборца, в стоке 2.\n→ вопрос: «Дисциплина барки максимальная» записана как «Боевой дух барки» (в игре величины «дисциплина» нет). Если имелось в виду другое — скажи.",
+      "note": "Тут надо проверить возможость нама героя но что бы он в стоке можно было 1 нанаять а то возможность будет а поо факту нет\n→ сделано: «Возможность найма» в игре только открывает найм, а нанять можно столько, сколько даёт «Численность героев» (эффект agent_cap, на фракцию). В стоке первая численность драконоборцев — у «Каркаса с рунами» (+1), а возможность — у «Прочного корпуса»: между ними нанять некого. Добавлена строка «Численность героев: +1 для драконоборцев». «Столовая» теперь наследует строки чертога — возможность и численность не пропадают на II и III. Итог при всём дереве: 1 (чертог) + 2 (корпус IV–V) = 3 драконоборца, в стоке 2.\n→ вопрос: «Дисциплина барки максимальная» записана как «Боевой дух барки» (в игре величины «дисциплина» нет). Если имелось в виду другое — скажи.\n→ сделано (12.11, по ответу автора): «Стоимость найма» — вид «Стоимость найма в барке»: эффект игры wh_main_effect_force_all_campaign_recruitment_cost с областью force_to_force_own, как у ванильного «Пивного чертога». Скидка на найм в саму орду (её слоты найма, отряды, открытые постройками), не на фракцию и не на провинцию. Текст строки — игры.\n→ вопрос: «Содержание» (−5 / −7 / −25 %) в игре — wh_main_effect_force_all_campaign_upkeep с той же областью force_to_force_own: это содержание всей армии Малакая, включая отряды, нанятые в поселениях. Так и задумано («для армии героя» у Винокурни), или только отрядам, нанятым в барке? Второе эффектом на армию не сделать — только на набор отрядов.",
       "requires": ["airship_hull_2"]
     },
     {
@@ -129,7 +129,7 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-10,"text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e1","kind":"horde_cost","value":-10,"text":"Стоимость найма: -10%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
         {"id":"e2","kind":"army_replenish","units":["wh_main_dwf_inf_quarrellers_0","wh_main_dwf_inf_quarrellers_1","wh_dlc06_dwf_inf_rangers_0","wh_dlc06_dwf_inf_rangers_1"],"value":1,"text":"Скорость восполнения потерь: +1% для забияк и егерей","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"own_text":true}
       ],
       "crew": [],
@@ -290,7 +290,7 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-15,"text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e1","kind":"horde_cost","value":-15,"text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
         {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_upkeep","value":-7,"text":"Содержание: -7%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true},
         {"id":"e3","kind":"game","effect":"wh_main_effect_region_resource_beer_production","value":10,"text":"Производство гномьего пива (бочонки): 10","icon":"ui/campaign ui/effect_bundles/resource_dwarf_beer.png","good":true},
         {"id":"e4","kind":"morale","value":15,"text":"Боевой дух барки: +15","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true}
@@ -373,7 +373,7 @@
       "inherit": false,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-15,"text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
+        {"id":"e1","kind":"horde_cost","value":-15,"text":"Стоимость найма: -15%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true},
         {"id":"e2","kind":"army_replenish","units":["wh_main_dwf_inf_quarrellers_0","wh_main_dwf_inf_quarrellers_1","wh_dlc06_dwf_inf_rangers_0","wh_dlc06_dwf_inf_rangers_1","wh_main_dwf_inf_thunderers_0","wh3_dlc25_dwf_inf_thunderers_grudge_rakers"],"units_from":"crew_weapons_1","value":2,"text":"Скорость восполнения потерь: +2% для забияк, егерей, громобоев и злопыхателей","icon":"ui/campaign ui/effect_bundles/replenishment.png","good":true,"own_text":true}
       ],
       "crew": [],
@@ -983,7 +983,7 @@
       "inherit": true,
       "hide": [],
       "effects": [
-        {"id":"e1","kind":"game","effect":"wh_main_effect_force_all_campaign_recruitment_cost","value":-30,"text":"Стоимость найма: -30%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true,"replaces":"beer_hall_2/e1"},
+        {"id":"e1","kind":"horde_cost","value":-30,"text":"Стоимость найма: -30%","icon":"ui/campaign ui/effect_bundles/treasury.png","good":true,"replaces":"beer_hall_2/e1"},
         {"id":"e2","kind":"game","effect":"wh_main_effect_force_all_campaign_upkeep","value":-25,"text":"Содержание: -25%","icon":"ui/campaign ui/effect_bundles/military_spending.png","good":true,"replaces":"beer_hall_2/e2"},
         {"id":"e4","kind":"morale","value":30,"text":"Боевой дух барки: +30","icon":"ui/campaign ui/effect_bundles/general_ability.png","good":true,"replaces":"beer_hall_2/e4"},
         {"id":"e5","kind":"game","effect":"wh_main_effect_region_resource_wine_production","value":36,"text":"Производство вина (бочки): 36","icon":"ui/campaign ui/effect_bundles/resource_wine.png","good":true}
