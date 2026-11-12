@@ -151,12 +151,50 @@ async function walk(scale) {
     }
 }
 
+// The 3D side's bar at the window's usual widths: the buttons of the views and the ship's line do not lie on one another nor on the model, nothing cut,
+// no text under 11 px. Pictures groups3d/panel_<width>.png.
+async function panelBar() {
+    const b = await launch({width: 1280, height: 900, port: 9399, profile: join(tmpdir(), 'mtb_3d_profile_bar')});
+    try {
+        await b.open(URL0 + '?mode=game');
+        await b.until('!!(window.mtb && mtb.M && mtb.panel)', 15000);
+        await b.eval('localStorage.clear()');
+        await b.reload();
+        await b.until('document.body.dataset.ready === "1"', 30000);
+        const r = await b.rect('#build_all'); await b.click(r.x, r.y); await sleep(800);
+        for (const w of [1024, 1280, 1600, 1920]) {
+            await b.size(w, 900); await sleep(500);
+            const m = await b.eval(`(() => {
+                const box = e => e.getBoundingClientRect(), els = [...document.querySelectorAll('#tools3d button'), document.getElementById('hull')].filter(e => e.offsetParent !== null);
+                const rs = els.map(e => ({id: e.id, r: box(e), cut: e.scrollWidth > e.clientWidth + 1 && e.id !== 'hull', px: parseFloat(getComputedStyle(e).fontSize)}));
+                const meet = [];
+                for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const a = rs[i].r, c = rs[j].r; if (a.left < c.right - 0.5 && c.left < a.right - 0.5 && a.top < c.bottom - 0.5 && c.top < a.bottom - 0.5) meet.push(rs[i].id + '/' + rs[j].id); }
+                const bar = box(document.getElementById('tools3d')), model = box(document.querySelector('#view3d canvas')), right = box(document.getElementById('right'));
+                const hull = document.getElementById('hull');
+                return {meet, cut: rs.filter(x => x.cut).map(x => x.id), small: rs.filter(x => x.px < 11).map(x => x.id), barBottom: bar.bottom, modelTop: model.top,
+                        inside: rs.every(x => x.r.left >= right.left - 0.5 && x.r.right <= right.right + 0.5), hull: hull.textContent, title: hull.title.length, rows: new Set(rs.map(x => Math.round(x.r.top))).size};
+            })()`);
+            check(`bar at ${w}: nothing meets, nothing cut, text 11 px or more, all inside, the model under the bar`, !m.meet.length && !m.cut.length && !m.small.length && m.inside && m.modelTop >= m.barBottom - 0.5, m);
+            check(`bar at ${w}: the ship's line short, the list in its tooltip`, m.hull.length <= 40 && m.title > 40, m);
+            const rr = await b.rect('#right');
+            await b.shot(join(SHOTS, `panel_${w}.png`), {x: rr.l, y: rr.t - 41, width: rr.w, height: Math.min(rr.h + 41, 900)});
+        }
+        check('bar: the console is clean', !b.errors.length, b.errors);
+    } catch (e) {
+        check('bar: the check ran through', false, e.message);
+    } finally {
+        await b.close();
+        await sleep(1500);
+    }
+}
+
 try {
-    for (const s of [0.6, 1]) await walk(s);
+    await panelBar();
+    if (!process.env.BAR_ONLY) for (const s of [0.6, 1]) await walk(s);
 } finally {
     server.kill();
 }
-writeFileSync(join(SHOTS, 'weight.json'), JSON.stringify(weight, null, 1));
+if (!process.env.BAR_ONLY) writeFileSync(join(SHOTS, 'weight.json'), JSON.stringify(weight, null, 1));
 // the sheets: the 3D beside the drawing
 const py = String.raw`
 import sys, json

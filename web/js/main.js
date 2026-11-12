@@ -107,7 +107,9 @@ async function main() {
         }
         setCrew3d();
         const built = parts.filter(([key]) => M.stage(key) === 'ink').map(([, spec]) => spec.name);
-        hullEl.textContent = !hullShown() ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ': ' + built.join(', ') : '');
+        // one short line over the model; the whole list of the details in its tooltip
+        hullEl.textContent = !hullShown() ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ` · деталей: ${built.length}` : '');
+        hullEl.title = hullShown() && built.length ? 'На корабле: ' + built.join(', ') : '';
     };
     // The crew on the 3D model (tools/web_crew3d.py), from the same state as the drawing (panel.js, crewState): what stands at a place stands on the
     // model, a hire on its way is a warm see-through ghost of its kind, nobody is nothing. The flaming shells are the stock gun (the mod changes only
