@@ -38,6 +38,8 @@ async function main() {
     for (const st of Object.values(blueprint.stages)) for (const a of st.crew_areas || []) {
         const g = data.groups[a.group];
         if (g && a.cards === 'drawn') for (const o of Object.values(g.options)) if (o.drawn_card && o.unit_card) o.unit_card = {...o.unit_card, picture: o.drawn_card};
+        // closeup: the close views of what stands at the place (tools/web_art.py --cards: the game's models, build/web/game/ui/tww3_mtb_cards)
+        if (g && a.cards === 'closeup') for (const [k, o] of Object.entries(g.options)) if (o.unit_card) o.unit_card = {...o.unit_card, picture: `ui/tww3_mtb_cards/${a.group}_${k}.png`};
     }
     // ?stage=barge (or another name of blueprint.json, stages): what is shown; the stage's own fields over the common ones. parts: true the common ones,
     // false none, an object its own. built: what stands at the start of the stage, over web/data/sim.json.

@@ -163,5 +163,38 @@ const opt = (g, k) => data.groups[g].options[k];
     }
 }
 
+// 7. the harpoon: a place without a mount, opened by the building of the tree that opens its «on»; a choice of empty or the harpoon, hired as the rest
+{
+    const {game, M} = fresh();
+    const k = openersOf('harpoon', 'on')[0];
+    check('harpoon: the tree has a building that opens it', !!k);
+    check('harpoon: no place before it', !M.crew_place('harpoon') && M.set_crew('harpoon', 'on').kind === 'locked');
+    M.debug_build_to(k);
+    let ledger = game.treasury();
+    check(`harpoon: the place with «${M.level(k).name}», empty`, M.crew_place('harpoon') && M.crew('harpoon') === 'empty');
+    check('harpoon: ordered for its hire', M.set_crew('harpoon', 'on').kind === 'ordered' && game.treasury() === ledger - opt('harpoon', 'on').hire);
+    ledger -= opt('harpoon', 'on').hire;
+    game.end_turn(); ledger -= opt('harpoon', 'on').upkeep;
+    check('harpoon: stands after the turn, its upkeep taken', M.crew('harpoon') === 'on' && game.treasury() === ledger);
+    check('harpoon: the turn\'s news speaks of the nose', /на нос/.test(M.message() || ''), M.message());
+    const ab = opt('harpoon', 'on').ability;
+    check('harpoon: its numbers from the game\'s tables (uses, range, damage)', !!ab && ab.uses >= 1 && ab.range > 0 && ab.damage > 0, ab);
+    const art = json('web/art/layers.json');
+    check('harpoon: ink, sketch, empty, tags on the drawing', ['crew_harpoon_on', 'crew_harpoon_on_sketch', 'crew_harpoon_empty', 'crew_harpoon_tag_plus'].every(n => art.places[n]));
+}
+
+// 8. the ammunition in volleys a seat, as the mod's Lua counts it: the group's whole times the bonus, rounded, shared by the seats
+{
+    const ammoOf = (n, pct) => { const total = Math.floor(n.ammo * (1 + pct / 100) + 0.5); return {total, per: Math.round(total / n.seats * 10) / 10}; };
+    for (const g of ['rifles', ...groups]) for (const k of kinds(g)) {
+        const n = opt(g, k).numbers;
+        if (!n || !n.seats) continue;
+        check(`${g}/${k}: the volleys a seat times the seats are the group's ammunition`, n.volleys * n.seats === n.ammo, n);
+        const plus = ammoOf(n, 15);
+        check(`${g}/${k}: +15 % is not lost in the rounding (${n.ammo} -> ${plus.total}, ${plus.per} a seat)`, plus.total > n.ammo || n.ammo * 0.15 < 0.5);
+    }
+    for (const a of stage.crew_areas) check(`${a.group}: the place says whom the volleys are counted for`, a.group === 'harpoon' || !!a.per, a);
+}
+
 console.log(`failed: ${failed}`);
 process.exit(failed ? 1 : 0);

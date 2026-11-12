@@ -249,6 +249,22 @@ def export_data():
             return None
         return crew_ui.drawn_path(name)
 
+    def ability_of(option):
+        """A group that is an ability (the harpoon): its numbers in battle from the game's tables (unit_special_abilities, the projectile it fires,
+        its explosion): uses a battle, range, damage and armour piercing, the bonus against the large, the wind-up, the blast."""
+        key = option.get("ability")
+        a = next((r for r in stock["unit_special_abilities"] if r["key"] == key), None) if key else None
+        if not a:
+            return None
+        out = {"uses": a["num_uses"], "range": round(a["target_intercept_range"]), "wind_up": round(a["wind_up_time"], 1)}
+        p = next((r for r in stock["projectiles"] if r["key"] == a.get("activated_projectile")), None)
+        if p:
+            out.update(damage=round(p["damage"]), ap=round(p["ap_damage"]), vs_large=round(p["bonus_v_large"]))
+            e = next((r for r in stock["projectiles_explosions"] if r["key"] == p.get("explosion_type")), None)
+            if e and e["detonation_damage"]:
+                out.update(blast=round(e["detonation_damage"]), blast_ap=round(e["detonation_damage_ap"]), radius=round(e["detonation_radius"], 1))
+        return out
+
     def fragments_of(option):
         """A bomb that bursts into burning pieces in the air (an explosion with shrapnel): the blast of one piece, from the game's tables."""
         weapon = option.get("weapon")
@@ -278,7 +294,7 @@ def export_data():
                                              "card": crew_ui.own_card_name(config, group_key, k), "unit_card": unit_card_of(o),
                                              "drawn_card": drawn_card_of(group_key, k),
                                              # what the mod's panel writes instead of a number (a bomb falls under the barge) and a burst's pieces
-                                             "range_text": (o.get("ui") or {}).get("range_text"), "fragments": fragments_of(o),
+                                             "range_text": (o.get("ui") or {}).get("range_text"), "fragments": fragments_of(o), "ability": ability_of(o),
                                              # the crew's own weapon as the mod builds it (the numbers of the mod's panel, crew_ui.group_numbers)
                                              "numbers": crew_ui.group_numbers(crew_tables, group_key, k, o, group),
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}

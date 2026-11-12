@@ -25,7 +25,8 @@ const SHOTS = join(ROOT, 'build/web/shots/groups');
 mkdirSync(SHOTS, {recursive: true});
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? 'ok   ' : 'FAIL ') + name + (ok || !extra ? '' : '  ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)))); return ok; };
-const GROUPS = ['cannons', 'bombs', 'cupolas'];
+const GROUPS = ['cannons', 'bombs', 'cupolas', 'harpoon'];
+const EMPTY = g => `(mtb.panel.view.data.groups['${g}'].mount || mtb.panel.view.data.groups['${g}'].start)`;
 
 async function walk(scale) {
     // the left side is 62 % of the window, the root 1600 x 900 fits it: this window gives the scale
@@ -60,7 +61,7 @@ async function walk(scale) {
         let ledger = await gold();
         for (const g of GROUPS) {
             check(`${tag} ${g}: the place is on the drawing after «Построить всё»`, await shown('mtb_crew_area_' + g));
-            check(`${tag} ${g}: empty, the tag's plus`, await layerShown(`crew_${g}_tag_plus`) && await b.eval(`mtb.M.crew('${g}')`) === await b.eval(`mtb.panel.view.data.groups['${g}'].mount`));
+            check(`${tag} ${g}: empty, the tag's plus`, await layerShown(`crew_${g}_tag_plus`) && await b.eval(`mtb.M.crew('${g}')`) === await b.eval(EMPTY(g)));
         }
         check(`${tag} the lookouts stand in the empty nests`, await layerShown('lookouts_ink'));
         await b.shot(join(SHOTS, `blueprint_all_empty_${scale}.png`), await drawing());
@@ -71,6 +72,12 @@ async function walk(scale) {
         for (const g of GROUPS) {
             await clickId('mtb_crew_area_' + g);
             check(`${tag} ${g}: its choice opens, one window only`, JSON.stringify(await pickOpen()) === JSON.stringify(['mtb_crew_pick_' + g]), await pickOpen());
+            // the window's head and its line of the upkeep: apart, neither cut
+            const hf = await b.eval(`(() => { const w = [...document.querySelectorAll('#screen [data-id="mtb_crew_pick_${g}"]')][0]; const h = w.querySelector('[data-id="pick_head"]'), f = w.querySelector('[data-id="pick_foot"]');
+                const r = e => e.getBoundingClientRect(), a = r(h.querySelector('.t')), c = r(f.querySelector('.t')), rng = e => { const x = document.createRange(); x.selectNodeContents(e.querySelector('.t')); return x.getBoundingClientRect(); };
+                const ta = rng(h), tc = rng(f);
+                return {apart: ta.bottom <= tc.top || tc.bottom <= ta.top || ta.right <= tc.left || tc.right <= ta.left, headCut: ta.right > a.right + 0.5 || ta.left < a.left - 0.5, footCut: tc.right > c.right + 0.5 || tc.left < c.left - 0.5, foot: f.textContent}; })()`);
+            check(`${tag} ${g}: the head and the upkeep line apart, neither cut`, hf.apart && !hf.headCut && !hf.footCut, hf);
             const kinds = await b.eval(`mtb.M.crew_options('${g}').filter(o => !o.empty && o.unlocked).map(o => o.key)`);
             check(`${tag} ${g}: every kind open after «Построить всё»`, kinds.length === await b.eval(`mtb.M.crew_options('${g}').filter(o => !o.empty).length`), kinds);
             const first = kinds[0], last = kinds[kinds.length - 1];
@@ -79,6 +86,9 @@ async function walk(scale) {
             await b.move(card.x, card.y, 4); await sleep(400);
             const info = await comp(`crew_pick_info_${g}_${last}`);
             check(`${tag} ${g}: the unit's panel shows beside the choice, not over the card`, !!info && (info.l > card.x + 30 || info.l + info.w < card.x - 30 || info.t + info.h < card.t || info.t > card.t + card.h), info);
+            const infoText = await b.eval(`document.querySelector('#screen [data-id="crew_pick_info_${g}_${last}"]').textContent`);
+            check(`${tag} ${g}: the unit's panel has no broken number`, !/NaN|undefined|null/.test(infoText), infoText.slice(0, 200));
+            check(`${tag} ${g}: the ammunition in volleys a seat (or the harpoon's shots)`, g === 'harpoon' ? /Выстрелов за бой/.test(infoText) : /залп/.test(infoText), infoText.slice(0, 300));
             const pk = await comp('mtb_crew_pick_' + g);
             const z = await b.eval(`[getComputedStyle(document.querySelector('#screen [data-id="crew_pick_info_${g}_${last}"]')).zIndex, getComputedStyle(document.querySelector('#screen [data-id="mtb_crew_pick_${g}"]')).zIndex]`);
             check(`${tag} ${g}: the panel under the mouse is over the window of the click`, Number(z[0]) > Number(z[1]), z);
@@ -120,7 +130,7 @@ async function walk(scale) {
         await b.reload();
         await b.until('!!(window.mtb && mtb.M && mtb.panel)', 15000);
         await settle();
-        check(`${tag} F5: the orders, the treasury and the sketches are back`, (await b.eval(`['cannons','bombs','cupolas'].map(g => mtb.M.crew_order(g))`)).join() === GROUPS.map(g => chosen[g]).join() && await gold() === ledger
+        check(`${tag} F5: the orders, the treasury and the sketches are back`, (await b.eval(`${JSON.stringify(GROUPS)}.map(g => mtb.M.crew_order(g))`)).join() === GROUPS.map(g => chosen[g]).join() && await gold() === ledger
             && await layerShown(`crew_bombs_${chosen.bombs}_sketch`));
         check(`${tag} F5: the hints stay off for the groups chosen`, !(await layerShown('crew_glow')) || await b.eval(`['cannons','bombs','cupolas','rifles'].every(g => !mtb.M.crew_hint(g))`));
         // the turn
@@ -142,7 +152,7 @@ async function walk(scale) {
         await clickId('mtb_crew_area_bombs');
         await button('#end_turn');
         await settle();
-        ledger -= await upkeep('cannons', gunFirst) + await upkeep('cupolas', chosen.cupolas) + await upkeep('rifles', 'pirates');
+        ledger -= await upkeep('cannons', gunFirst) + await upkeep('cupolas', chosen.cupolas) + await upkeep('rifles', 'pirates') + await upkeep('harpoon', chosen.harpoon);
         check(`${tag} after the turn: the new gun, empty bombs' racks`, await b.eval(`mtb.M.crew('cannons')`) === gunFirst && await layerShown(`crew_cannons_${gunFirst}`)
             && await layerShown('crew_bombs_empty') && await gold() === ledger, {gold: await gold(), ledger});
         // a building with a crew demolished: the nests' line from the top (the throwers stand) down to nothing

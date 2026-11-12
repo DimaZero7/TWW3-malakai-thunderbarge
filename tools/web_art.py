@@ -1507,6 +1507,8 @@ GROUP_TAGS = {
     "cannons": {"box": (166, 606, 136, 36), "text": "Орудия", "leaders": [((266, 606), gun_pt(31, 0))]},
     "bombs": {"box": (490, 628, 128, 36), "text": "Бомбы", "leaders": [((508, 628), (449, 592)), ((600, 628), (656, 595))]},
     "cupolas": {"box": (462, 4, 136, 36), "text": "Гнёзда", "leaders": [("left", (410, 37)), ("right", (640, 37))]},
+    # under the balloon's nose, over the faint shield of the margin: clear of the nose, the griffon and Malakai's plan
+    "harpoon": {"box": (14, 236, 140, 36), "text": "Гарпун", "leaders": [((112, 236), (106, 26 + 0.92 * 168 + 2))]},
 }
 
 
@@ -1551,6 +1553,8 @@ def group_zones(group):
         return [(min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts))]
     if group == "bombs":
         return [(x0 - 3, y0 - 3, x1 + 3, y1 + 3) for x0, y0, x1, y1 in bomb_windows()]
+    if group == "harpoon":
+        return [(30, HARPOON_Y - 36, 128, HARPOON_Y + 36)]
     return [(x - 31, 6, x + 31, y + 10) for x, y in art.CUPOLAS]
 
 
@@ -1559,7 +1563,44 @@ def group_frames(group, pad=0, w=CREW_LINE, color=None, op=1.0):
                      extra='stroke-dasharray="9 6"', op=op) for x0, y0, x1, y1 in group_zones(group)]
 
 
-GROUP_KINDS = {"cannons": ["stock", "flaming", "organ", "clatter", "flame"], "bombs": ["stock", "fire"], "cupolas": ["stock", "axes"]}
+GROUP_KINDS = {"cannons": ["stock", "flaming", "organ", "clatter", "flame"], "bombs": ["stock", "fire"], "cupolas": ["stock", "axes"], "harpoon": ["on"]}
+
+
+# The harpoon (crew_cards.HARPOON, harpoon_01 at the balloon's nose): a long dark shaft out of the lion's mouth of the nose, a ring on it, a steel cone
+# for a point and three hooked arms swept back from behind the point (a grapnel: the far one hidden, the near one seen short). The model's spear
+# reaches eight units before the nose; the drawing keeps it shorter (the sheet ends), as the mod's own panel drew it (crew_ui_art.occ_harpoon).
+HARPOON_Y = 26 + 0.92 * 168
+
+
+def harpoon_items(ghost=False):
+    y = HARPOON_Y
+    if ghost:
+        outline = f"M122 {y - 2.6:.1f} L58 {y - 2.6:.1f} L58 {y - 6:.1f} L36 {y:.1f} L58 {y + 6:.1f} L58 {y + 2.6:.1f} L122 {y + 2.6:.1f} Z"
+        return [art.path(outline, CREW_LINE, art.INK, LIGHT, extra='stroke-dasharray="4.5 3"'),
+                art.path(f"M62 {y - 4:.1f} L86 {y - 22:.1f} M62 {y + 4:.1f} L86 {y + 22:.1f}", CREW_LINE * 0.8, art.INK, extra='stroke-dasharray="4 3"')]
+    rod = "#4e4a45"
+    out = []
+    # the far arm behind the shaft, thin
+    out.append(art.path(f"M64 {y - 1:.1f} L78 {y - 9:.1f} L76 {y - 13:.1f}", 1.8, art.INK, op=0.75))
+    # the shaft and its ring
+    out.append(art.path(f"M124 {y:.1f} L56 {y:.1f}", 5.6, art.INK))
+    out.append(art.path(f"M124 {y:.1f} L56 {y:.1f}", 3.2, rod))
+    out.append(art.path(f"M96 {y - 4.2:.1f} L96 {y + 4.2:.1f} M100 {y - 4.2:.1f} L100 {y + 4.2:.1f}", 2.6, art.INK))
+    out.append(art.path(art.poly([(95, y - 4), (101, y - 4), (101, y + 4), (95, y + 4)], True), 0.8, art.INK, STEEL_L))
+    # the point: a riveted steel cone with its collar
+    cone = f"M60 {y - 6.5:.1f} L36 {y:.1f} L60 {y + 6.5:.1f} Z"
+    out += [art.path(cone, 1.5, art.INK, STEEL_L), art.hatch([(60, y), (36, y), (60, y + 6.5)], 80, 2.2, 0.7, art.INK, 0.8),
+            art.path(art.poly([(59, y - 7.5), (64, y - 7.5), (64, y + 7.5), (59, y + 7.5)], True), 1.2, art.INK, STEEL_D), art.dot(46, y - 1.5, 0.9)]
+    # the two arms we see, swept back and out, a barb at the end of each
+    for sy in (-1, 1):
+        arm = f"M63 {y + sy * 5:.1f} L88 {y + sy * 24:.1f}"
+        out += [art.path(arm, 4.0, art.INK), art.path(arm, 2.0, rod)]
+        out.append(art.path(f"M88 {y + sy * 24:.1f} L84 {y + sy * 30:.1f} L86 {y + sy * 22:.1f} Z", 1.4, art.INK, STEEL_L))
+    return out
+
+
+def harpoon_ghost():
+    return harpoon_items(True)
 
 
 def group_items(group, kind):
@@ -1567,6 +1608,8 @@ def group_items(group, kind):
         return gun_items(kind)
     if group == "bombs":
         return bomb_items(kind)
+    if group == "harpoon":
+        return harpoon_items()
     return nest_items(kind)
 
 
@@ -1576,6 +1619,8 @@ def group_strokes(group):
         return [gun_pt(t, 0) for t in (24, 44)]
     if group == "bombs":
         return [((x0 + x1) / 2 + dx, y0 + 34) for x0, y0, x1, y1 in bomb_windows() for dx in (-11.5, 11.5)]
+    if group == "harpoon":
+        return [(80, HARPOON_Y + 2), (108, HARPOON_Y + 2)]
     return [(x, NEST_BASE - 8) for x, _ in art.CUPOLAS]
 
 
@@ -1592,6 +1637,8 @@ def group_areas(places):
             layer_plain("crew_cannons_empty", gun_ghost(), places)
         elif group == "bombs":
             layer_plain("crew_bombs_empty", bomb_items(None), places)
+        elif group == "harpoon":
+            layer_plain("crew_harpoon_empty", harpoon_ghost(), places)
         for sign in ("plus", "swap", "wait"):
             layer_plain(f"crew_{group}_tag_{sign}", group_tag(group, sign), places)
             layer_plain(f"crew_{group}_tag_{sign}_hover", group_tag(group, sign, True), places)
@@ -1728,6 +1775,107 @@ def node_back():
     Image.open(OUT / "blueprint_planks.png").crop((round(470 * S), round(200 * S), round(530 * S), round(260 * S))).resize((96, 96)).save(OUT / "node_back.png", optimize=True)
 
 
+# ---------------- the crew's cards: a close look at what stands at the place, as the game's unit card ----------------
+# The game's unit card (ui/common ui/land_unit_card.twui.xml) is 60 x 130: the page lays the frame, the plates and the category over the picture. The
+# mod's drawn cards show the whole bow for every gun, the guns a few pixels apart; these are the same models (tools/crew_cards.py's scenes and renderer)
+# seen close: the gun from in front of its muzzle (the bores, the clamps, the dragon's head tell the kind), the bomb under its bay, the thrower in the
+# near nest, the harpoon on the balloon's nose. The fire of the flaming shells, the flame cannon and the fire bomb is painted on, as on the drawing (the
+# models are the same casings). The plates cover the card's top 19 px and its category half round the lowest 35: the subject sits between.
+# Written at twice the card's size to build/web/game/ui/tww3_mtb_cards/<group>_<kind>.png (the game's pictures stay out of the repository).
+CARDS_OUT = REPO / "build" / "web" / "game" / "ui" / "tww3_mtb_cards"
+CLOSE_FOCAL = 1.9
+
+
+def closeup_cards(only=None):
+    import numpy as np
+    from PIL import Image
+    import crew_cards as cc
+    CARDS_OUT.mkdir(parents=True, exist_ok=True)
+    port, aim = np.array(cc.PORT, np.float32), cc.norm(np.array(cc.GUN_AIM, np.float32))
+
+    def cam(target, direction, dist):
+        t = np.array(target, np.float32)
+        return {"eye": list(t + cc.norm(np.array(direction, np.float32)) * dist), "target": list(t), "focal": CLOSE_FOCAL}
+
+    def burn(src, fr, at, toward, length, width, seed=1):
+        a, b = fr.project(at), fr.project(toward)
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        d = math.hypot(dx, dy) or 1
+        return cc.fire(cc.glow(src, a[0], a[1], width * 1.3, .75), a[0], a[1], dx / d, dy / d, length, width, seed)
+
+    gun_cam = cam(port + aim * 1.6, [.7, .4, 1.0], 11)
+    muzzle = port + aim * 2.9
+    jobs = {
+        ("cannons", "stock"): (lambda: cc.gun_card(stock=True)[0], gun_cam, "GUN_CAM", None),
+        ("cannons", "flaming"): (lambda: cc.gun_card(stock=True)[0], gun_cam, "GUN_CAM", (muzzle, muzzle + aim, 120, 34)),
+        ("cannons", "organ"): (lambda: cc.gun_card("tww3_mtb_organ.rigid_model_v2")[0], gun_cam, "GUN_CAM", None),
+        ("cannons", "clatter"): (lambda: cc.gun_card("tww3_mtb_clatter2.rigid_model_v2")[0], gun_cam, "GUN_CAM", None),
+        ("cannons", "flame"): (lambda: cc.gun_card("tww3_mtb_flame.rigid_model_v2")[0], gun_cam, "GUN_CAM", (port + aim * 3.2, port + aim * 4.2, 170, 44)),
+        ("bombs", "stock"): (lambda: cc.bomb_card()[0], cam([1.3, -1.5, 2.67], [1, -.12, .62], 6.2), "BOMB_CAM", None),
+        ("bombs", "fire"): (lambda: cc.bomb_card()[0], cam([1.3, -1.5, 2.67], [1, -.12, .62], 6.2), "BOMB_CAM", ([1.3, -1.35, 2.67], [1.3, -.3, 2.67], 150, 40), True),
+        ("cupolas", "stock"): (lambda: cc.cupola_card("dwf_thunderbarge_crew_pirates_grenade", cc.THROW, 8, ("be_prop_1",))[0], cam([0, 21.85, 3.55], [3.5, 1.6, 6], 6.3), "CUPOLA_CAM", None),
+        ("cupolas", "axes"): (lambda: cc.cupola_card("local:cupola_axes.vmd", cc.THROW, 8, ("be_prop_1",))[0], cam([0, 21.85, 3.55], [3.5, 1.6, 6], 6.3), "CUPOLA_CAM", None),
+        ("harpoon", "on"): (lambda: harpoon_build(cc), cam([0.3, 15.25, 19.0], [8.7, -4.5, 15], 19), "HARPOON_CAM", None),
+    }
+    for (group, kind), (make, view, slot, fire, *hot) in jobs.items():
+        if only and group not in only:
+            continue
+        setattr(cc, slot, view)
+        fr = make()(1)
+        col, mask = cc.lit(fr)
+        img = col * mask[..., None] + cc.background(3) * (1 - mask[..., None])
+        if hot:         # the fire bomb's casing red hot all over, so the card tells it at a glance, not only its flame
+            body = (fr.id == 3)[..., None].astype(np.float32)
+            img = img * (1 - body * .35) + body * .35 * np.array([1.0, .28, .06], np.float32)
+        if fire:
+            img = burn(img, fr, np.array(fire[0], np.float32), np.array(fire[1], np.float32), fire[2], fire[3])
+        Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).resize((120, 260), Image.LANCZOS).save(CARDS_OUT / f"{group}_{kind}.png", optimize=True)
+
+
+def harpoon_build(cc):
+    """crew_cards.harpoon_card with the camera of HARPOON_CAM (its own is written into the function)."""
+    import numpy as np
+
+    def build(scale=1):
+        v = cc.HARPOON_CAM
+        fr = cc.Frame(cc.W * scale, cc.H * scale, cc.look(v["eye"], v["target"]), v["focal"])
+        cc.draw_hull(fr, balloon=True)
+        M = np.eye(4, dtype=np.float32)
+        M[:3, 3] = cc.HARPOON_AT
+        for mesh, mat in cc.wsmodel(cc.HARPOON)[0]:
+            cc.rigid(mesh, mat, fr, M, 2)
+        return fr
+    return build
+
+
+def cards_sheet():
+    """build/web/shots/groups/cards_sheet.png: every card of every group, the picture alone at four times, as the choice shows it (60 x 130) and as
+    the tree's small card (23 x 50), at the page's scale 1 and the user's 0.6."""
+    from PIL import Image, ImageDraw, ImageFont
+    font = ImageFont.truetype("arial.ttf", 14)
+    files = sorted(CARDS_OUT.glob("*.png"))
+    cell = 260
+    sheet = Image.new("RGB", (cell * len(files) + 20, 640), (24, 21, 17))
+    d = ImageDraw.Draw(sheet)
+    for i, f in enumerate(files):
+        im = Image.open(f).convert("RGB")
+        x = 10 + i * cell
+        d.text((x, 6), f.stem, fill=(235, 189, 124), font=font)
+        sheet.paste(im, (x, 28))
+        # in the game's frame of the crew aboard, the group's colour (data/crew_options.json card_frame; build/web/game/ui/skins/tww3_mtb)
+        colour = {"cannons": "blue", "bombs": "red", "cupolas": "green", "harpoon": "blue"}.get(f.stem.split("_")[0], "gold")
+        frames = {(60, 130): REPO / "build" / "web" / "game" / "ui" / "skins" / "tww3_mtb" / f"unit_card_frame_plain_{colour}.png",
+                  (23, 50): REPO / "build" / "web" / "game" / "ui" / "skins" / "tww3_mtb" / f"unit_card_build_frame_{colour}.png"}
+        for j, (w, h) in enumerate(((60, 130), (round(60 * 0.6 * 1.029), round(130 * 0.6 * 1.029)), (23, 50), (round(23 * 0.6), round(50 * 0.6)))):
+            card = im.resize((w * 4, h * 4), Image.LANCZOS).convert("RGBA")
+            fr = frames[(60, 130) if j < 2 else (23, 50)]
+            if fr.exists():
+                card.alpha_composite(Image.open(fr).convert("RGBA").resize(card.size, Image.LANCZOS))
+            sheet.paste(card.convert("RGB").resize((w, h), Image.LANCZOS), (x + 130 + (j % 2) * 64, 28 + (j // 2) * 140))
+    d.text((10, 300), "в каждой ячейке: картинка ×2 | карточка выбора 60×130 в масштабе 1 и 0.6 | малая карточка дерева 23×50 в масштабе 1 и 0.6", fill=(232, 220, 192), font=font)
+    sheet.crop((0, 0, sheet.width, 330)).save(SHEETS / "cards_sheet.png")
+
+
 # ---------------- sheets for checking: the game's model beside the drawing, the details with and without ----------------
 REFS = REPO / "build" / "crew_models" / "groups"
 SHEETS = REPO / "build" / "web" / "shots" / "groups"
@@ -1744,7 +1892,7 @@ def model_refs():
     def plain(fr):
         col, mask = cc.lit(fr)
         return Image.fromarray((np.clip(col * mask[..., None] + .72 * (1 - mask[..., None]), 0, 1) * 255).astype(np.uint8))
-    for name in ("cannons_stock", "cannons_flaming", "cannons_organ", "cannons_clatter", "cannons_flame", "bombs_stock", "bombs_fire", "cupolas_stock", "cupolas_axes"):
+    for name in ("cannons_stock", "cannons_flaming", "cannons_organ", "cannons_clatter", "cannons_flame", "bombs_stock", "bombs_fire", "cupolas_stock", "cupolas_axes", "harpoon_on"):
         if not (REFS / f"{name}.png").exists():
             plain(cc.CARDS[name][0](1)).save(REFS / f"{name}.png")
     if not (REFS / "cupolas_lookout.png").exists():
@@ -1772,9 +1920,9 @@ def drawing_crop(layers_, box, k):
 
 
 # what of each model's render is the subject (x0, y0, x1, y1 of the 480 x 1040 render) and of the drawing (units), with the layers under it
-REF_BOX = {"cannons": (0, 420, 480, 760), "bombs": (120, 560, 400, 1000), "cupolas": (0, 380, 420, 900)}
+REF_BOX = {"cannons": (0, 420, 480, 760), "bombs": (120, 560, 400, 1000), "cupolas": (0, 380, 420, 900), "harpoon": (0, 380, 480, 760)}
 DRAW_BOX = {"cannons": ((236, 500, 372, 584), ["port_ink"]), "bombs": ((410, 515, 700, 606), ["side_shields_ink", "mount_bombs"]),
-            "cupolas": ((340, 0, 712, 80), ["mount_cupolas"])}
+            "cupolas": ((340, 0, 712, 80), ["mount_cupolas"]), "harpoon": ((10, 140, 172, 225), [])}
 KIND_NAMES = {"stock": "", "flaming": "огненные снаряды", "organ": "органное", "clatter": "пулемёт", "flame": "огненная пушка", "fire": "огненные", "axes": "топоры",
               "lookout": "дозорные (деталь)", "empty": "пусто", "sketch": "в найме"}
 
@@ -1880,8 +2028,8 @@ def hiring_sheet():
     empty, hired (the sketch, the hourglass), standing (ink, the arrows), another kind hired while one stands (ink, the hourglass); at 1 and at 0.6."""
     from PIL import Image, ImageDraw, ImageFont
     font = ImageFont.truetype("arial.ttf", 15)
-    boxes = {"cannons": (150, 495, 380, 650), "bombs": (405, 512, 700, 670), "cupolas": (340, 0, 712, 80)}
-    under = {"cannons": ["port_ink"], "bombs": ["side_shields_ink", "mount_bombs"], "cupolas": ["mount_cupolas"]}
+    boxes = {"cannons": (150, 495, 380, 650), "bombs": (405, 512, 700, 670), "cupolas": (340, 0, 712, 80), "harpoon": (8, 136, 190, 280)}
+    under = {"cannons": ["port_ink"], "bombs": ["side_shields_ink", "mount_bombs"], "cupolas": ["mount_cupolas"], "harpoon": []}
     states = [("пусто", lambda g, k: ([f"crew_{g}_empty"] if g != "cupolas" else ["lookouts_ink"]) + [f"crew_{g}_tag_plus"]),
               ("в найме", lambda g, k: [f"crew_{g}_{k}_sketch", f"crew_{g}_tag_wait"]),
               ("стоит", lambda g, k: [f"crew_{g}_{k}", f"crew_{g}_tag_swap"]),
@@ -1916,6 +2064,10 @@ def groups_only():
 def main():
     if "--groups" in sys.argv:
         groups_only()
+        return
+    if "--cards" in sys.argv:
+        closeup_cards()
+        cards_sheet()
         return
     if "--sheets" in sys.argv:
         figures_sheets()

@@ -255,14 +255,14 @@ function makeCrewArea(view, M, data, art, blueprint, flags, sheet, frame, scale,
     // a kind not opened yet is grey under a padlock, as the game shows a unit that cannot be recruited yet, and its panel names the building.
     const options = M.crew_options(g);
     // at least as wide as the head and the line of the upkeep: a group of two kinds has the same window, its cards from the left
-    const pad = 26, slot_w = 106, pw = Math.max(pad * 2 + slot_w * options.length, 740), ph = pad + 28 + 4 + UNIT_H + 4 + 42 + 26;
+    const pad = 26, slot_w = 106, pw = Math.max(pad * 2 + slot_w * options.length, 440), ph = pad + 28 + 4 + UNIT_H + 4 + 42 + 24 + 26;
     const below = ay + cbox[3] * scale + 14, above = ay - 14 - ph;
     const py = below + ph <= scheme_h - 6 ? below : above >= 6 ? above : Math.max(6, scheme_h - ph - 6);
     const pick = image(sheet, 'mtb_crew_pick_' + g, LAYOUTS + 'backdrop.png', Math.max(6, Math.min(ax, scheme_w - pw - 12)), py, pw, ph);
     pick.SetInteractive(true);      // a click on the window itself does nothing and does not reach the drawing
     pick.SetLayer('click');
     crew.pick = pick;
-    text(pick, 'pick_head', 'text_head', pad, pad - 4, 300, 28, spec.head || group.name);
+    crew.head = text(pick, 'pick_head', 'text_head', pad, pad - 4, pw - 2 * pad - 34, 28, spec.head || group.name);
     const cross = image(pick, CREW_CLOSE + g, 'ui/skins/default/icon_cross.png', pw - pad - 24, pad - 2, 22, 22);
     cross.SetInteractive(true);
     // A slot is the whole column of a kind (the card and its caption), one beside the other with no gap: the mouse goes from kind to kind without
@@ -299,7 +299,8 @@ function makeCrewArea(view, M, data, art, blueprint, flags, sheet, frame, scale,
         }
         return slot;
     });
-    crew.foot = text(pick, 'pick_foot', 'text_caption_copper', pad + 300, pad - 4, pw - 2 * pad - 300 - 34, 28, '');      // in the head's row, before the cross
+    // the upkeep of the whole crew: its own line under the cards' captions, left, so it never meets the head however long either is
+    crew.foot = text(pick, 'pick_foot', 'text_caption_left', pad, slot_y + slot_h + 2, pw - 2 * pad, 22, '');
     const edge = make(pick, 'pick_edge', 'frame_edge');
     size(edge, pw, ph);
     at(edge, 0, 0);
@@ -586,6 +587,19 @@ function unitInfo(parent, id, spec, flags = {}) {
         info.rows[key] = {value: text(panel, 'value_' + key, 'text_unit_right', vx, y - 1, W - vx - 12, 24, value), fill, back};
         y += 24;
     };
+    const ab = o.ability;
+    if (ab) {
+        // a crew that is an ability (the harpoon): its shot as the game's tables have it (build/web/data.json, ability)
+        row('uses', D + 'icon_stat_ammo.png', 'Выстрелов за бой', String(ab.uses), null);
+        if (ab.damage !== undefined) {
+            row('damage', D + 'icon_stat_ranged_damage.png', 'Урон выстрела', String(ab.damage + ab.ap), null);
+            row('ap', D + 'modifier_icon_armour_piercing.png', 'Бронебойный', String(ab.ap), null);
+            if (ab.vs_large) row('vs_large', D + 'icon_stat_damage.png', 'Против крупных', '+' + ab.vs_large, null);
+        }
+        row('range', D + 'icon_stat_range.png', 'Дальность', String(ab.range), null);
+        if (ab.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${ab.blast + ab.blast_ap} · ${ab.radius} м`, null);
+        row('wind_up', D + 'icon_stat_reload_time.png', 'Замах, с', String(ab.wind_up), null);
+    }
     if (n.range) {
         // Each kind's own true numbers (build/web/data.json: the mod's weapon rows): the shot's damage where the shot itself hurts (a bomb or a
         // grenade does its harm by the blast: no damage row of 1), the range or the mod's words for it (a bomb falls under the barge), the reload,
@@ -598,7 +612,13 @@ function unitInfo(parent, id, spec, flags = {}) {
         if (o.range_text) row('range', D + 'icon_stat_range.png', 'Дальность', o.range_text, null);
         else row('range', D + 'icon_stat_range.png', 'Дальность', String(n.range), n.range / best(x => x.range));
         row('reload', D + 'icon_stat_reload_time.png', 'Перезарядка, с', String(n.reload), best(x => x.reload, true) / n.reload);
-        row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', String(n.ammo), n.ammo / best(x => x.ammo));
+        // the ammunition as the game shows a unit's: volleys a man or gun (the author's rule, docs/design/ammo-balance.md; numbers.volleys, seats), the
+        // group's whole under it in small letters; with no seats in the data, the group's whole alone
+        if (n.seats) {
+            row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', '', n.volleys / best(x => x.volleys || 0));
+            info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, W - 48, 18, '');
+            y += 16;
+        } else row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', String(n.ammo), n.ammo / best(x => x.ammo));
         if (n.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${n.blast + n.blast_ap} · ${n.radius} м`, null);
         if (o.fragments) row('fragments', D + 'icon_stat_damage.png', 'Взрыв осколка', `${o.fragments.blast + o.fragments.blast_ap} · ${o.fragments.radius} м`, null);
     }
@@ -616,17 +636,26 @@ function unitInfo(parent, id, spec, flags = {}) {
         const bonus = dyn.bonus || {};
         const better = (kind, pct) => (FX.KINDS[kind].positiveGood ? pct > 0 : pct < 0);
         const colour = (kind, pct, t) => (pct ? `[[col:${better(kind, pct) ? 'game_green' : 'game_red'}]]${t}[[/col]]` : t);
+        // the ammunition in volleys a seat: the mod's Lua rounds the group's whole (floor(x + 0.5)) and the seats share it, so a bonus smaller than a
+        // volley a seat is not lost (6 a pirate, +15 %: 83 for the twelve, 6,9 each)
+        const ammo = ammoOf(n, bonus.ammo ? bonus.ammo.pct : 0);
+        if (info.ammoNote) {
+            const pct = bonus.ammo ? bonus.ammo.pct : 0;
+            info.rows.ammo.value.SetStateText(colour('ammo', pct, ammo.each));
+            info.ammoNote.SetStateText(`${volleysWord(ammo.per)} ${(spec.area && spec.area.per) || 'на место'} · на всех ${ammo.total} (${n.seats} ${seatsWord(n.seats)})`);
+        }
         for (const kind of ['ammo', 'range', 'reload']) {
             const b = bonus[kind], r = info.rows[kind];
-            if (!r || (kind === 'range' && o.range_text)) continue;
+            if (!r || (kind === 'range' && (o.range_text || ab)) || (kind === 'ammo' && info.ammoNote)) continue;
             r.value.SetStateText(colour(kind, b ? b.pct : 0, String(b && b.pct ? FX.applyPct(base[kind], b.pct, kind) : base[kind])));
         }
-        if (info.rows.damage) {
+        if (info.rows.damage && !ab) {
             const b = bonus.damage, d0 = (n.damage + n.ap) * n.shots * n.volley;
             info.rows.damage.value.SetStateText(colour('damage', b ? b.pct : 0, String(b && b.pct ? FX.applyPct(d0, b.pct, 'damage') : d0)));
         }
-        const lines = FX.CREW_KINDS.filter(k => bonus[k] && bonus[k].pct).map(k => colour(k, bonus[k].pct,
-            `${FX.KINDS[k].name} ${FX.signedPct(bonus[k].pct)}: ${bonus[k].from.map(f => f.name + (f.mod ? ' (как в моде)' : '')).join(', ')}`));
+        const lines = FX.CREW_KINDS.filter(k => bonus[k] && bonus[k].pct && (k !== 'ammo' || n.ammo)).map(k => colour(k, bonus[k].pct,
+            `${FX.KINDS[k].name} ${FX.signedPct(bonus[k].pct)}` + (k === 'ammo' && n.seats ? ` (${ammoOf(n, 0).each} → ${ammo.each} ${volleysWord(ammo.per)} ${(spec.area && spec.area.per) || 'на место'})` : '')
+            + `: ${bonus[k].from.map(f => f.name + (f.mod ? ' (как в моде)' : '')).join(', ')}`));
         info.accuracy.SetStateText(lines.join('\n'));
         const linesH = lines.length ? Math.max(20, info.accuracy.TextDimensions()[1] + 4) : 0;
         size(info.accuracy, W - 28, Math.max(20, linesH));
@@ -644,6 +673,23 @@ function unitInfo(parent, id, spec, flags = {}) {
     info.hook = owner => { owner.SetHoverChild(panel); owner.AddHoverChild(info.state); };
     info.set({});
     return info;
+}
+
+// The ammunition of a crew with a bonus, as the mod's Lua counts it: the group's whole times the bonus, rounded (floor(x + 0.5)), shared by its seats.
+// -> {total, per: volleys a seat, each: the same as written (one decimal when it is not whole, a comma)}
+function ammoOf(n, pct) {
+    const total = Math.floor(n.ammo * (1 + (pct || 0) / 100) + 0.5), per = n.seats ? total / n.seats : total;
+    const r = Math.round(per * 10) / 10;
+    return {total, per: r, each: Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ',')};
+}
+function volleysWord(v) {
+    if (!Number.isInteger(v)) return 'залпа';
+    const m10 = v % 10, m100 = v % 100;
+    return m10 === 1 && m100 !== 11 ? 'залп' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'залпа' : 'залпов';
+}
+function seatsWord(v) {
+    const m10 = v % 10, m100 = v % 100;
+    return m10 === 1 && m100 !== 11 ? 'место' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'места' : 'мест';
 }
 
 // What the game changes in a crew's panel: every effect of the crew of the buildings that stand (the tree's effects of the catalogue, and the mod's
