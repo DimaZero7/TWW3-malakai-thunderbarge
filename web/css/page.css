@@ -6,6 +6,7 @@ html, body { margin: 0; height: 100%; background: #1b1915; color: #e8dcc0; font:
 #turn { font-weight: bold; min-width: 60px; }
 #bar button, #tools3d button { background: #3a3125; color: #f3e3c0; border: 1px solid #7a5a32; padding: 5px 12px; cursor: pointer; font: inherit; }
 #bar button:hover, #tools3d button:hover { background: #4a3d2c; }
+#tools3d button.toggle.on { background: #5a4424; border-color: #d9a76a; }
 #bar button.debug { border-style: dashed; color: #c9b88f; }
 #bar .debug-gold { display: flex; align-items: center; gap: 4px; color: #c9b88f; }
 #bar .debug-gold input { width: 72px; background: #1b1915; color: #f3e3c0; border: 1px dashed #7a5a32; padding: 4px; font: inherit; }

@@ -1279,10 +1279,18 @@ function refreshTree(view, M) {
 // ink; an order waits for the turn: the ordered kind as a sketch at the places when nobody stands there (a crew that stands stays in ink until the
 // turn replaces it, then only the tag tells of the order), the tag with an hourglass and the turns left. A detail the crew takes the place of (the
 // lookouts of the nests, spec.hides_part) is hidden while someone of the crew is there or sketched there.
+// What a group's place shows, for the drawing and the 3D model alike (one rule for both): the place there or not, the kind that stands (null:
+// nobody), the kind sketched as a hire on its way (only where nobody stands; a crew that stands stays until the turn replaces it).
+export function crewState(M, g) {
+    const now = M.crew(g), order = M.crew_order(g), options = M.crew_options(g);
+    const standing = options.find(o => o.key === now), ordered = options.find(o => o.key === order);
+    const nobody = !standing || standing.empty;
+    return {place: M.crew_place(g), now, order, options, standing, ordered, nobody, stand: nobody ? null : now, coming: ordered && !ordered.empty && nobody ? order : null};
+}
+
 function refreshCrewArea(view, M, c) {
-    const g = c.group, w = M.crew_words(g), shown = M.crew_place(g), now = M.crew(g), order = M.crew_order(g);
-    const options = M.crew_options(g), standing = options.find(o => o.key === now), ordered = options.find(o => o.key === order);
-    const nobody = !standing || standing.empty, coming = ordered && !ordered.empty && nobody ? order : null;
+    const g = c.group, w = M.crew_words(g);
+    const {place: shown, now, order, options, standing, ordered, nobody, coming} = crewState(M, g);
     c.area.SetVisible(shown);
     if (!shown) c.open = false;
     c.pick.SetVisible(shown && c.open);
@@ -1550,6 +1558,7 @@ function click(view, M, c) {
     } else if (id.startsWith(CREW_AREA)) {
         // one choice open at a time: the tag of another group closes the one that was open
         const c = view.crewAreas[id.slice(CREW_AREA.length)];
+        if (c && !c.open && view.onCrewArea) view.onCrewArea(c.group);       // the page may turn its 3D view to the place (main.js)
         const was = c && c.open;
         for (const x of Object.values(view.crewAreas)) x.open = false;
         if (c) c.open = !was;

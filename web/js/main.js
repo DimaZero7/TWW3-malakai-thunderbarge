@@ -9,7 +9,7 @@
 import {makeRoot, onClick, setTooltipRoot} from './gameui.js';
 import {GameSim} from './game_sim.js';
 import {makeBuildings, turnsText} from './barge_buildings.js';
-import {makePanel} from './panel.js';
+import {makePanel, crewState} from './panel.js';
 import {Viewer} from './viewer3d.js';
 import {makeOverview} from './overview.js';
 import * as T from './tree_model.mjs';
@@ -105,8 +105,28 @@ async function main() {
             noShip.textContent = frame ? 'Каркас: 3D-модели пока нет, это схема из киля и рёбер' : stage.no_ship || '';
             noShip.classList.toggle('top', frame);
         }
+        setCrew3d();
         const built = parts.filter(([key]) => M.stage(key) === 'ink').map(([, spec]) => spec.name);
         hullEl.textContent = !hullShown() ? '' : hull === 'hull_stock' ? 'Стоковый корпус' : 'Базовая барка' + (built.length ? ': ' + built.join(', ') : '');
+    };
+    // The crew on the 3D model (tools/web_crew3d.py), from the same state as the drawing (panel.js, crewState): what stands at a place stands on the
+    // model, a hire on its way is a warm see-through ghost of its kind, nobody is nothing. The flaming shells are the stock gun (the mod changes only
+    // the shell); the bombs have no model (a stowed bomb is not on the barge's model). The lookouts stand in the nests while nobody of the crew is
+    // there or coming; Malakai on his side takes a rifle seat (his own model, the riflemen's copy on that seat hidden).
+    const MODEL_OF = {cannons: k => (k === 'flaming' ? 'cannons_stock' : 'cannons_' + k), rifles: k => 'rifles_' + k, cupolas: k => 'cupolas_' + k, harpoon: k => 'harpoon_' + k};
+    const setCrew3d = () => {
+        const {M} = G;
+        viewer.showCrew(hullShown());
+        const side = M.malakai_side(), sideReady = !stage.malakai_side || !stage.malakai_side.show_when || M.stage(stage.malakai_side.show_when) === 'ink';
+        for (const a of blueprint.crew_areas || []) {
+            const of = MODEL_OF[a.group];
+            if (!of) continue;
+            const st = crewState(M, a.group);
+            const kind = st.place ? st.stand || st.coming : null;
+            viewer.setCrew(a.group, kind ? of(kind) : null, kind ? (st.stand ? 'stand' : 'ghost') : null, a.group === 'rifles' && sideReady ? [`ap_crew_${side}_1`] : []);
+            if (a.hides_part === 'lookouts') viewer.setCrew('lookouts', M.stage('lookouts') === 'ink' && st.nobody && !st.coming ? 'lookouts_on' : null, 'stand');
+        }
+        viewer.setCrew('malakai', sideReady && hullShown() ? 'malakai_' + side : null, 'stand');
     };
     // The page's state lives through a reload: localStorage, one key per stage.
     const saveKey = 'mtb_web_state_' + stageName;
@@ -140,6 +160,7 @@ async function main() {
         M.on_change(save);
         M.on_change(showGold);
         panel.view.onSelect = save;
+        panel.view.onCrewArea = g => onCrewArea(g);
         try {
             const saved = JSON.parse(localStorage.getItem(saveKey) || 'null');
             if (saved && !flags.steps) {
@@ -191,7 +212,17 @@ async function main() {
         location.reload();
     });
     document.getElementById('end_turn').addEventListener('click', () => { log('конец хода'); G.game.end_turn(); update(); save(); });
-    for (const which of ['port', 'all', 'left', 'right', 'below']) document.getElementById('view_' + which).addEventListener('click', () => viewer.view(which));
+    for (const which of ['port', 'all', 'left', 'right', 'below', 'top', 'nose', 'rail']) document.getElementById('view_' + which).addEventListener('click', () => viewer.flyTo(which, 450));
+    // A click on a group's tag on the drawing may turn the 3D view to that place: the user's choice, off until asked (the button «К месту экипажа»),
+    // remembered; the flight is smooth and the mouse stops it.
+    const FOLLOW = {cannons: 'port', rifles: 'rail', bombs: 'below', cupolas: 'top', harpoon: 'nose'};
+    const followBtn = document.getElementById('follow_crew');
+    let follow = false;
+    try { follow = localStorage.getItem('mtb_follow_crew') === '1'; } catch (e) { /* no storage */ }
+    const showFollow = () => { followBtn.classList.toggle('on', follow); followBtn.title = follow ? 'Клик по бирке на чертеже поворачивает 3D к месту экипажа. Щёлкните, чтобы выключить' : 'Включить: клик по бирке на чертеже повернёт 3D к месту экипажа'; };
+    followBtn.addEventListener('click', () => { follow = !follow; try { localStorage.setItem('mtb_follow_crew', follow ? '1' : '0'); } catch (e) { /* no storage */ } showFollow(); });
+    showFollow();
+    const onCrewArea = g => { if (follow && FOLLOW[g] && hullShown()) viewer.flyTo(FOLLOW[g]); };
 
     const fit = () => {
         if (!G) return;
