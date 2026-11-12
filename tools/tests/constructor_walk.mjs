@@ -300,7 +300,10 @@ try {
     await b.shot(join(SHOTS, 'constructor_props_gallery.png'));
     await b.type('трюм');
     await sleep(200);
-    await clickText('.cx-gallery .g', 'Трюм');
+    // the hold's icon by its file, not by the people's caption (the mod renames its levels: the caption follows the export)
+    const holdIcon = await at(`[...document.querySelectorAll('.cx-gallery .g')].find(g => g.offsetParent !== null && /\\/cargo_hold_1\\.png$/.test(g.querySelector('img').getAttribute('src')))`);
+    if (!holdIcon) throw new Error('no icon cargo_hold_1.png in the gallery');
+    await b.click(holdIcon.x, holdIcon.y);
     const crewBtn = await at(`[...document.querySelectorAll('.cx-props button')].find(x => x.textContent === 'Выбрать…' && x.closest('.cx-field').querySelector('label').textContent.startsWith('Открывает'))`);
     await b.click(crewBtn.x, crewBtn.y);
     await b.until('!!document.querySelector(".cx-crewlist label")');
@@ -867,7 +870,12 @@ async function walkCaps() {
     await b.move(card.x, card.y, 4); await sleep(350);
     const ammo = await visibleText('value_ammo');
     const lines = await visibleText('accuracy');
-    check('caps: game: the pirates\' ammunition 96 + 30 % = 125, green, from «Трюм»', ammo === '125' && /Боезапас \+30 %: Трюм/.test(lines), {ammo, lines});
+    // the expectation from the export, by the mod's rule (the group's whole times the bonus, floor(x + 0.5), shared by its seats): no number written in
+    const want = await b.eval(`(() => { const n = mtb.panel.view.data.groups.rifles.options.pirates.numbers, total = Math.floor(n.ammo * 1.3 + 0.5), per = n.seats ? total / n.seats : total, r = Math.round(per * 10) / 10;
+        return {total, seats: n.seats, each: Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ','), base: n.ammo}; })()`);
+    const ammoNote = await visibleText('ammo_note');
+    check('caps: game: the pirates\' ammunition with the hold\'s +30 %: the volleys a seat and the group\'s whole as the mod counts them, green, from «Трюм»',
+        ammo === want.each && (!want.seats || ammoNote.includes(`на всех ${want.total}`)) && /Боезапас \+30 %/.test(lines) && /Трюм/.test(lines), {ammo, ammoNote, lines, want});
     await b.shot(join(SHOTS, 'caps_effect_group.png'));
     const panelIn = await b.eval(`(() => { const p = [...document.querySelectorAll('#screen .unit_parchment')].find(x => x.offsetParent !== null); const r = p.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect(); return r.top >= root.top - 1 && r.bottom <= root.bottom + 1 && r.left >= root.left - 1 && r.right <= root.right + 1; })()`);
     check('caps: game: the unit\'s panel inside the screen', panelIn);
