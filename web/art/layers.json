@@ -127,42 +127,6 @@
    298.75,
    71.88
   ],
-  "crew_rifles_hover": [
-   301.25,
-   375.62,
-   321.25,
-   88.75
-  ],
-  "crew_rifles_pirates": [
-   293.12,
-   373.12,
-   334.38,
-   85.62
-  ],
-  "crew_rifles_quarrellers": [
-   297.5,
-   380.0,
-   315.62,
-   78.75
-  ],
-  "crew_rifles_thunderers": [
-   287.5,
-   380.0,
-   325.62,
-   78.75
-  ],
-  "crew_rifles_rakers": [
-   294.38,
-   380.0,
-   318.75,
-   78.75
-  ],
-  "crew_rifles_torpedoes": [
-   291.88,
-   383.75,
-   324.38,
-   75.0
-  ],
   "crew_rifles_tag_plus": [
    475.0,
    349.38,
@@ -174,6 +138,12 @@
    349.38,
    156.25,
    75.0
+  ],
+  "crew_rifles_hover": [
+   301.25,
+   375.62,
+   321.25,
+   88.75
   ],
   "crew_rifles_tag_plus_hover": [
    475.0,
@@ -228,6 +198,330 @@
    383.75,
    325.0,
    74.38
+  ],
+  "crew_rifles_pirates": [
+   293.12,
+   373.12,
+   334.38,
+   85.62
+  ],
+  "crew_rifles_quarrellers": [
+   297.5,
+   380.0,
+   315.62,
+   78.75
+  ],
+  "crew_rifles_thunderers": [
+   287.5,
+   380.0,
+   325.62,
+   78.75
+  ],
+  "crew_rifles_rakers": [
+   294.38,
+   380.0,
+   318.75,
+   78.75
+  ],
+  "crew_rifles_torpedoes": [
+   291.88,
+   383.75,
+   324.38,
+   75.0
+  ],
+  "crew_cannons_empty": [
+   268.12,
+   519.38,
+   85.0,
+   41.25
+  ],
+  "crew_cannons_tag_plus": [
+   163.12,
+   537.5,
+   149.38,
+   107.5
+  ],
+  "crew_cannons_tag_plus_hover": [
+   163.12,
+   537.5,
+   149.38,
+   107.5
+  ],
+  "crew_cannons_tag_swap": [
+   163.12,
+   537.5,
+   149.38,
+   107.5
+  ],
+  "crew_cannons_tag_swap_hover": [
+   163.12,
+   537.5,
+   149.38,
+   107.5
+  ],
+  "crew_cannons_tag_wait": [
+   163.12,
+   537.5,
+   165.62,
+   107.5
+  ],
+  "crew_cannons_tag_wait_hover": [
+   163.12,
+   537.5,
+   165.62,
+   107.5
+  ],
+  "crew_cannons_hover": [
+   256.88,
+   513.12,
+   103.12,
+   57.5
+  ],
+  "crew_cannons_stock_sketch": [
+   267.5,
+   520.0,
+   85.0,
+   40.0
+  ],
+  "crew_cannons_stock": [
+   267.5,
+   520.0,
+   85.0,
+   40.62
+  ],
+  "crew_cannons_flaming_sketch": [
+   255.62,
+   520.0,
+   96.88,
+   40.0
+  ],
+  "crew_cannons_flaming": [
+   256.25,
+   520.0,
+   96.25,
+   40.62
+  ],
+  "crew_cannons_organ_sketch": [
+   271.88,
+   520.0,
+   80.62,
+   41.25
+  ],
+  "crew_cannons_organ": [
+   271.88,
+   520.0,
+   80.62,
+   41.25
+  ],
+  "crew_cannons_clatter_sketch": [
+   260.62,
+   520.0,
+   91.88,
+   39.38
+  ],
+  "crew_cannons_clatter": [
+   260.62,
+   520.0,
+   91.88,
+   40.0
+  ],
+  "crew_cannons_flame_sketch": [
+   251.88,
+   520.0,
+   100.62,
+   38.75
+  ],
+  "crew_cannons_flame": [
+   251.88,
+   520.0,
+   100.62,
+   39.38
+  ],
+  "crew_bombs_empty": [
+   420.62,
+   526.88,
+   263.75,
+   61.88
+  ],
+  "crew_bombs_tag_plus": [
+   444.38,
+   587.5,
+   216.25,
+   79.38
+  ],
+  "crew_bombs_tag_plus_hover": [
+   444.38,
+   587.5,
+   216.25,
+   79.38
+  ],
+  "crew_bombs_tag_swap": [
+   444.38,
+   587.5,
+   216.25,
+   79.38
+  ],
+  "crew_bombs_tag_swap_hover": [
+   444.38,
+   587.5,
+   216.25,
+   79.38
+  ],
+  "crew_bombs_tag_wait": [
+   444.38,
+   587.5,
+   216.25,
+   79.38
+  ],
+  "crew_bombs_tag_wait_hover": [
+   444.38,
+   587.5,
+   216.25,
+   79.38
+  ],
+  "crew_bombs_hover": [
+   414.38,
+   520.62,
+   276.25,
+   74.38
+  ],
+  "crew_bombs_stock_sketch": [
+   420.62,
+   526.88,
+   263.75,
+   61.88
+  ],
+  "crew_bombs_stock": [
+   420.0,
+   526.25,
+   264.38,
+   62.5
+  ],
+  "crew_bombs_fire_sketch": [
+   420.62,
+   518.75,
+   263.75,
+   70.0
+  ],
+  "crew_bombs_fire": [
+   420.0,
+   518.12,
+   264.38,
+   70.62
+  ],
+  "crew_cupolas_tag_plus": [
+   405.0,
+   1.25,
+   240.0,
+   41.88
+  ],
+  "crew_cupolas_tag_plus_hover": [
+   405.0,
+   1.25,
+   240.0,
+   41.88
+  ],
+  "crew_cupolas_tag_swap": [
+   405.0,
+   1.25,
+   240.0,
+   41.88
+  ],
+  "crew_cupolas_tag_swap_hover": [
+   405.0,
+   1.25,
+   240.0,
+   41.88
+  ],
+  "crew_cupolas_tag_wait": [
+   405.0,
+   1.25,
+   240.0,
+   41.88
+  ],
+  "crew_cupolas_tag_wait_hover": [
+   405.0,
+   1.25,
+   240.0,
+   41.88
+  ],
+  "crew_cupolas_hover": [
+   345.0,
+   0.62,
+   360.0,
+   78.75
+  ],
+  "crew_cupolas_stock_sketch": [
+   354.38,
+   0.0,
+   341.25,
+   70.62
+  ],
+  "crew_cupolas_stock": [
+   354.38,
+   0.0,
+   341.25,
+   70.62
+  ],
+  "crew_cupolas_axes_sketch": [
+   354.38,
+   0.0,
+   341.25,
+   70.62
+  ],
+  "crew_cupolas_axes": [
+   354.38,
+   0.0,
+   341.25,
+   70.62
+  ],
+  "balloon_shields_ink": [
+   347.5,
+   157.5,
+   418.75,
+   46.88
+  ],
+  "balloon_shields_pencil": [
+   347.5,
+   158.12,
+   418.12,
+   45.62
+  ],
+  "balloon_shields_build": [
+   345.0,
+   155.62,
+   423.12,
+   50.62
+  ],
+  "forsage_tank_ink": [
+   734.38,
+   443.12,
+   108.12,
+   69.38
+  ],
+  "forsage_tank_pencil": [
+   735.0,
+   443.12,
+   106.88,
+   69.38
+  ],
+  "forsage_tank_build": [
+   730.62,
+   438.75,
+   115.62,
+   76.88
+  ],
+  "lookouts_ink": [
+   350.0,
+   14.38,
+   345.62,
+   56.25
+  ],
+  "lookouts_build": [
+   350.0,
+   0.0,
+   351.88,
+   78.12
   ]
  },
  "parts": {
@@ -265,6 +559,21 @@
    "pencil": null,
    "build": "pub_build",
    "ink": "pub_ink"
+  },
+  "balloon_shields": {
+   "pencil": "balloon_shields_pencil",
+   "build": "balloon_shields_build",
+   "ink": "balloon_shields_ink"
+  },
+  "forsage_tank": {
+   "pencil": "forsage_tank_pencil",
+   "build": "forsage_tank_build",
+   "ink": "forsage_tank_ink"
+  },
+  "lookouts": {
+   "pencil": null,
+   "build": "lookouts_build",
+   "ink": "lookouts_ink"
   }
  },
  "malakai_side": {
@@ -310,5 +619,83 @@
    "phases": 8
   },
   "step_ms": 110
+ },
+ "crew_areas": {
+  "rifles": {
+   "area": [
+    303,
+    348,
+    353,
+    116
+   ],
+   "glow": {
+    "box": [
+     466,
+     340,
+     174,
+     60
+    ],
+    "phases": 8,
+    "prefix": "crew_glow"
+   },
+   "step_ms": 110
+  },
+  "cannons": {
+   "area": [
+    162,
+    518.5,
+    192.5,
+    127.5
+   ],
+   "glow": {
+    "box": [
+     154,
+     594,
+     160,
+     60
+    ],
+    "phases": 8,
+    "prefix": "crew_cannons_glow"
+   },
+   "step_ms": 110
+  },
+  "bombs": {
+   "area": [
+    420,
+    526,
+    265,
+    142
+   ],
+   "glow": {
+    "box": [
+     478,
+     616,
+     152,
+     60
+    ],
+    "phases": 8,
+    "prefix": "crew_bombs_glow"
+   },
+   "step_ms": 110
+  },
+  "cupolas": {
+   "area": [
+    351,
+    0,
+    348,
+    74
+   ],
+   "glow": {
+    "box": [
+     450,
+     -8,
+     160,
+     60
+    ],
+    "phases": 8,
+    "prefix": "crew_cupolas_glow"
+   },
+   "step_ms": 110
+  }
  }
 }

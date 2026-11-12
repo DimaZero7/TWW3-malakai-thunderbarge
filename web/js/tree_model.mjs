@@ -352,6 +352,7 @@ export function warnings(d, ctx = {}) {
     // what appears on the ship and has no picture yet: the author sees it is counted, the drawing does not invent it
     for (const n of d.nodes) for (const p of n.parts || []) {
         if (p.part && ctx.partKnown && !ctx.partKnown(p.part)) out.push({kind: 'ship_part', text: `«${label(n)}»: вид на корабле «${p.part}» — такой детали нет в web/data/blueprint.json`, nodes: [n.id]});
+        else if (!p.part && ctx.partOfName && ctx.partOfName(p.name) && (!ctx.partDrawn || ctx.partDrawn(ctx.partOfName(p.name)))) continue;     // a new detail named as a drawn one is that one
         else if (!p.part || (ctx.partDrawn && !ctx.partDrawn(p.part))) out.push({kind: 'ship_part', text: `«${label(n)}»: вид на корабле: «${p.part ? (ctx.partName ? ctx.partName(p.part) : p.part) : p.name || 'новая деталь'}» (рисунок не готов)`, nodes: [n.id]});
     }
     // the lines of levels: a circle, a fork (two levels continue one: a warning, the game's chains do not branch), a next level that does not

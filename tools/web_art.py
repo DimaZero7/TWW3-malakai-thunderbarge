@@ -1069,12 +1069,12 @@ def crew_empty(variant="c"):
     return figures + crew_tag("plus")
 
 
-def crew_glow(out_prefix="crew_glow"):
+def crew_glow(out_prefix="crew_glow", tag=CREW_TAG):
     """The warm line round the tag while no crew was ever chosen: the same means and strength as the ring of Malakai's empty side (side_glow, variant a:
     8 phases, alpha 0.45..0.85, the same orange), here a rounded frame hugging the tag. Returns its box in units of the drawing and the phases."""
     import numpy as np
     from PIL import Image
-    x, y, w, h = CREW_TAG
+    x, y, w, h = tag
     pad, k = 12, 2          # units round the tag, pixels a unit
     W, H = (w + 2 * pad) * k, (h + 2 * pad) * k
     yy, xx = np.mgrid[0:H, 0:W]
@@ -1206,6 +1206,515 @@ def crew_area_variants(user_scale=0.6):
     sheet.save(target / "crew_spot_variants.png")
 
 
+# ---------------- the other crew groups: guns in the bow ports, bombs over the hatches, throwers in the crow's nests ----------------
+# The same language as the riflemen's place: what stands is inked at the places, an empty place is a light cut-out in a dashed ink line, a hire on its
+# way is the kind sketched in sepia, a tag on a leader names the group with the sign of its state. Shapes and places from the game's models, rendered
+# by tools/crew_cards.py's renderer (--plain; the side view and the lookout: build/crew_models/groups/*.png, nothing of the game kept in the repository):
+#   guns       the port at the model's place (PORT_AT); every gun sits in the port's steel ball and points to the bow and a little down, as the guns of
+#              the mod's cards stand (crew_cards.py, GUN_CAM, the stock aim). The stock gun: a plain steel barrel, a reinforce, a brass band, a flared
+#              muzzle. Flaming shells: the same gun (the mod changes only its shell), told by its hot muzzle and the fire out of it. The organ gun
+#              (tww3_mtb_organ): three barrels side by side in a copper and a brass clamp. The clatter gun (tww3_mtb_clatter2): a steel drum and a thin
+#              bundle of barrels in three brass rings. The flame cannon (tww3_mtb_flame): a short body under brass bands, a thin neck and a gilt
+#              dragon's head for a muzzle, fire out of its jaws. No crew shows: the guns stand in the hull, served from inside.
+#   bombs      the bay doors are under the hull (crew_ui_art.BOMB_DOORS); the bombs above them are drawn seen through the hull's side, as the pub is:
+#              a light window over each pair of doors, a rail with the bay's brass clamps (doors_right_01), two bombs a window (four seats: the near
+#              and the far bomb of each bay side by side). The bomb (dwf_thunderbomb_grungni_01_rigid): a riveted steel cone up, a gilt rope band,
+#              the body orange with a steel side, three steel fins down. The fire bomb is the same casing (the game burns it in flight): its body red
+#              with a painted flame, a lit fuse on its nose.
+#   nests      the rings on the balloon (crew_ui_art.CUPOLAS); a dwarf stands in each, the ring's front hides him to the waist. The grenades: Slayer
+#              pirates (dwf_thunderbarge_crew_pirates_grenade: the rifle pirates' body), the far arm up with a black round bomb and its lit fuse. The
+#              axes: rangers (cupola_axes.vmd: dwf_rangers), white fur coat with brown leather, a steel helm with big gilt horns, a white beard, a
+#              throwing axe raised. The lookouts of «Вороньи гнёзда» (a detail of the tree, not a crew): the barge's lookout
+#              (dwf_thunderbarge_crew_lookout: an artillery crewman), a steel cap, a ginger beard, white sleeves under a brown leather jerkin; the
+#              model's hands are empty, the author's note wants a spyglass, so he holds a brass one to his eye.
+GUN_AT = PORT_AT
+# steel on a layer of its own: not multiplied into the parchment as the base drawing is, so a mid grey (the figures' mail is #8f9296)
+STEEL_L, STEEL_D = "#aba69c", "#96918a"
+GUN_ANGLE = 14          # degrees under the horizontal, towards the bow
+SHIRT, LEATHER, FUR, HOT, FLAME, FLAME_IN = "#ece6d8", "#7a4a2a", "#f3efe6", "#c8321e", "#f08a2a", "#f7d25a"
+BOMB_BODY, FIRE_BODY = "#d9733a", "#b8321c"
+
+
+def gun_axes():
+    a = math.radians(GUN_ANGLE)
+    return (-math.cos(a), math.sin(a)), (math.sin(a), math.cos(a))
+
+
+def gun_pt(t, o=0.0):
+    """A point of the gun: t along the barrel from the port's centre to the muzzle, o across it (positive: its lower side)."""
+    (ux, uy), (nx, ny) = gun_axes()
+    return GUN_AT[0] + ux * t + nx * o, GUN_AT[1] + uy * t + ny * o
+
+
+def tube(t0, t1, r0, r1, fill, w=1.4, o=0.0):
+    """A length of round barrel seen from the side: its outline, a light line along its top, a shade under."""
+    pts = [gun_pt(t0, o - r0), gun_pt(t1, o - r1), gun_pt(t1, o + r1), gun_pt(t0, o + r0)]
+    out = [art.path(art.poly(pts, True), w, art.INK, fill)]
+    out.append(art.path(art.poly([gun_pt(t0 + 1, o - r0 * 0.45), gun_pt(t1 - 1, o - r1 * 0.45)]), 0.9, "#fff8ec", op=0.8))
+    out.append(art.hatch([gun_pt(t0, o + r0 * 0.3), gun_pt(t1, o + r1 * 0.3), gun_pt(t1, o + r1), gun_pt(t0, o + r0)], 90 - GUN_ANGLE + 60, 2.4, 0.6, art.INK, 0.7))
+    return out
+
+
+def band(t, wdt, r, fill, o=0.0, dots=True):
+    pts = [gun_pt(t, o - r), gun_pt(t + wdt, o - r), gun_pt(t + wdt, o + r), gun_pt(t, o + r)]
+    out = [art.path(art.poly(pts, True), 1.1, art.INK, fill)]
+    if dots:
+        for k in (-0.5, 0.5):
+            out.append(art.dot(*gun_pt(t + wdt / 2, o + k * r), 0.8))
+    return out
+
+
+def muzzle_end(t, r, fill="#3d3a36", o=0.0):
+    """The end face of a barrel seen a little from the side: a narrow ellipse across the barrel, the bore dark."""
+    x, y = gun_pt(t, o)
+    rot = -GUN_ANGLE + 90
+    return [f'<ellipse cx="{x:.1f}" cy="{y:.1f}" rx="{r:.1f}" ry="{max(1.6, r * 0.32):.1f}" transform="rotate({rot:.1f} {x:.1f} {y:.1f})" fill="{STEEL_L}" stroke="{art.INK}" stroke-width="1.2"/>',
+            f'<ellipse cx="{x:.1f}" cy="{y:.1f}" rx="{r * 0.6:.1f}" ry="{max(1.0, r * 0.2):.1f}" transform="rotate({rot:.1f} {x:.1f} {y:.1f})" fill="{fill}"/>']
+
+
+def breech():
+    """The steel ball in the port the guns turn in (the stock gun's mount): over the port's lid."""
+    x, y = GUN_AT
+    return [art.circle(x, y, 12.5, 1.6, art.INK, STEEL_L), art.hatch(crescent(x, y, 12.5, -5, -5), 50, 2.4, 0.7, art.INK, 0.7),
+            art.path(f"M{x - 8:.1f} {y - 6:.1f} Q {x - 4:.1f} {y - 10:.1f} {x + 1:.1f} {y - 10:.1f}", 1.0, "#fff8ec", op=0.9)]
+
+
+def fire_tongue(t, length, width, o=0.0):
+    """Fire out of a muzzle along the barrel's line: an outer tongue and a bright core, ink round it."""
+    tip, side = gun_pt(t + length, o), width / 2
+    a, b = gun_pt(t, o - side), gun_pt(t, o + side)
+    m1, m2 = gun_pt(t + length * 0.45, o - side * 1.25), gun_pt(t + length * 0.55, o + side * 1.15)
+    outer = f"M{a[0]:.1f} {a[1]:.1f} Q {m1[0]:.1f} {m1[1]:.1f} {tip[0]:.1f} {tip[1]:.1f} Q {m2[0]:.1f} {m2[1]:.1f} {b[0]:.1f} {b[1]:.1f} Z"
+    ci, ca, cb = gun_pt(t + length * 0.62, o), gun_pt(t + 1, o - side * 0.5), gun_pt(t + 1, o + side * 0.5)
+    inner = f"M{ca[0]:.1f} {ca[1]:.1f} Q {gun_pt(t + length * 0.3, o - side * 0.6)[0]:.1f} {gun_pt(t + length * 0.3, o - side * 0.6)[1]:.1f} {ci[0]:.1f} {ci[1]:.1f} Q {gun_pt(t + length * 0.3, o + side * 0.6)[0]:.1f} {gun_pt(t + length * 0.3, o + side * 0.6)[1]:.1f} {cb[0]:.1f} {cb[1]:.1f} Z"
+    return [art.path(outer, 1.3, HOT, FLAME), art.path(inner, 0.6, FLAME, FLAME_IN)]
+
+
+def gun_items(kind):
+    """The gun of a kind in the port (see above)."""
+    out = breech()
+    if kind in ("stock", "flaming"):
+        out += tube(8, 22, 6.6, 6.3, STEEL_L) + tube(22, 58, 5.6, 5.0, STEEL_L)
+        out += band(20, 3, 6.9, STEEL_L, dots=False) + band(31, 6, 6.4, BRASS)
+        out += tube(58, 67, 5.6, 7.4, STEEL_L)
+        if kind == "flaming":
+            out += [art.path(art.poly([gun_pt(55, -5.6), gun_pt(67, -7.4), gun_pt(67, 7.4), gun_pt(55, 5.6)], True), 1.2, art.INK, "#e0602a")]
+            out += muzzle_end(67, 7.4, HOT) + fire_tongue(67, 15, 11)
+        else:
+            out += muzzle_end(67, 7.4)
+    elif kind == "organ":
+        # a frame at the breech, three barrels side by side (four on the model, two and two: the far ones behind), a copper and a brass clamp
+        out.append(art.path(art.poly([gun_pt(4, -12), gun_pt(16, -12), gun_pt(16, 12), gun_pt(4, 12)], True), 1.4, art.INK, STEEL_L))
+        out.append(art.circle(*gun_pt(10, 0), 3.0, 1.0, art.INK, STEEL))
+        for o, end in ((-7.2, 61), (0.0, 64), (7.2, 59)):
+            out += tube(14, end, 3.5, 3.3, STEEL_D, 1.2, o) + muzzle_end(end, 3.4, "#3d3a36", o)
+        out += band(22, 7, 11.2, COPPER_LIGHT) + band(37, 5, 11.0, BRASS)
+    elif kind == "clatter":
+        # the drum, then a thin bundle of barrels (their lines along it), three brass rings, the barrels' ends out of the last
+        out += tube(8, 24, 7.2, 7.2, STEEL_L)
+        # the bundle dark (the model's barrels are blackened steel) against the stock gun's light barrel, the rings broad and gilt
+        out.append(art.path(art.poly([gun_pt(24, -4.6), gun_pt(70, -4.2), gun_pt(70, 4.2), gun_pt(24, 4.6)], True), 1.3, art.INK, "#5e5a55"))
+        for o in (-2.3, 0.0, 2.3):
+            out.append(art.path(art.poly([gun_pt(25, o), gun_pt(74, o * 1.1)]), 1.2, "#2e2b28"))
+        for t in (32, 50, 62):
+            out += band(t, 4.2, 7.0, BRASS, dots=False)
+        for o in (-2.8, 0.0, 2.8):
+            out.append(art.circle(*gun_pt(75, o * 1.1), 1.5, 0.8, art.INK, "#2e2b28"))
+    else:       # flame
+        out += tube(8, 42, 6.6, 6.0, STEEL_D)
+        for t in (12, 22, 32):
+            out += band(t, 5, 7.2, BRASS)
+        out += tube(42, 52, 3.8, 3.8, BRASS)
+        # the dragon's head: a gilt wedge, the upper jaw over the lower, an eye, the jaws open on the fire
+        head = [gun_pt(50, -6.5), gun_pt(56, -8.5), gun_pt(66, -6.2), gun_pt(70, -3.2), gun_pt(62, -1.0), gun_pt(70, 3.0), gun_pt(64, 5.8), gun_pt(52, 6.5)]
+        out.append(art.path(art.smooth(head, True), 1.4, art.INK, BRASS))
+        out.append(art.dot(*gun_pt(57, -4.5), 1.3))
+        out.append(art.path(art.poly([gun_pt(54, -8.2), gun_pt(52, -12), gun_pt(58, -9)]), 1.0, art.INK, BRASS))
+        out += fire_tongue(66, 20, 10, -0.2)
+    return out
+
+
+COPPER_LIGHT = "#c8834a"
+
+
+def gun_ghost():
+    """The empty port's place: the stock gun's outline as a light cut-out in a dashed ink line."""
+    x, y = GUN_AT
+    pts = [gun_pt(10, -6.6), gun_pt(58, -5.0), gun_pt(67, -7.4), gun_pt(67, 7.4), gun_pt(58, 5.0), gun_pt(10, 6.6)]
+    return [art.path(art.poly(pts, True), CREW_LINE, art.INK, LIGHT, extra='stroke-dasharray="4.5 3"'),
+            art.path(f"M{x - 12.5:.1f} {y:.1f} A 12.5 12.5 0 1 1 {x + 12.5:.1f} {y:.1f} A 12.5 12.5 0 1 1 {x - 12.5:.1f} {y:.1f}", CREW_LINE, art.INK, LIGHT, extra='stroke-dasharray="4.5 3"')]
+
+
+# the bombs' windows: over each pair of doors (crew_ui_art.BOMB_DOORS), under the side shields, down to the doors
+def bomb_windows():
+    out = []
+    for x0, x1 in art.BOMB_DOORS:
+        cx = (x0 + x1) / 2
+        out.append((x0 + 5, 529, x1 - 5, art.hull_bottom(cx) - 11))
+    return out
+
+
+def bomb_shape(cx, top, fire=False, ghost=False):
+    """A bomb standing nose up: the cone, the gilt band, the body, the fins. top: the nose's tip."""
+    w, cone, band_h, body, fins = 7.5, 12, 3, 19, 9
+    y1, y2, y3, y4 = top + cone, top + cone + band_h, top + cone + band_h + body, top + cone + band_h + body + fins
+    outline = (f"M{cx:.1f} {top:.1f} Q {cx + w:.1f} {top + 5:.1f} {cx + w:.1f} {y1:.1f} L{cx + w - 0.8:.1f} {y3:.1f} L{cx + w + 3.5:.1f} {y4:.1f} "
+               f"L{cx + 2:.1f} {y3 + 4:.1f} L{cx - 2:.1f} {y3 + 4:.1f} L{cx - w - 3.5:.1f} {y4:.1f} L{cx - w + 0.8:.1f} {y3:.1f} L{cx - w:.1f} {y1:.1f} "
+               f"Q {cx - w:.1f} {top + 5:.1f} {cx:.1f} {top:.1f} Z")
+    if ghost:
+        return [art.path(outline, CREW_LINE * 0.85, art.INK, LIGHT, extra='stroke-dasharray="4 2.6"')]
+    out = [art.path(outline, 1.3, art.INK, STEEL_L)]
+    # the body: orange with its steel side (the model's halves), or the fire bomb's red with a painted flame
+    out.append(art.path(art.poly([(cx - w, y2), (cx + w * 0.25, y2), (cx + w * 0.25 - 0.4, y3), (cx - w + 0.8, y3)], True), 0.9, art.INK, FIRE_BODY if fire else BOMB_BODY))
+    if fire:
+        out.append(art.path(f"M{cx - 4:.1f} {y3 - 1:.1f} Q {cx - 6.5:.1f} {y3 - 8:.1f} {cx - 2.5:.1f} {y2 + 4:.1f} Q {cx - 1.5:.1f} {y3 - 9:.1f} {cx + 1:.1f} {y3 - 7:.1f} "
+                            f"Q {cx + 2:.1f} {y3 - 4:.1f} {cx:.1f} {y3 - 1:.1f} Z", 0.6, HOT, FLAME_IN))
+    out.append(art.path(art.poly([(cx - w, y1), (cx + w, y1), (cx + w, y2), (cx - w, y2)], True), 0.9, art.INK, BRASS))
+    for k in range(-2, 3):
+        out.append(art.path(f"M{cx + k * 3 - 1:.1f} {y2:.1f} L{cx + k * 3 + 1:.1f} {y1:.1f}", 0.5, art.INK, op=0.8))
+    out.append(art.path(f"M{cx:.1f} {y3 + 4:.1f} L{cx:.1f} {y4 + 1:.1f}", 1.4))
+    for dy in (5, 9):
+        out.append(art.dot(cx - 2.5, top + dy, 0.7))
+    if fire:
+        # the lit fuse on the nose
+        out.append(art.path(f"M{cx:.1f} {top:.1f} Q {cx + 2:.1f} {top - 3:.1f} {cx + 1:.1f} {top - 5:.1f}", 0.9))
+        f = f"M{cx - 3:.1f} {top - 5:.1f} Q {cx - 3.5:.1f} {top - 11:.1f} {cx + 1.5:.1f} {top - 16:.1f} Q {cx + 0.5:.1f} {top - 11:.1f} {cx + 4.5:.1f} {top - 8:.1f} Q {cx + 4:.1f} {top - 4:.1f} {cx + 1:.1f} {top - 4:.1f} Z"
+        out.append(art.path(f, 1.0, HOT, FLAME))
+    return out
+
+
+def bomb_items(kind):
+    """kind: None (empty: the windows, the rails and clamps, the bombs' places dashed), 'stock' or 'fire'."""
+    out = []
+    for x0, y0, x1, y1 in bomb_windows():
+        cx = (x0 + x1) / 2
+        out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0:.1f}" fill="{art.PAPER}" opacity="0.42"/>')
+        out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="6" fill="#7a5128" opacity="0.35"/>')
+        # the rail across and the bay's brass clamps that hold each bomb by its band
+        out.append(art.path(f"M{x0 + 2} {y0 + 12} L{x1 - 2} {y0 + 12}", 2.2, art.INK))
+        for bx in (cx - 11.5, cx + 11.5):
+            if kind is None:
+                out += bomb_shape(bx, y0 + 8, ghost=True)
+            else:
+                out += bomb_shape(bx, y0 + 8, fire=(kind == "fire"))
+            out.append(art.path(art.poly([(bx - 9, y0 + 12), (bx - 9, y0 + 23), (bx - 6.5, y0 + 23)]), 1.4, art.INK))
+            out.append(art.path(art.poly([(bx + 9, y0 + 12), (bx + 9, y0 + 23), (bx + 6.5, y0 + 23)]), 1.4, art.INK))
+            out.append(art.path(f"M{bx - 9:.1f} {y0 + 13:.1f} L{bx - 9:.1f} {y0 + 22:.1f} M{bx + 9:.1f} {y0 + 13:.1f} L{bx + 9:.1f} {y0 + 22:.1f}", 0.9, BRASS))
+        out.append(f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0:.1f}" fill="none" stroke="{art.INK}" stroke-width="1.3" opacity="0.9"/>')
+    return out
+
+
+NEST_S = 1.2            # the game stands the nests' throwers 1.2 times their size (crew_cards.py, cupola_card; data: cupola axes scale)
+NEST_BASE = 47          # where a dwarf in a nest stands: the ring's front hides him below its rim (ring top at y - 26)
+
+
+def ring_front(x, y):
+    """The front of a nest's ring, drawn over the dwarf in it: the wooden band and the near half of the iron rim."""
+    top = y - 26
+    out = [art.shape(f"M{x - 24} {top + 1} L{x + 24} {top + 1} L{x + 24} {y} Q {x} {y + 8} {x - 24} {y} Z", "#a06c38")]
+    for dx in (-18, -9, 0, 9, 18):
+        out.append(art.path(f"M{x + dx} {top + 5} L{x + dx} {y + (3 if abs(dx) < 10 else 1)}", 0.9))
+    out.append(art.path(f"M{x - 24} {top + 1} L{x - 24} {y} Q {x} {y + 8} {x + 24} {y} L{x + 24} {top + 1}", 1.9))
+    out.append(f'<path d="M{x - 25} {top + 1} A 25 5 0 0 0 {x + 25} {top + 1} L{x + 18} {top + 1} A 18 3 0 0 1 {x - 18} {top + 1} Z" fill="#57504a" stroke="{art.INK}" stroke-width="1.7"/>')
+    return out
+
+
+def nest_figure(kind, x, y, s=1.0):
+    """A dwarf in a nest from the chest up, turned to the bow (left): 'stock' a Slayer pirate with a grenade raised, 'axes' a ranger with a throwing axe
+    raised, 'lookout' the lookout with a spyglass at his eye."""
+    P = lambda dx, dy: f"{x + dx * s:.1f} {y + dy * s:.1f}"
+    line = lambda d, w=1.0, fill="none", color=art.INK: art.path(d, w * s, color, fill)
+    limb = lambda d, colour, w=3.4: [line(d, w + 1.6), line(d, w, color=colour)]
+    out = []
+    cloth = {"stock": SKIN, "axes": FUR, "lookout": LEATHER}[kind]
+    if kind == "stock":
+        # the far arm up over the head with the round black grenade, its fuse lit
+        out += limb(f"M{P(8, -13)} L{P(14, -20)} L{P(15, -26)}", SKIN)
+        out.append(art.circle(x + 15.5 * s, y - 30 * s, 4.4 * s, 1.1 * s, art.INK, "#3d3a36"))
+        out.append(line(f"M{P(17.5, -33.5)} Q {P(19.5, -35)} {P(19, -36.5)}", 0.9))
+        out.append(art.dot(x + 19 * s, y - 37 * s, 1.8 * s, FLAME))
+    elif kind == "axes":
+        # the far arm up, the throwing axe over the head: a short haft, the steel head's bit to the front
+        out.append(line(f"M{P(14, -22)} L{P(17.5, -35)}", 2.4, color=WOOD))
+        out.append(line(f"M{P(16.2, -30.5)} Q {P(10, -33)} {P(9.5, -37.5)} Q {P(14.5, -37)} {P(18.1, -35.2)} Z", 1.0, "#c9cdd2"))
+        out += limb(f"M{P(8, -13)} L{P(13, -19)} L{P(15, -25)}", FUR)
+        out.append(line(f"M{P(13.6, -23.5)} L{P(16.6, -22.8)}", 1.6, color=GOLD))
+    # the body: sloping shoulders wider than the head
+    out.append(line(f"M{P(-8, 0)} L{P(-10, -7)} Q {P(-12.5, -13)} {P(-5, -15.5)} L{P(4, -15.5)} Q {P(12, -13)} {P(10, -7)} L{P(8, 0)} Z", 1.1, cloth))
+    if kind == "stock":
+        out.append(line(f"M{P(-8.4, -1.6)} L{P(8.4, -1.6)}", 2.0, color=WOOD))
+    if kind == "axes":
+        out.append(line(f"M{P(-7, -14.5)} L{P(5, -1)}", 2.4, color=LEATHER))            # the leather strap across the white coat
+        out.append(line(f"M{P(-9.6, -5)} L{P(9.6, -5)}", 0.9, color=GOLD))
+    if kind == "lookout":
+        # white sleeves out of the leather jerkin
+        for sx in (-1, 1):
+            out.append(line(f"M{P(sx * 7.5, -14.5)} Q {P(sx * 12, -12)} {P(sx * 10.5, -6)} L{P(sx * 7.5, -7)} Z", 0.9, SHIRT))
+    out.append(art.circle(x - 1 * s, y - 19.5 * s, 5.4 * s, 1.0 * s, art.INK, SKIN if kind == "stock" else "#e3b08a"))
+    if kind == "stock":
+        out.append(line(f"M{P(-6.4, -21)} A {5.4 * s:.1f} {5.4 * s:.1f} 0 0 1 {P(4.4, -21)} Z", 0.9, SCARF))
+        out.append(line(f"M{P(4.2, -22)} L{P(8.5, -24.5)} M{P(4.2, -22)} L{P(9, -20.5)}", 1.3, color=SCARF))
+        out.append(line(f"M{P(-4.5, -15)} L{P(2.5, -15)} L{P(1.6, -4)} L{P(-1, -7)} L{P(-3.6, -4)} Z", 0.9, GINGER))
+        out.append(line(f"M{P(-1, -17.2)} Q {P(-7, -14.2)} {P(-13, -19.5)} M{P(-1, -17.2)} Q {P(5, -14.2)} {P(11, -19.5)}", 3.4))
+        out.append(line(f"M{P(-1, -17.2)} Q {P(-7, -14.2)} {P(-13, -19.5)} M{P(-1, -17.2)} Q {P(5, -14.2)} {P(11, -19.5)}", 2.0, color=GINGER))
+        # the near arm down on the rim
+        out += limb(f"M{P(-9, -12)} L{P(-13, -5)}", SKIN)
+    elif kind == "axes":
+        # the steel helm and its big gilt horns turned up and out, the long white beard
+        out.append(line(f"M{P(-7, -20.5)} A {6 * s:.1f} {6.4 * s:.1f} 0 0 1 {P(5, -20.5)} Z", 1.0, HELM))
+        out.append(line(f"M{P(-7, -20.5)} L{P(5, -20.5)}", 1.2, color=GOLD))
+        for sx, hx in ((-1, -6.5), (1, 4.5)):
+            d = f"M{P(hx, -23)} Q {P(hx + sx * 9, -24)} {P(hx + sx * 7, -34)}"
+            out += [line(d, 3.4), line(d, 2.0, color=GOLD)]
+        out.append(line(f"M{P(-6.5, -17.5)} L{P(4.5, -17.5)} L{P(3, -2)} L{P(-1, 1)} L{P(-5, -2)} Z", 0.9, FUR))
+        out.append(line(f"M{P(-1, -15)} L{P(-1, -2)}", 0.6, color="#b9b2a2"))
+        out += limb(f"M{P(-9, -12)} L{P(-13, -5)}", FUR)
+    else:
+        # the steel cap, the ginger beard, the spyglass at his eye along the bow
+        out.append(line(f"M{P(-6.6, -21)} A {5.8 * s:.1f} {5.8 * s:.1f} 0 0 1 {P(4.6, -21)} Z", 1.0, HELM))
+        out.append(line(f"M{P(-6, -17.5)} L{P(4, -17.5)} L{P(2.4, -6)} L{P(-1, -4)} L{P(-4.4, -6)} Z", 0.9, GINGER))
+        out.append(line(f"M{P(-4, -20.5)} L{P(-23, -22.5)}", 4.4))
+        out.append(line(f"M{P(-4, -20.5)} L{P(-23, -22.5)}", 2.8, color=BRASS))
+        out.append(line(f"M{P(-15, -20.6)} L{P(-15, -22.8)}", 1.0))
+        out += limb(f"M{P(-9, -12)} L{P(-13, -17)} L{P(-12, -21)}", SHIRT, 3.0)
+    return out
+
+
+def nest_items(kind):
+    """A kind in both nests, each over the ring's back and under its front."""
+    out = []
+    for x, y in art.CUPOLAS:
+        out += nest_figure(kind, x, NEST_BASE, NEST_S) + ring_front(x, y)
+    return out
+
+
+def sketch(items, strokes):
+    """Hired, not aboard yet: the kind's outline in sepia over a light cut-out, a few slanted sepia strokes across (as crew_sketch, variant c)."""
+    import re
+    text = "".join(items)
+    text = re.sub(r'stroke="#[0-9a-fA-F]{6}"', f'stroke="{SEPIA}"', text)
+    text = re.sub(r'fill="#[0-9a-fA-F]{6}"', f'fill="{LIGHT}"', text)
+    text = re.sub(r'stroke-width="([0-9.]+)"', lambda m: f'stroke-width="{max(1.5, float(m.group(1)) * 0.85):.2f}"', text)
+    out = [text]
+    for x, y in strokes:
+        for dx in (-5, 0, 5):
+            out.append(art.path(f"M{x + dx - 3:.1f} {y + 5:.1f} L{x + dx + 3:.1f} {y - 6:.1f}", 0.9, SEPIA, op=0.75))
+    return out
+
+
+# The tag of each group: its box (x, y, w, h), its word, its leaders (from the slip to a dot at the place)
+GROUP_TAGS = {
+    "cannons": {"box": (166, 606, 136, 36), "text": "Орудия", "leaders": [((266, 606), gun_pt(31, 0))]},
+    "bombs": {"box": (490, 628, 128, 36), "text": "Бомбы", "leaders": [((508, 628), (449, 592)), ((600, 628), (656, 595))]},
+    "cupolas": {"box": (462, 4, 136, 36), "text": "Гнёзда", "leaders": [("left", (410, 37)), ("right", (640, 37))]},
+}
+
+
+def group_tag(group, sign="plus", light=False):
+    """As crew_tag: the slip of light parchment with the group's word and the sign of its state, the leaders to its places."""
+    spec = GROUP_TAGS[group]
+    x, y, w, h = spec["box"]
+    if sign == "wait":
+        w += 24
+    fill = "#fff0cc" if light else LIGHT
+    out = []
+    for start, end in spec["leaders"]:
+        if start == "left":
+            start = (x, y + h / 2)
+        elif start == "right":
+            start = (x + w, y + h / 2)
+        out.append(art.path(f"M{start[0]:.1f} {start[1]:.1f} L{end[0]:.1f} {end[1]:.1f}", CREW_LINE * 0.8))
+        out.append(art.dot(end[0], end[1], 3.2))
+    out.append(art.path(f"M{x + 6} {y} L{x + w} {y} L{x + w} {y + h} L{x + 6} {y + h} L{x} {y + h - 7} L{x} {y + 7} Z", CREW_LINE, art.INK, fill))
+    out.append(f'<text x="{x + 12}" y="{y + h - 10.5}" font-family="Palatino Linotype, Book Antiqua, Georgia, serif" font-weight="bold" font-size="{CREW_TEXT}" fill="{art.INK}">{spec["text"]}</text>')
+    cx, cy, r = x + w - 19, y + h / 2, 11.5
+    if sign == "wait":
+        px0, px1 = x + w - 55, x + w - 7
+        out.append(art.path(f"M{px0 + r} {cy - r} L{px1 - r} {cy - r} A {r} {r} 0 0 1 {px1 - r} {cy + r} L{px0 + r} {cy + r} A {r} {r} 0 0 1 {px0 + r} {cy - r} Z", CREW_LINE * 0.8, art.INK, "#e9b96a"))
+        hx = px0 + 14
+        out.append(art.path(f"M{hx - 5.5} {cy - 7} L{hx + 5.5} {cy - 7} L{hx - 5.5} {cy + 7} L{hx + 5.5} {cy + 7} Z", CREW_LINE * 0.7, art.INK, "#fff0cc"))
+        out.append(f'<text x="{px1 - 20}" y="{y + h - 10.5}" font-family="Palatino Linotype, Book Antiqua, Georgia, serif" font-weight="bold" font-size="{CREW_TEXT}" fill="{art.INK}">1</text>')
+        return out
+    out.append(art.circle(cx, cy, r, CREW_LINE * 0.8, art.INK, "#e9b96a"))
+    if sign == "plus":
+        out.append(art.path(f"M{cx - 6.5} {cy} L{cx + 6.5} {cy} M{cx} {cy - 6.5} L{cx} {cy + 6.5}", CREW_LINE))
+    else:
+        out.append(art.path(f"M{cx - 6.5} {cy - 3} L{cx + 5.5} {cy - 3} M{cx + 2} {cy - 6.5} L{cx + 6} {cy - 3} "
+                            f"M{cx + 6.5} {cy + 3.5} L{cx - 5.5} {cy + 3.5} M{cx - 2} {cy + 7} L{cx - 6} {cy + 3.5}", CREW_LINE * 0.75))
+    return out
+
+
+def group_zones(group):
+    """The boxes round a group's places (x0, y0, x1, y1): dashed frames under the mouse, and with the tag the box that takes the click."""
+    if group == "cannons":
+        pts = [gun_pt(t, o) for t in (-14, 74) for o in (-13, 13)]
+        return [(min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts))]
+    if group == "bombs":
+        return [(x0 - 3, y0 - 3, x1 + 3, y1 + 3) for x0, y0, x1, y1 in bomb_windows()]
+    return [(x - 31, 6, x + 31, y + 10) for x, y in art.CUPOLAS]
+
+
+def group_frames(group, pad=0, w=CREW_LINE, color=None, op=1.0):
+    return [art.path(art.poly([(x0 - pad, y0 - pad), (x1 + pad, y0 - pad), (x1 + pad, y1 + pad), (x0 - pad, y1 + pad)], True), w, color or art.INK,
+                     extra='stroke-dasharray="9 6"', op=op) for x0, y0, x1, y1 in group_zones(group)]
+
+
+GROUP_KINDS = {"cannons": ["stock", "flaming", "organ", "clatter", "flame"], "bombs": ["stock", "fire"], "cupolas": ["stock", "axes"]}
+
+
+def group_items(group, kind):
+    if group == "cannons":
+        return gun_items(kind)
+    if group == "bombs":
+        return bomb_items(kind)
+    return nest_items(kind)
+
+
+def group_strokes(group):
+    """Where a sketch's slanted strokes go: on the bodies of what is drawn."""
+    if group == "cannons":
+        return [gun_pt(t, 0) for t in (24, 44)]
+    if group == "bombs":
+        return [((x0 + x1) / 2 + dx, y0 + 34) for x0, y0, x1, y1 in bomb_windows() for dx in (-11.5, 11.5)]
+    return [(x, NEST_BASE - 8) for x, _ in art.CUPOLAS]
+
+
+def group_glow(group):
+    """The warm line round a group's tag until its first choice: the rifles' crew_glow, round this tag."""
+    return {**crew_glow(f"crew_{group}_glow", GROUP_TAGS[group]["box"]), "prefix": f"crew_{group}_glow"}
+
+
+def group_areas(places):
+    """Layers of the guns', bombs' and nests' places, as crew_area() makes the riflemen's; returns their boxes and glows for layers.json."""
+    out = {}
+    for group, kinds in GROUP_KINDS.items():
+        if group == "cannons":
+            layer_plain("crew_cannons_empty", gun_ghost(), places)
+        elif group == "bombs":
+            layer_plain("crew_bombs_empty", bomb_items(None), places)
+        for sign in ("plus", "swap", "wait"):
+            layer_plain(f"crew_{group}_tag_{sign}", group_tag(group, sign), places)
+            layer_plain(f"crew_{group}_tag_{sign}_hover", group_tag(group, sign, True), places)
+        layer_plain(f"crew_{group}_hover", group_frames(group, 3, CREW_LINE * 0.8, art.INK_SOFT, 0.9), places)
+        for kind in kinds:
+            items = group_items(group, kind)
+            if group == "cupolas":      # the dwarf sketched, the ring's front over him stays in ink
+                items_sketch = sketch([g for x, _ in art.CUPOLAS for g in nest_figure(kind, x, NEST_BASE, NEST_S)], group_strokes(group)) + [g for x, y in art.CUPOLAS for g in ring_front(x, y)]
+            else:
+                items_sketch = sketch(items, group_strokes(group))
+            layer_plain(f"crew_{group}_{kind}_sketch", items_sketch, places)
+            layer(f"crew_{group}_{kind}", items, places)
+        glow = group_glow(group)
+        x0 = min(z[0] for z in group_zones(group))
+        y0 = min(z[1] for z in group_zones(group))
+        x1 = max(z[2] for z in group_zones(group))
+        y1 = max(z[3] for z in group_zones(group))
+        tx, ty, tw, th = GROUP_TAGS[group]["box"]
+        x0, y0, x1, y1 = min(x0, tx - 4), min(y0, ty - 4), max(x1, tx + tw + 24 + 4), max(y1, ty + th + 4)
+        out[group] = {"area": [round(x0, 1), round(y0, 1), round(x1 - x0, 1), round(y1 - y0, 1)], "glow": glow, "step_ms": 110}
+    return out
+
+
+# ---------------- details the tree brings that the base drawing lacked: the balloon's shields, the forsage tank, the nests' lookouts ----------------
+# The balloon in the drawing is flatter than the model's and shorter: its places go by the balloon (nose 128, the tail cone's end 972 against the side
+# view's 250 and 1450 px, build/crew_models/groups/stock_side.png), not by the hull's mx().
+def balloon_x(px):
+    return 128 + (px - 250) * (972 - 128) / (1450 - 250)
+
+
+# Nine round shields on the balloon's middle (the model: seven in a row, a gap at the rear net, two more), 58 px across in the side view; their faces in
+# the model's order: the helmed face, the rune Г, quartered red and steel with a hammer, the face, quartered, the rune B on red, quartered, Г, the face.
+BALLOON_SHIELDS = [(595, "face"), (652, "rune_g"), (710, "quarter"), (768, "face"), (826, "quarter"), (884, "rune_b"), (940, "quarter"), (1065, "rune_g"), (1125, "face")]
+BALLOON_SHIELD_Y = 181
+
+
+def balloon_shields_items():
+    out = []
+    r = 58 * (972 - 128) / (1450 - 250) / 2
+    for px, face in BALLOON_SHIELDS:
+        x, y = balloon_x(px), BALLOON_SHIELD_Y
+        out.append(art.circle(x, y, r, 1.5, art.INK, art.PAPER))
+        out.append(art.circle(x, y, r - 3.2, 0.8))
+        if face == "quarter":
+            out.append(art.hatch([(x, y), (x - r + 3, y), (x - r + 4, y - r * 0.6), (x - r * 0.6, y - r + 4), (x, y - r + 3)], 45, 3.2, 0.7))
+            out.append(art.hatch([(x, y), (x + r - 3, y), (x + r - 4, y + r * 0.6), (x + r * 0.6, y + r - 4), (x, y + r - 3)], 45, 3.2, 0.7))
+            out.append(art.path(f"M{x - 5:.1f} {y + 9:.1f} L{x + 5:.1f} {y - 7:.1f}", 2.0, art.INK_SOFT))
+            out.append(art.path(f"M{x + 1:.1f} {y - 11:.1f} L{x + 9:.1f} {y - 4:.1f}", 3.2, art.INK_SOFT))
+        elif face == "face":
+            out.append(art.hatch([(x - 10, y), (x, y - 10), (x + 10, y), (x, y + 10)], 45, 3.2, 0.7))
+            out.append(art.path(f"M{x - 8:.1f} {y - 3:.1f} L{x - 3:.1f} {y - 1:.1f} M{x + 8:.1f} {y - 3:.1f} L{x + 3:.1f} {y - 1:.1f} M{x - 4:.1f} {y + 6:.1f} Q {x:.1f} {y + 10:.1f} {x + 4:.1f} {y + 6:.1f}", 1.4, art.INK_SOFT))
+        elif face == "rune_g":
+            out.append(art.path(f"M{x - 3:.1f} {y + 11:.1f} L{x - 3:.1f} {y - 11:.1f} L{x + 6:.1f} {y - 8:.1f}", 2.2, art.INK_SOFT))
+        else:
+            out.append(art.path(f"M{x - 5:.1f} {y - 11:.1f} L{x - 5:.1f} {y + 11:.1f} M{x - 5:.1f} {y - 11:.1f} L{x + 6:.1f} {y - 5:.1f} L{x - 5:.1f} {y:.1f} "
+                                f"L{x + 6:.1f} {y + 6:.1f} L{x - 5:.1f} {y + 11:.1f}", 2.0, art.INK_SOFT))
+        out.append(art.circle(x, y, 3.4, 1.0, art.INK, art.INK_SOFT))
+    return out
+
+
+def balloon_shields_area():
+    r = 58 * (972 - 128) / (1450 - 250) / 2 + 3
+    x0, x1 = balloon_x(BALLOON_SHIELDS[0][0]) - r, balloon_x(BALLOON_SHIELDS[-1][0]) + r
+    return [(x0, BALLOON_SHIELD_Y - r), (x1, BALLOON_SHIELD_Y - r), (x1, BALLOON_SHIELD_Y + r), (x0, BALLOON_SHIELD_Y + r)]
+
+
+# The forsage tank (build/solid_hull_tank/tank_part; the side view at the drive): a steel cylinder lying on the shaft's casing in front of the big gear,
+# its rounded end to the stern, a short neck up at its fore end with the red valve wheel, a pipe looping under it. Measured off the side view through
+# the hull's mapping (mx, my): the body z -5.3 .. -8.1, y 1.8 .. 3.0; the valve at z -5.8, y 3.0.
+TANK = (mx(-5.34), my(2.97), mx(-8.14), my(1.80))
+
+
+def forsage_tank_items():
+    x0, y0, x1, y1 = TANK
+    mid = (y0 + y1) / 2
+    end = 14
+    body = f"M{x0:.1f} {y0:.1f} L{x1 - end:.1f} {y0:.1f} Q {x1 + 2:.1f} {y0:.1f} {x1 + 2:.1f} {mid:.1f} Q {x1 + 2:.1f} {y1:.1f} {x1 - end:.1f} {y1:.1f} L{x0:.1f} {y1:.1f} Z"
+    out = [art.path(body, 1.8, art.INK, STEEL_D), art.hatch([(x0, mid - 2), (x1, mid - 2), (x1, y1), (x0, y1)], 70, 3.0, 0.8)]
+    out.append(art.path(f"M{x0 + 7:.1f} {y0 + 3:.1f} L{x1 - end - 6:.1f} {y0 + 3:.1f}", 1.0, "#fff8ec", op=0.9))
+    for bx in (x0 + 4, x0 + 9, x1 - end - 2):
+        out.append(art.path(f"M{bx:.1f} {y0:.1f} L{bx:.1f} {y1:.1f}", 1.2))
+    for bx in (x0 + 26, x0 + 50):
+        for by in (y0 + 5, y1 - 5):
+            out.append(art.dot(bx, by, 1.0))
+    # the pipe looping under it
+    out.append(art.path(f"M{x0 + 18:.1f} {y1 - 9:.1f} L{x1 - 26:.1f} {y1 - 9:.1f} Q {x1 - 12:.1f} {y1 - 9:.1f} {x1 - 12:.1f} {y1 - 17:.1f}", 6.0, art.INK))
+    out.append(art.path(f"M{x0 + 18:.1f} {y1 - 9:.1f} L{x1 - 26:.1f} {y1 - 9:.1f} Q {x1 - 12:.1f} {y1 - 9:.1f} {x1 - 12:.1f} {y1 - 17:.1f}", 3.4, STEEL_L))
+    # the neck and the red valve wheel
+    vx, vy = mx(-5.82), my(3.0) - 8
+    out.append(art.path(art.poly([(vx - 5, y0 + 1), (vx - 4, vy + 4), (vx + 4, vy + 4), (vx + 5, y0 + 1)], True), 1.4, art.INK, STEEL_L))
+    out.append(art.circle(vx, vy, 7, 1.6, art.INK, HOT))
+    out.append(art.circle(vx, vy, 3.2, 1.0, art.INK, "#e8a07a"))
+    for a_ in range(0, 360, 60):
+        ca, sa = math.cos(math.radians(a_)), math.sin(math.radians(a_))
+        out.append(art.path(f"M{vx + 3.2 * ca:.1f} {vy + 3.2 * sa:.1f} L{vx + 6.6 * ca:.1f} {vy + 6.6 * sa:.1f}", 1.0))
+    return out
+
+
+def forsage_tank_area():
+    x0, y0, x1, y1 = TANK
+    return [(x0 - 4, y0 - 20), (x1 + 6, y0 - 20), (x1 + 6, y1 + 4), (x0 - 4, y1 + 4)]
+
+
+def lookouts_items():
+    out = []
+    for x, y in art.CUPOLAS:
+        out += nest_figure("lookout", x, NEST_BASE, NEST_S) + ring_front(x, y)
+    return out
+
+
+def tree_parts(places, parts):
+    """The layers of the details the tree brings that the base drawing had no picture of: ink, pencil (not for the lookouts: no rings, no nests to
+    stand in), build."""
+    for name, items, area, pencil in (("balloon_shields", balloon_shields_items(), balloon_shields_area(), True),
+                                      ("forsage_tank", forsage_tank_items(), forsage_tank_area(), True),
+                                      ("lookouts", lookouts_items(), [(352, 0), (700, 0), (700, 76), (352, 76)], False)):
+        layer(f"{name}_ink", items, places)
+        if pencil:
+            layer(f"{name}_pencil", pencil_of(items), places)
+        layer(f"{name}_build", build_of(items, area), places)
+        parts[name] = {"pencil": f"{name}_pencil" if pencil else None, "build": f"{name}_build", "ink": f"{name}_ink"}
+
+
 def tree_line():
     """The brass of the lines between the nodes of the tree of buildings (web/js/panel.js): one colour, stretched by the panel; the copper of the plates' edge."""
     from PIL import Image
@@ -1219,7 +1728,200 @@ def node_back():
     Image.open(OUT / "blueprint_planks.png").crop((round(470 * S), round(200 * S), round(530 * S), round(260 * S))).resize((96, 96)).save(OUT / "node_back.png", optimize=True)
 
 
+# ---------------- sheets for checking: the game's model beside the drawing, the details with and without ----------------
+REFS = REPO / "build" / "crew_models" / "groups"
+SHEETS = REPO / "build" / "web" / "shots" / "groups"
+
+
+def model_refs():
+    """build/crew_models/groups: the game's models rendered plain by tools/crew_cards.py's renderer (its card scenes: the guns in the port, a bomb under
+    the bay, the nests with their crews; the barge's lookout in a nest; the stock barge from the left), the references of the drawings above."""
+    import numpy as np
+    from PIL import Image
+    import crew_cards as cc
+    REFS.mkdir(parents=True, exist_ok=True)
+
+    def plain(fr):
+        col, mask = cc.lit(fr)
+        return Image.fromarray((np.clip(col * mask[..., None] + .72 * (1 - mask[..., None]), 0, 1) * 255).astype(np.uint8))
+    for name in ("cannons_stock", "cannons_flaming", "cannons_organ", "cannons_clatter", "cannons_flame", "bombs_stock", "bombs_fire", "cupolas_stock", "cupolas_axes"):
+        if not (REFS / f"{name}.png").exists():
+            plain(cc.CARDS[name][0](1)).save(REFS / f"{name}.png")
+    if not (REFS / "cupolas_lookout.png").exists():
+        plain(cc.cupola_card("dwf_thunderbarge_crew_lookout", cc.THROW, 0, ())[0](1)).save(REFS / "cupolas_lookout.png")
+    if not (REFS / "stock_side.png").exists():
+        fr = cc.Frame(1700, 1300, cc.look([90, 9.5, -1.7], [0, 9.5, -1.7]), 90 / 34.0)
+        cc.draw_hull(fr, balloon=True)
+        plain(fr).save(REFS / "stock_side.png")
+
+
+def drawing_crop(layers_, box, k):
+    """The base drawing with these layers over it, the box (units of the drawing) at the page's scale k (1.029 px a unit at 1)."""
+    from PIL import Image
+    data = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]
+    own = json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8"))["layers"]
+    S = art.SCALE
+    base = Image.open(OUT / "blueprint_base.png").convert("RGBA")
+    for name in layers_:
+        p, path = (data[name], OUT / f"{name}.png") if name in data else (own[name], REPO / "data" / "ui" / f"{name}.png")
+        im = Image.open(path).convert("RGBA").resize((round(p[2] * S), round(p[3] * S)), Image.LANCZOS)
+        base.alpha_composite(im, (round(p[0] * S), round(p[1] * S)))
+    crop = base.crop(tuple(round(v * S) for v in box)).convert("RGB")
+    f = k * 1.029 / S
+    return crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.LANCZOS)
+
+
+# what of each model's render is the subject (x0, y0, x1, y1 of the 480 x 1040 render) and of the drawing (units), with the layers under it
+REF_BOX = {"cannons": (0, 420, 480, 760), "bombs": (120, 560, 400, 1000), "cupolas": (0, 380, 420, 900)}
+DRAW_BOX = {"cannons": ((236, 500, 372, 584), ["port_ink"]), "bombs": ((410, 515, 700, 606), ["side_shields_ink", "mount_bombs"]),
+            "cupolas": ((340, 0, 712, 80), ["mount_cupolas"])}
+KIND_NAMES = {"stock": "", "flaming": "огненные снаряды", "organ": "органное", "clatter": "пулемёт", "flame": "огненная пушка", "fire": "огненные", "axes": "топоры",
+              "lookout": "дозорные (деталь)", "empty": "пусто", "sketch": "в найме"}
+
+
+def figures_sheets():
+    """build/web/shots/groups/figures_ref_<group>.png: a row a kind, the game's model (crew_cards' renderer) | the drawing at the page's scale 1 |
+    the drawing at the user's 0.6, at their real size."""
+    from PIL import Image, ImageDraw, ImageFont
+    model_refs()
+    SHEETS.mkdir(parents=True, exist_ok=True)
+    font = ImageFont.truetype("arial.ttf", 15)
+    names = {"cannons": {"stock": "пушка барки"}, "bombs": {"stock": "бомбы"}, "cupolas": {"stock": "гранаты (Мстители)"}}
+    for group, kinds in GROUP_KINDS.items():
+        rows = [(k, REFS / f"{group}_{k}.png", [f"crew_{group}_{k}"]) for k in kinds]
+        if group == "cupolas":
+            rows.append(("lookout", REFS / "cupolas_lookout.png", ["lookouts_ink"]))
+        rows.append(("sketch", None, [f"crew_{group}_{kinds[-1]}_sketch"]))
+        rows.append(("empty", None, [f"crew_{group}_empty"] if group != "cupolas" else ["lookouts_ink"]))
+        box, under = DRAW_BOX[group]
+        cells = []
+        for kind, ref, lay in rows:
+            model = Image.open(ref).convert("RGB").crop(REF_BOX[group]) if ref else None
+            if model:
+                model = model.resize((round(model.width * 200 / model.height), 200), Image.LANCZOS)
+            one = drawing_crop(under + [l for l in lay if l in json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]], box, 1.0)
+            if one.height < 120:
+                one2 = one.resize((one.width * 2, one.height * 2), Image.LANCZOS)
+            else:
+                one2 = one
+            six = drawing_crop(under + [l for l in lay if l in json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]], box, 0.6)
+            cells.append((kind, model, one2, six, one2 is not one))
+        mw = max(280, max((c[1].width for c in cells if c[1]), default=0))
+        ow = max(c[2].width for c in cells)
+        sw = max(c[3].width for c in cells)
+        rh = max(max(c[1].height if c[1] else 0, c[2].height, c[3].height) for c in cells) + 34
+        sheet = Image.new("RGB", (mw + ow + sw + 60, rh * len(cells) + 40), (24, 21, 17))
+        d = ImageDraw.Draw(sheet)
+        d.text((10, 8), "модель игры (рендер crew_cards.py)", fill=(235, 189, 124), font=font)
+        d.text((mw + 30, 8), "чертёж, масштаб 1" + (" (×2 для глаза)" if any(c[4] for c in cells) else ""), fill=(235, 189, 124), font=font)
+        d.text((mw + ow + 50, 8), "масштаб 0.6", fill=(235, 189, 124), font=font)
+        for i, (kind, model, one, six, doubled) in enumerate(cells):
+            y = 34 + i * rh
+            label = names.get(group, {}).get(kind) or KIND_NAMES.get(kind, kind)
+            d.text((10, y), f"{group}: {label}", fill=(232, 220, 192), font=font)
+            if model:
+                sheet.paste(model, (10, y + 20))
+            sheet.paste(one, (mw + 30, y + 20))
+            sheet.paste(six, (mw + ow + 50, y + 20))
+        sheet.save(SHEETS / f"figures_ref_{group}.png")
+
+
+def parts_sheet():
+    """build/web/shots/groups/parts_sheet.png: every detail a building of the tree brings, the drawing without it | with it (ink), and being built,
+    beside the stock side view of the game's model where it shows."""
+    from PIL import Image, ImageDraw, ImageFont
+    model_refs()
+    font = ImageFont.truetype("arial.ttf", 15)
+    side = Image.open(REFS / "stock_side.png").convert("RGB")
+    own = json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8"))["layers"]
+    places = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))["places"]
+    blueprint = json.loads((REPO / "web" / "data" / "blueprint.json").read_text(encoding="utf-8"))
+    specs = dict(blueprint["parts"]) | {k: v for k, v in blueprint["stages"]["hull1"]["parts"].items() if k not in ("frame", "barge")}
+    # the stock side view's boxes of each detail (px of stock_side.png): the model as the game has it
+    side_box = {"port": (520, 840, 700, 1000), "porthole": (520, 840, 700, 1000), "stern_armour": (880, 740, 1040, 1100), "forsage_tank": (900, 860, 1120, 980),
+                "bomb_hatches": None, "side_shields": (600, 880, 880, 990), "balloon_shields": (540, 380, 1200, 480), "pub": None,
+                "rings": (580, 180, 1060, 260), "lookouts": None}
+    rows = []
+    for key, spec in specs.items():
+        ink = spec.get("ink")
+        if not ink or (ink not in places and ink not in own):
+            continue
+        p = places.get(ink) or own[ink]
+        box = (p[0] - 20, p[1] - 14, p[0] + p[2] + 20, p[1] + p[3] + 14)
+        under = ["mount_cupolas"] if key == "lookouts" else []
+        without = drawing_crop(under, box, 1.4)
+        with_ = drawing_crop(under + [ink], box, 1.4)
+        build = drawing_crop(under + [spec["build"]], box, 1.4) if spec.get("build") and spec["build"] in places else None
+        ref = side.crop(side_box[key]) if side_box.get(key) else None
+        if ref:
+            ref = ref.resize((round(ref.width * min(1.0, 140 / ref.height)), round(ref.height * min(1.0, 140 / ref.height))), Image.LANCZOS)
+        rows.append((spec["name"], without, with_, build, ref))
+    cw = max(r[1].width for r in rows)
+    mw = max((r[4].width for r in rows if r[4]), default=0)
+    hs = [max(r[1].height, r[4].height if r[4] else 0) + 30 for r in rows]
+    sheet = Image.new("RGB", (cw * 3 + mw + 60, sum(hs) + 34), (24, 21, 17))
+    d = ImageDraw.Draw(sheet)
+    for i, t in enumerate(("без неё", "с ней", "строится")):
+        d.text((10 + i * (cw + 10), 8), t, fill=(235, 189, 124), font=font)
+    d.text((10 + 3 * (cw + 10), 8), "модель игры (сток, вид слева)", fill=(235, 189, 124), font=font)
+    for i, (name, a, b, c, ref) in enumerate(rows):
+        y = 30 + sum(hs[:i])
+        d.text((10, y), name + ("  (снизу корпуса: сбоку модели не видно)" if not ref and name.startswith("Бомб") else ""), fill=(232, 220, 192), font=font)
+        for j, im in enumerate((a, b, c)):
+            if im:
+                sheet.paste(im, (10 + j * (cw + 10), y + 20))
+        if ref:
+            sheet.paste(ref, (10 + 3 * (cw + 10), y + 20))
+    sheet.save(SHEETS / "parts_sheet.png")
+
+
+def hiring_sheet():
+    """build/web/shots/groups/hiring_states.png: each group's place in its states, as the page lays them (the tag of the state over the kind):
+    empty, hired (the sketch, the hourglass), standing (ink, the arrows), another kind hired while one stands (ink, the hourglass); at 1 and at 0.6."""
+    from PIL import Image, ImageDraw, ImageFont
+    font = ImageFont.truetype("arial.ttf", 15)
+    boxes = {"cannons": (150, 495, 380, 650), "bombs": (405, 512, 700, 670), "cupolas": (340, 0, 712, 80)}
+    under = {"cannons": ["port_ink"], "bombs": ["side_shields_ink", "mount_bombs"], "cupolas": ["mount_cupolas"]}
+    states = [("пусто", lambda g, k: ([f"crew_{g}_empty"] if g != "cupolas" else ["lookouts_ink"]) + [f"crew_{g}_tag_plus"]),
+              ("в найме", lambda g, k: [f"crew_{g}_{k}_sketch", f"crew_{g}_tag_wait"]),
+              ("стоит", lambda g, k: [f"crew_{g}_{k}", f"crew_{g}_tag_swap"]),
+              ("стоит, нанят другой", lambda g, k: [f"crew_{g}_{k}", f"crew_{g}_tag_wait"])]
+    rows = []
+    for g, kinds in GROUP_KINDS.items():
+        for scale in (1.0, 0.6):
+            rows.append((f"{g}, масштаб {scale}", [drawing_crop(under[g] + f(g, kinds[0]), boxes[g], scale) for _, f in states]))
+    cw = max(im.width for _, ims in rows for im in ims)
+    hs = [max(im.height for im in ims) + 26 for _, ims in rows]
+    sheet = Image.new("RGB", (cw * 4 + 50, sum(hs) + 30), (24, 21, 17))
+    d = ImageDraw.Draw(sheet)
+    for j, (t, _) in enumerate(states):
+        d.text((10 + j * (cw + 10), 6), t, fill=(235, 189, 124), font=font)
+    for i, (label, ims) in enumerate(rows):
+        y = 28 + sum(hs[:i])
+        d.text((10, y), label, fill=(232, 220, 192), font=font)
+        for j, im in enumerate(ims):
+            sheet.paste(im, (10 + j * (cw + 10), y + 20))
+    sheet.save(SHEETS / "hiring_states.png")
+
+
+def groups_only():
+    """py -3.10 tools/web_art.py --groups: only the layers of the guns', bombs' and nests' places and of the tree's details, into layers.json as it is."""
+    data = json.loads((OUT / "layers.json").read_text(encoding="utf-8"))
+    places, parts = data["places"], data["parts"]
+    areas = {"rifles": data["crew_areas"]["rifles"]} | group_areas(places)
+    tree_parts(places, parts)
+    (OUT / "layers.json").write_text(json.dumps(data | {"places": places, "parts": parts, "crew_areas": areas}, indent=1), encoding="utf-8")
+
+
 def main():
+    if "--groups" in sys.argv:
+        groups_only()
+        return
+    if "--sheets" in sys.argv:
+        figures_sheets()
+        parts_sheet()
+        hiring_sheet()
+        return
     OUT.mkdir(parents=True, exist_ok=True)
     hull_pre, hull_post, shields, porthole = hull_split()
     rear_items, stern = rear_split()
@@ -1275,7 +1977,10 @@ def main():
     # where Malakai stands: the plan with its marks and his figure (last, as above)
     side = side_art(places)
     crew = crew_area(places)
-    (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side, "crew_area": crew}, indent=1), encoding="utf-8")
+    # the other groups' places and the details of the tree's buildings (last: the drawings above keep their random hatching)
+    areas = {"rifles": {**crew, "glow": {**crew["glow"], "prefix": "crew_glow"}}} | group_areas(places)
+    tree_parts(places, parts)
+    (OUT / "layers.json").write_text(json.dumps(json.loads((OUT / "layers.json").read_text(encoding="utf-8")) | {"places": places, "parts": parts, "malakai_side": side, "crew_area": crew, "crew_areas": areas}, indent=1), encoding="utf-8")
     crew_area_variants()
     crew_hiring_variants()
     for f in sorted(OUT.glob("*.png")):

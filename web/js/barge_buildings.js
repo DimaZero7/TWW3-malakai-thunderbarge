@@ -189,7 +189,8 @@ export function makeBuildings(data, game, parts) {
     // group -> option -> the building levels that open it (a tree of the constructor may give one kind to several buildings: any of them opens it)
     const openers = {};
     for (const row of Object.values(levels)) for (const u of row.unlocks || []) ((openers[u.group] ||= {})[u.option] ||= []).push(row);
-    const cheap = r => r.tier * 100000 + r.cost;
+    // the earlier of two buildings: a tree of the constructor by how many buildings stand before it (its tier is often unset), the mod's by tier; then the price
+    const cheap = r => (data.tree_rows ? M.needs_all(r.key).length : r.tier) * 100000 + r.cost;
     // the one to name: a standing one, else the cheapest
     // A tree of the constructor: what a building opens is its full set with its line (tree_model.mjs resolve), and of a line of levels only the level
     // that stands acts (the game's chain: II replaces I, what I opened stays only when II carries it on). The mod's data: a higher level counts the
@@ -197,16 +198,28 @@ export function makeBuildings(data, game, parts) {
     const stands = r => (data.tree_rows ? game.standing(r.key) : game.has_building(r.key));
     M.stands = key => { const r = M.level(key); return !!r && stands(r); };
     const opener = (g, o) => { const list = (openers[g] || {})[o]; return list ? list.find(r => stands(r)) || [...list].sort((a, b) => cheap(a) - cheap(b))[0] : null; };
-    const stateOf = g => crew[g] || {standing: data.groups[g].start, order: null};
-    const ctxOf = g => ({start: data.groups[g].start, gold: game.treasury(), hire: o => (data.groups[g].options[o] || {}).hire || 0,
-                         unlocked: o => o === data.groups[g].start || ((openers[g] || {})[o] || []).some(r => stands(r))});
+    // A group with a mount (the guns' ports, the bombs' hatches, the nests' rings: data/crew_options.json, mount) exists from its mount's building on:
+    // its empty place is the mount, not the group's start (none: no ports at all), and nothing of it can stand or be ordered without the place. A
+    // group without a mount (the riflemen at the rails) has its place from the first building that opens a kind of it.
+    const emptyOf = g => data.groups[g].mount || data.groups[g].start;
+    const opens = (g, o) => ((openers[g] || {})[o] || []).some(r => stands(r));
+    M.crew_place = g => {
+        const group = data.groups[g];
+        if (!group) return false;
+        if (group.mount) return opens(g, group.mount);
+        return Object.keys(group.options).some(o => o !== group.start && opens(g, o));
+    };
+    const stateOf = g => crew[g] || {standing: emptyOf(g), order: null};
+    const ctxOf = g => ({start: emptyOf(g), gold: game.treasury(), hire: o => (data.groups[g].options[o] || {}).hire || 0,
+                         unlocked: o => o === emptyOf(g) || (M.crew_place(g) && opens(g, o))});
     M.crew = group => stateOf(group).standing;
     M.crew_order = group => (stateOf(group).order ? stateOf(group).order.option : null);
     M.crew_options = group => {
         const g = data.groups[group], ctx = ctxOf(group);
         const rank = k => { const b = opener(group, k); return b ? cheap(b) : 0; };
-        return Object.entries(g.options).filter(([k, o]) => !o.hidden && (k === g.start || opener(group, k)))
-            .map(([key, o], i) => ({key, i, ...o, empty: key === g.start, building: opener(group, key), unlocked: ctx.unlocked(key)}))
+        const empty = emptyOf(group);
+        return Object.entries(g.options).filter(([k, o]) => !o.hidden && (k === empty || opener(group, k)))
+            .map(([key, o], i) => ({key, i, ...o, empty: key === empty, building: opener(group, key), unlocked: ctx.unlocked(key)}))
             .sort((a, b) => (a.empty ? -1 : b.empty ? 1 : rank(a.key) - rank(b.key) || a.i - b.i));
     };
     const upkeepOf = (g, o) => (data.groups[g].options[o] || {}).upkeep || 0;
@@ -214,14 +227,19 @@ export function makeBuildings(data, game, parts) {
     M.crew_upkeep = () => Object.keys(data.groups).reduce((sum, g) => sum + upkeepOf(g, M.crew(g)), 0);
     M.crew_upkeep_next = () => Object.keys(data.groups).reduce((sum, g) => sum + upkeepOf(g, M.crew_order(g) || M.crew(g)), 0);
     // What a click on an option would do, without doing it (the window's line under the mouse), and what the last click did (its line after).
-    const nameOf = (g, o) => (o === data.groups[g].start ? 'пустые борта' : `«${data.groups[g].options[o].name}»`);
+    // The words of a group's place (blueprint.json, crew_areas, words): where its crew stands, how it comes and goes. The riflemen's by default.
+    const RIFLES = {at: 'у бортов', stand: 'Стоят у бортов', come: 'встанут к бортам', came: 'встали к бортам', leave: 'сойдут с бортов', left: 'стрелки сошли с бортов',
+                    nobody: 'У бортов никого', empty_name: 'пустые борта', who: 'Стрелки'};
+    M.words = {};
+    M.crew_words = g => ({...RIFLES, ...(M.words[g] || {})});
+    const nameOf = (g, o) => (o === emptyOf(g) ? M.crew_words(g).empty_name : `«${data.groups[g].options[o].name}»`);
     const sayResult = (g, r, done) => {
-        const n = nameOf(g, r.option), start = data.groups[g].start;
+        const n = nameOf(g, r.option), start = emptyOf(g), w = M.crew_words(g);
         if (r.kind === 'locked') return {bad: true, text: `Заперто: ${n} откроет постройка «${opener(g, r.option).name}»`};
         if (r.kind === 'poor') return {bad: true, text: `Не хватает золота на ${n}: найм ${r.hire}, есть ${r.have}`};
-        if (r.kind === 'kept') return {text: r.why === 'ordered' ? (r.option === start ? 'Экипаж уже сходит в начале хода' : `${n} уже в найме`) : r.option === start ? 'У бортов никого' : `${n} уже у бортов`};
+        if (r.kind === 'kept') return {text: r.why === 'ordered' ? (r.option === start ? 'Экипаж уже сходит в начале хода' : `${n} уже в найме`) : r.option === start ? w.nobody : `${n} уже ${w.at}`};
         const back = r.back ? `, вернулось ${r.back}` : '', willBack = r.back ? `, вернётся ${r.back}` : '';
-        if (r.kind === 'cancelled') return {text: done ? `Заказ на ${nameOf(g, r.option)} снят${back}` : `Снять заказ на ${nameOf(g, r.option)}${willBack}: у бортов остаются, кто стоит`};
+        if (r.kind === 'cancelled') return {text: done ? `Заказ на ${nameOf(g, r.option)} снят${back}` : `Снять заказ на ${nameOf(g, r.option)}${willBack}: ${w.at} остаются, кто стоит`};
         if (r.option === start) return {text: done ? `Экипаж сойдёт в начале хода${back}` : `Снять экипаж в начале хода${willBack}`};
         const instead = r.instead && r.instead !== start ? ` вместо ${nameOf(g, r.instead)}` : '';
         return {text: done ? `В найме ${n}${instead}: списано ${r.taken}${back}, встанут в начале хода` : `Нанять ${n}${instead}: найм ${r.taken}${willBack}, встанут в начале хода`};
@@ -235,15 +253,17 @@ export function makeBuildings(data, game, parts) {
         crew[group] = r.state;
         game.gold = r.gold;         // GAME: cm:treasury_mod(faction, back - taken)
         notes[group] = sayResult(group, r.result, true);
-        if (r.result.kind === 'ordered') crewChosen = true;
+        if (r.result.kind === 'ordered') crewChosen[group] = true;
         message = notes[group].text + '.';
         fire();
         return {ok: r.result.kind === 'ordered' || r.result.kind === 'cancelled', kind: r.result.kind};
     };
-    // The hint: the place's tag glows until the player chooses a crew once (as the side's hint; GAME: cm:set_saved_value('mtb_crew_chosen', true)).
-    let crewChosen = false;
-    M.crew_hint = () => !crewChosen;
-    M.set_crew_chosen_silently = v => { crewChosen = !!v; };
+    // The hint: a place's tag glows until the player chooses a crew of that group once (as the side's hint; GAME: cm:set_saved_value('mtb_crew_chosen_<group>', true)).
+    // An older save has one flag for the riflemen.
+    let crewChosen = {};
+    M.crew_hint = (g = 'rifles') => !crewChosen[g];
+    M.crew_chosen = () => ({...crewChosen});
+    M.set_crew_chosen_silently = v => { crewChosen = v === true ? {rifles: true} : v && typeof v === 'object' ? {...v} : {}; };
     M.crew_snapshot = () => JSON.parse(JSON.stringify(crew));
     M.set_crew_silently = saved => {
         for (const [g, st] of Object.entries(saved || {})) {
@@ -284,7 +304,7 @@ export function makeBuildings(data, game, parts) {
             if (!crew[g].order) continue;
             crew[g] = crewModel.turn(crew[g]);
             delete notes[g];
-            came.push(crew[g].standing === data.groups[g].start ? 'стрелки сошли с бортов' : `${nameOf(g, crew[g].standing)} встали к бортам`);
+            came.push(crew[g].standing === emptyOf(g) ? M.crew_words(g).left : `${nameOf(g, crew[g].standing)} ${M.crew_words(g).came}`);
         }
         const upkeep = M.crew_upkeep();
         game.gold -= upkeep;        // GAME: cm:treasury_mod; the page lets the treasury go below zero

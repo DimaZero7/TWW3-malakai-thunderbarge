@@ -32,6 +32,13 @@ async function main() {
         // the constructor's catalogue: the game's effects of the dwarfs' buildings, the dwarfs' army units (tools/web_export.py --catalog)
         json('/build/catalog.json').catch(() => ({game_effects: [], army_units: []}))]);
     const blueprintAll = JSON.parse(JSON.stringify(blueprint));      // before the stage's fields go over it: every part, for the constructor
+    // The crew's cards: a group whose place says so (blueprint.json, crew_areas, cards: drawn) shows the mod's own drawn cards (data/ui/crew_cards: the
+    // game's models on the barge, as the mod's panel shows them) in place of the game's unit card of a unit that stands for it; the riflemen keep the
+    // game's cards (the user rejected their drawn set).
+    for (const st of Object.values(blueprint.stages)) for (const a of st.crew_areas || []) {
+        const g = data.groups[a.group];
+        if (g && a.cards === 'drawn') for (const o of Object.values(g.options)) if (o.drawn_card && o.unit_card) o.unit_card = {...o.unit_card, picture: o.drawn_card};
+    }
     // ?stage=barge (or another name of blueprint.json, stages): what is shown; the stage's own fields over the common ones. parts: true the common ones,
     // false none, an object its own. built: what stands at the start of the stage, over web/data/sim.json.
     const stageName = flags.stage || blueprint.stage;
@@ -50,7 +57,12 @@ async function main() {
     // the details the tree's nodes bring (web/data/tree_design.json, parts): one of blueprint.json the stage does not show joins it, shown with its
     // node's building (barge_buildings.js, M.stage); one without a layer or a model is only named in the building's window ("рисунок не готов")
     const partsInfo = T.shipParts(blueprintAll, {...art.places, ...data.art.layers});
-    const joinParts = d => {
+    // A new detail of a node (part: null) named as a detail of blueprint.json is that detail: the tree's «Дозорные в гнёздах» is the drawn lookouts
+    // (the constructor would write part: "lookouts"; until the author does, the name links them)
+    const byName = Object.fromEntries(Object.entries(blueprintAll.parts).map(([k, spec]) => [spec.name, k]));
+    const linkParts = d => { for (const n of d ? d.nodes : []) for (const p of n.parts || []) if (!p.part && p.name && byName[p.name]) p.part = byName[p.name]; return d; };
+    const joinParts = d0 => {
+        const d = d0 ? linkParts(JSON.parse(JSON.stringify(d0))) : null;      // a copy: the constructor's tree is never written by the game's side
         for (const p of (d ? d.nodes : []).flatMap(n => n.parts || [])) {
             const info = p.part && partsInfo[p.part];
             if (!info || (!info.drawn && !info.model)) continue;
@@ -96,7 +108,7 @@ async function main() {
     };
     // The page's state lives through a reload: localStorage, one key per stage.
     const saveKey = 'mtb_web_state_' + stageName;
-    const save = () => { const {game, M, panel} = G; try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected, crew: M.crew_snapshot(), crew_chosen: !M.crew_hint()})); } catch (e) { /* no storage: the page still works */ } };
+    const save = () => { const {game, M, panel} = G; try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected, crew: M.crew_snapshot(), crew_chosen: M.crew_chosen()})); } catch (e) { /* no storage: the page still works */ } };
     const goldInput = document.getElementById('gold_value');
     const showGold = () => { if (document.activeElement !== goldInput) goldInput.value = G.game.treasury(); };
 
@@ -105,9 +117,10 @@ async function main() {
         joinParts(design);
         parts = Object.entries(blueprint.parts).filter(([, spec]) => spec.model);
         for (const [, spec] of parts) if (!viewer.models[spec.model.part] && !(viewer.pending ||= new Set()).has(spec.model.part) && viewer.pending.add(spec.model.part)) viewer.load(spec.model.part, `/build/models/${spec.model.part}.gltf`).then(() => { if (G) setParts(); }).catch(e => console.error(e));
-        const levels = design ? {...T.gameData(design, data), army_units: Object.fromEntries((catalog.army_units || []).map(u => [u.key, u])), parts_all: partsInfo} : data;
+        const levels = design ? {...T.gameData(linkParts(JSON.parse(JSON.stringify(design))), data), army_units: Object.fromEntries((catalog.army_units || []).map(u => [u.key, u])), parts_all: partsInfo} : data;
         const game = new GameSim(levels, {...sim, ...(stage.built ? {built: stage.built} : {}), ...(stage.demolish_mode ? {demolish: stage.demolish_mode} : {})});
         const M = makeBuildings(levels, game, blueprint.parts);
+        for (const a of blueprint.crew_areas || []) if (a.words) M.words[a.group] = a.words;
         if (!design) {
             const treeSpec = blueprint.tree || {};
             for (const [k, needs] of Object.entries(treeSpec.requires || {})) M.extra_requires[data.prefix + k] = needs.map(n => data.prefix + n);
@@ -161,6 +174,12 @@ async function main() {
     document.getElementById('gold_set').addEventListener('click', () => setGold(Number(goldInput.value)));
     goldInput.addEventListener('keydown', e => { if (e.key === 'Enter') setGold(Number(goldInput.value)); });
     for (const b of document.querySelectorAll('.gold_quick')) b.addEventListener('click', () => setGold(Number(b.dataset.gold)));
+    // Debug: every building of the tree built at once, as if the campaign were over (the guns, the bombs, the nests and every detail on the drawing)
+    document.getElementById('build_all').addEventListener('click', () => {
+        const {M, panel} = G;
+        for (const v of panel.view.tree || []) M.debug_build_to(v.node.key);
+        log('отладка: построено всё');
+    });
     document.getElementById('build_to').addEventListener('click', () => {
         const {M, panel} = G;
         if (panel.view.selected && M.level(panel.view.selected)) { M.debug_build_to(panel.view.selected); log('отладка: построено до выбранной'); }

@@ -111,7 +111,9 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     };
     const partsInfo = T.shipParts(blueprint, {...(art.places || {}), ...((data.art && data.art.layers) || {})});
     const partName = k => (partsInfo[k] ? partsInfo[k].name : k);
-    const checkCtx = {modKeys, units: unitsOf, unitName, partKnown: k => !!partsInfo[k], partDrawn: k => !!(partsInfo[k] && partsInfo[k].drawn), partName};
+    // a new detail (part: null) named as a detail of the drawing is that detail (the game's mode links them so too, web/js/main.js)
+    const partOfName = name => (Object.values(partsInfo).find(p => name && p.name === name) || {}).key || null;
+    const checkCtx = {modKeys, units: unitsOf, unitName, partKnown: k => !!partsInfo[k], partDrawn: k => !!(partsInfo[k] && partsInfo[k].drawn), partName, partOfName};
     const CASTES = {melee_infantry: 'Пехота ближнего боя', missile_infantry: 'Стрелки', warmachine: 'Боевые машины', monster: 'Чудовища', cavalry: 'Кавалерия'};
     const VARIANT = {malakai: 'версия Малакая', grudge: 'награда за обиду'};
     let icons = null;
@@ -1384,6 +1386,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
         (n.parts || []).forEach((p, i) => {
             const del = h('button', {class: 'mini', title: 'Убрать', onclick: () => commit('Вид на корабле', d => { T.byId(d, n.id).parts.splice(i, 1); })}, '×');
             if (p.part) { box.append(h('div', {class: 'part'}, h('b', {}, partName(p.part)), ...partBadges(p.part), del)); return; }
+            const named = partOfName(p.name);
             const set = (key, label, parse = v => v) => el => {
                 el.dataset.field = `part_${key}_${i}`;
                 el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => commit(label, d => { T.byId(d, n.id).parts[i][key] = parse(el.value); }, `part:${n.id}:${i}:${key}`, {props: false}));
@@ -1391,7 +1394,10 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                 return el;
             };
             box.append(h('div', {class: 'part new'},
-                h('div', {class: 'cx-row2', style: 'align-items:center'}, set('name', 'Название детали')(h('input', {value: p.name, placeholder: 'Название: Дозорные в гнёздах'})), h('span', {class: 'cx-status-badge dev'}, 'рисунок не готов'), del),
+                h('div', {class: 'cx-row2', style: 'align-items:center'}, set('name', 'Название детали')(h('input', {value: p.name, placeholder: 'Название: Дозорные в гнёздах'})),
+                    // named as a detail of the drawing: on the page it is that detail (web/js/main.js links them by name)
+                    named && partsInfo[named].drawn ? h('span', {class: 'cx-status-badge have', title: `Деталь чертежа с тем же названием (${named}): на странице рисуется она. Выберите её через «Добавить…», чтобы связь была явной`}, 'на чертеже')
+                        : h('span', {class: 'cx-status-badge dev'}, 'рисунок не готов'), del),
                 field('Где на корабле', set('zone', 'Где на корабле')(h('select', {}, Object.entries(T.ZONES).map(([k, v]) => h('option', {value: k, selected: p.zone === k}, v))))),
                 field('Что это', set('what', 'Что это')(h('select', {}, Object.entries(T.WHAT).map(([k, v]) => h('option', {value: k, selected: p.what === k}, v))))),
                 p.what === 'figures' ? field('Сколько фигур', set('figures', 'Сколько фигур', v => Math.max(0, Math.round(Number(v) || 0)))(h('input', {type: 'number', min: 0, step: 1, value: p.figures}))) : null,

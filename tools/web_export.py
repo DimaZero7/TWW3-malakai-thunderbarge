@@ -219,14 +219,47 @@ def export_data():
     group_icons = unit_group_icons()
     unit_pictures = []
 
+    unit_of_card = {}
+    for unit, picture in variant_card.items():
+        unit_of_card.setdefault(picture, unit)
+
     def unit_card_of(option):
         source = option.get("upkeep_from") or {}
         unit = source.get("unit")
-        if not unit or unit not in variant_card or option.get("stock"):
+        if not unit or unit not in variant_card:
             return None
-        card = {"picture": f"ui/units/icons/{variant_card[unit]}.png", "category": f"ui/common ui/unit_category_icons/{group_icons.get(unit_group[unit], unit_group[unit])}.png", "men": source["count"]}
+        if option.get("stock"):
+            # the barge's own crew (its upkeep is the barge's): the card the mod's panel shows for it (ui.card, a unit of the game that stands for
+            # it: the cannon, the gyrobomber, the miners with charges), its category from that unit
+            picture = (option.get("ui") or {}).get("card")
+            unit = unit_of_card.get(picture)
+            if not picture or not unit:
+                return None
+            card = {"picture": f"ui/units/icons/{picture}.png", "category": f"ui/common ui/unit_category_icons/{group_icons.get(unit_group[unit], unit_group[unit])}.png", "men": source["count"]}
+        else:
+            card = {"picture": f"ui/units/icons/{variant_card[unit]}.png", "category": f"ui/common ui/unit_category_icons/{group_icons.get(unit_group[unit], unit_group[unit])}.png", "men": source["count"]}
         unit_pictures.extend([card["picture"], card["category"]])
         return card
+
+    def drawn_card_of(group_key, key):
+        """The mod's own drawn card of an option (data/ui/crew_cards, tools/crew_cards.py: the game's models rendered on the barge), as a pack path the
+        page serves from data/ui; None when the mod has none."""
+        name = crew_ui.own_card_name(config, group_key, key)
+        if not name:
+            return None
+        return crew_ui.drawn_path(name)
+
+    def fragments_of(option):
+        """A bomb that bursts into burning pieces in the air (an explosion with shrapnel): the blast of one piece, from the game's tables."""
+        weapon = option.get("weapon")
+        w = next((r for r in stock["missile_weapons"] if r["key"] == weapon), None) if weapon else None
+        p = next((r for r in stock["projectiles"] if r["key"] == w["default_projectile"]), None) if w else None
+        e = next((r for r in stock["projectiles_explosions"] if r["key"] == p["explosion_type"]), None) if p and p.get("explosion_type") else None
+        piece = next((r for r in stock["projectiles"] if r["key"] == e["shrapnel"]), None) if e and e.get("shrapnel") else None
+        if not piece or not piece.get("explosion_type"):
+            return None
+        pe = next((r for r in stock["projectiles_explosions"] if r["key"] == piece["explosion_type"]), None)
+        return {"blast": round(pe["detonation_damage"]), "blast_ap": round(pe["detonation_damage_ap"]), "radius": round(pe["detonation_radius"], 1)} if pe else None
 
     # the crew's own rows (seats, weapons, projectiles), as tools/build.py adds them to the campaign pack: the numbers of each option come from them
     crew_tables = {k: [dict(r) for r in v] for k, v in t.items() if isinstance(v, list)}
@@ -243,6 +276,9 @@ def export_data():
                              "options": {k: {"name": (o.get("ui") or {}).get("name", k), "about": (o.get("ui") or {}).get("about", ""),
                                              "hidden": bool((o.get("ui") or {}).get("hidden") or (o.get("ui") or {}).get("none")),
                                              "card": crew_ui.own_card_name(config, group_key, k), "unit_card": unit_card_of(o),
+                                             "drawn_card": drawn_card_of(group_key, k),
+                                             # what the mod's panel writes instead of a number (a bomb falls under the barge) and a burst's pieces
+                                             "range_text": (o.get("ui") or {}).get("range_text"), "fragments": fragments_of(o),
                                              # the crew's own weapon as the mod builds it (the numbers of the mod's panel, crew_ui.group_numbers)
                                              "numbers": crew_ui.group_numbers(crew_tables, group_key, k, o, group),
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}

@@ -643,7 +643,7 @@ try {
     await order('Пивной чертог'); await endTurn();
     const area = await comp('mtb_crew_area_rifles');
     await b.click(area.x, area.y);
-    const pick = await comp('mtb_crew_pick_pirates');
+    const pick = await comp('mtb_crew_card_pick_rifles:pirates');
     await b.click(pick.x, pick.y);
     await b.click(area.x, area.y);
     check('game: pirates ordered from the drawing', await b.eval('mtb.M.crew_order("rifles")') === 'pirates');
@@ -872,7 +872,7 @@ async function walkCaps() {
     const panelIn = await b.eval(`(() => { const p = [...document.querySelectorAll('#screen .unit_parchment')].find(x => x.offsetParent !== null); const r = p.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect(); return r.top >= root.top - 1 && r.bottom <= root.bottom + 1 && r.left >= root.left - 1 && r.right <= root.right + 1; })()`);
     check('caps: game: the unit\'s panel inside the screen', panelIn);
 
-    // ---- a detail of the ship: one drawn and in 3D, one new; built and seen; the new one named «рисунок не готов» ----
+    // ---- a detail of the ship: one drawn and in 3D, one new; built and seen; the new one named as a drawn detail («Дозорные в гнёздах») counts as drawn ----
     await toConstructor();
     await pick('mtb_nest_1');
     await clickText('.cx-props .cx-parts > button', 'Добавить');
@@ -900,7 +900,7 @@ async function walkCaps() {
     await b.eval(`document.querySelector('.cx-props [data-field="part_name_1"]').scrollIntoView({block: 'center'})`); await sleep(150);
     await b.shot(join(SHOTS, 'caps_ship_parts.png'));
     const checks = await b.eval(`(() => { document.querySelector('.cx-warnbtn').click(); return [...document.querySelectorAll('.cx-warnlist li')].map(l => l.textContent); })()`);
-    check('caps: the checks name the new detail «(рисунок не готов)»', checks.some(t => /Дозорные в гнёздах» \(рисунок не готов\)/.test(t)), checks.slice(0, 6));
+    check('caps: a new detail named as a drawn one is not «(рисунок не готов)»', !checks.some(t => /Дозорные в гнёздах.*рисунок не готов/.test(t)), checks.slice(0, 6));
     await b.eval(`document.querySelector('.cx-warnbtn').click()`);
     await savedOk();
     await toGame();
@@ -915,7 +915,7 @@ async function walkCaps() {
     const nestOn = await inSight('Вороньи гнёзда');
     await b.move(nestOn.x, nestOn.y, 4); await sleep(350);
     const info = await infoText();
-    check('caps: game: the window names both details, the new one «(рисунок не готов)»', /Вид на корабле: Кольца вороньих гнёзд на шаре(?! \()/.test(info) && /Вид на корабле: Дозорные в гнёздах \(рисунок не готов\)/.test(info), info);
+    check('caps: game: the window names both details, both drawn', /Вид на корабле: Кольца вороньих гнёзд на шаре(?! \()/.test(info) && /Вид на корабле: Дозорные в гнёздах(?! \()/.test(info), info);
     await b.shot(join(SHOTS, 'caps_ship_parts_game.png'));
 
     // ---- an army unit opened for recruitment ----
