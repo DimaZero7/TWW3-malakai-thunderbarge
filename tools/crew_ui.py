@@ -187,7 +187,9 @@ def group_numbers(t, group_key, option_key, opt, group):
     own = {r["key"]: r for r in t["projectiles"]}
     p = own.get(weapon["default_projectile"]) or next(r for r in t["_stock"]["projectiles"] if r["key"] == weapon["default_projectile"])
     out = {"damage": round(p["damage"]), "ap": round(p["ap_damage"]), "reload": round(p["base_reload_time"], 1), "range": round(p["effective_range"]),
-           "shots": p["projectile_number"], "volley": p["shots_per_volley"], "burst": p["burst_size"], "ammo": opt.get("ammo")}
+           "shots": p["projectile_number"], "volley": p["shots_per_volley"], "burst": p["burst_size"], "ammo": opt.get("ammo"),
+           # the ammunition as the game shows a unit's: volleys a man or gun (the group's ammo is these x its seats; docs/design/ammo-balance.md)
+           "volleys": (opt.get("ammo_rule") or {}).get("per_seat"), "seats": (opt.get("ammo_rule") or {}).get("seats")}
     explosion = p.get("explosion_type")
     if explosion:
         e = next((r for r in t["_stock"]["projectiles_explosions"] if r["key"] == explosion), None)

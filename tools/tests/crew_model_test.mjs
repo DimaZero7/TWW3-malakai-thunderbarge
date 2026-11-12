@@ -120,5 +120,24 @@ scenario('a treasury in debt: no hire, but the crew may be taken off', 'pirates'
     const sight = id => T.resolve(d, id).full.effects.filter(x => x.e.kind === 'sight').map(x => x.e.value);
     check('a level that does not inherit: «Гнёзда с боеукладкой» give sight 15 only (the line\'s rule: the upgrade, not a sum)', sight(n2).join() === '15' && g.tree_rows.find(r => r.node === n2).chain === g.tree_rows.find(r => r.node === n1).chain);
 }
+// the ammunition's rule (the author, 12.11.2026; docs/design/ammo-balance.md): a crew option's volleys a seat = the stock volleys of its analog unit
+// (land_units.primary_ammo) x 0.7, rounded up; the group's ammunition = that x its seats. The bonuses of the tree then on the group's whole.
+{
+    const {readFileSync} = await import('node:fs');
+    const FX = await import('../../web/js/effects_model.mjs');
+    const cfg = JSON.parse(readFileSync(new URL('../../data/crew_options.json', import.meta.url), 'utf-8'));
+    const bad = [], seen = [];
+    for (const [g, G] of Object.entries(cfg.groups)) for (const [k, o] of Object.entries(G.options)) {
+        if (!o.ammo) continue;
+        if (o.stock && g === 'rifles') continue;        // the AI's stock rifles: the barge's own secondary pool, as the game has it
+        const r = o.ammo_rule;
+        seen.push(`${g}:${k}`);
+        if (!r || r.per_seat !== Math.ceil(r.stock * 0.7 - 1e-9) || r.seats !== G.seats.length || o.ammo !== r.per_seat * r.seats) bad.push([g, k, o.ammo, r]);
+    }
+    check('every weapon of the crew (but the AI\'s stock rifles) follows the rule: stock x 0.7 up a seat, x the seats', !bad.length && seen.length >= 14, bad);
+    const q = cfg.groups.rifles.options.quarrellers.ammo_rule;
+    check('the rounding up: crossbows 22 -> 16 (15.4 up), pirates 8 -> 6 (5.6 up), axes 12 -> 9 (8.4 up)', q.per_seat === 16 && cfg.groups.rifles.options.pirates.ammo_rule.per_seat === 6 && cfg.groups.cupolas.options.axes.ammo_rule.per_seat === 9);
+    check('a small base keeps its percent: +15 % of the pirates\' 72 is 83 shots (the group\'s whole is rounded, not a man\'s 6)', FX.applyPct(72, 15, 'ammo') === 83 && FX.applyPct(18, 15, 'ammo') === 21);
+}
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

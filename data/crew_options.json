@@ -1,5 +1,5 @@
 {
- "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself: only a bare mount or an option of a no_panel group; a crew of the panel is never placed by a building, the player picks it. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md). Hire and upkeep are rounded up to a multiple of 10 (user, 10.11.2026; tools/crew_ui.py, round_gold). mount: the option of a group that is its bare mount (port, doors, rings): the building of that option makes the bay exist; until then the group stands on start (none: a plain ship) and its weapons, unlocked or not, cannot be placed. mount_name: how the panel calls it. rings_only: the seat's hull detail with nobody in it. auto_active: also the mount buildings, the bare mount appears at once. The holes of a group on none are covered by patches on the seat ap_thunderburner (tools/hull_parts.py, patches). building_names: what the bound buildings are called in the game, so the name says what they give. buildings: building level -> list of [group, option]: one building may open several. new_chains: chains and levels this mod adds (tiers, prices, texts; tools/build.py). building_edits: tier, cost, time of stock levels. building_lines: green lines of a building. boost: rows per level of chain for one group (accuracy, range). ammo_mod: ammunition of every crew by cargo level. abilities: new abilities enabled by buildings. no_panel: a group only buildings set, the panel does not list it. requires: a building without which the group holds no weapon (the bare mount stays). disabled: an option with its data kept, in no table of the game. Own drawn cards: data/ui/crew_cards/<option>.png and <option>_small.png, or <group>_<option> when several groups have that option; the build takes them when they are there, the stock unit card otherwise. hire: gold to hire an option by hand instead of the sum from the unit of upkeep_from (recruitment_cost x count / its guns or men); no upkeep_from: free.",
+ "_about": "Barge crew options: one entry per option. Fields as in tools/crew_options.py. start: what the new campaign of a human Malakai begins with and what a group falls back to when nothing else of it is unlocked. start_ai: Malakai under the AI, and what the tables say, so also the crew without memreader Plus. ammo: shots of the whole group for one battle (src/tww3_mtb_ammo.lua) = ammo_rule.per_seat x the group's seats; ammo_rule: the analog unit of the game, its stock volleys a man or gun (land_units.primary_ammo), the volleys a seat (stock x 0.7 rounded up, the author's rule of 12.11.2026, docs/design/ammo-balance.md). buildings: one line per binding, building level without buildings_prefix -> [group, option]: the building unlocks the option, the player picks it in the crew panel (docs/design/progression-proposal.md). auto_active: the buildings whose option also becomes active by itself: only a bare mount or an option of a no_panel group; a crew of the panel is never placed by a building, the player picks it. ui: what the panel shows (src/tww3_mtb_crew_ui.lua): name, card (unit card of ui/units/icons, or a file of data/ui with own_card), about; hidden: only for the AI or for test commands; the numbers come from the tables at build time. always: the group is not a choice: it holds this option while there is a barge, the panel does not show it (the deck: delete the field and restore its line of buildings to give it back). off_bundle: a group without seats that is an ability: the effect bundle takes the unit's stock ability away while the group is on its start, for a human Malakai with memreader Plus; under the AI and without memreader Plus the unit keeps the ability, as stock. upkeep_from: gold per turn of the option = upkeep_cost of this unit x count / its guns (num_engines) or men (num_men); upkeep: a number by hand instead; no field: 0 (docs/design/barge-loadout.md). Hire and upkeep are rounded up to a multiple of 10 (user, 10.11.2026; tools/crew_ui.py, round_gold). mount: the option of a group that is its bare mount (port, doors, rings): the building of that option makes the bay exist; until then the group stands on start (none: a plain ship) and its weapons, unlocked or not, cannot be placed. mount_name: how the panel calls it. rings_only: the seat's hull detail with nobody in it. auto_active: also the mount buildings, the bare mount appears at once. The holes of a group on none are covered by patches on the seat ap_thunderburner (tools/hull_parts.py, patches). building_names: what the bound buildings are called in the game, so the name says what they give. buildings: building level -> list of [group, option]: one building may open several. new_chains: chains and levels this mod adds (tiers, prices, texts; tools/build.py). building_edits: tier, cost, time of stock levels. building_lines: green lines of a building. boost: rows per level of chain for one group (accuracy, range). ammo_mod: ammunition of every crew by cargo level. abilities: new abilities enabled by buildings. no_panel: a group only buildings set, the panel does not list it. requires: a building without which the group holds no weapon (the bare mount stays). disabled: an option with its data kept, in no table of the game. Own drawn cards: data/ui/crew_cards/<option>.png and <option>_small.png, or <group>_<option> when several groups have that option; the build takes them when they are there, the stock unit card otherwise. hire: gold to hire an option by hand instead of the sum from the unit of upkeep_from (recruitment_cost x count / its guns or men); no upkeep_from: free.",
  "empty_like": "wh3_dlc23_chd_veh_hidden_rider",
  "remove_bow_figure": false,
  "fixed_seats": [
@@ -49,8 +49,8 @@
      "variant_like": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
      "scale": 1.15,
      "table": "hu3_dlc25_zeppelin01_crew_rifle",
-     "ammo": 1450,
-     "ammo_source": "barge: secondary_ammo 50 x 29, all on the rifle seats",
+     "ammo": 372,
+     "ammo_source": "Громобои (Злопыхатели): primary_ammo 44; × 0,7 вверх = 31 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 1450",
      "ui": {
       "name": "Злопыхатели",
       "card": "wh3_dlc25_dwf_inf_thunderers_grudger_raker",
@@ -59,6 +59,12 @@
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
       "count": 11
+     },
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
+      "stock": 44,
+      "per_seat": 31,
+      "seats": 12
      }
     },
     "thunderers": {
@@ -72,8 +78,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 264,
-     "ammo_source": "wh_main_dwf_inf_thunderers_0: 22 x 12 seats",
+     "ammo": 192,
+     "ammo_source": "Громобои: primary_ammo 22; × 0,7 вверх = 16 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 264",
      "ui": {
       "name": "Громобои",
       "card": "wh_main_dwf_thunderers",
@@ -82,6 +88,12 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_inf_thunderers_0",
       "count": 11
+     },
+     "ammo_rule": {
+      "analog": "wh_main_dwf_inf_thunderers_0",
+      "stock": 22,
+      "per_seat": 16,
+      "seats": 12
      }
     },
     "pirates": {
@@ -95,8 +107,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 96,
-     "ammo_source": "wh3_dlc25_dwf_inf_slayer_pirates: 8 x 12",
+     "ammo": 72,
+     "ammo_source": "Мстители-пираты: primary_ammo 8; × 0,7 вверх = 6 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 96",
      "ui": {
       "name": "Мстители-пираты",
       "card": "wh3_dlc25_dwf_inf_slayer_pirates",
@@ -106,7 +118,13 @@
       "unit": "wh3_dlc25_dwf_inf_slayer_pirates",
       "count": 11
      },
-     "_note": "Opened by beer_hall_1 since 10.11.2026 (user): a choice of the crew panel, not placed by the building. airship_hull_2 gives no crew since 08.11.2026, the rifles start empty. 11 pirates: Malakai takes the twelfth rifle seat (docs/design/barge-upgrades-ideas.md, Место Малакая), so hire and upkeep count 11. His seat is not made in the mod yet: the group still has 12 seats and the pirates still stand on all 12, ammo 8 x 12."
+     "_note": "Opened by beer_hall_1 since 10.11.2026 (user): a choice of the crew panel, not placed by the building. airship_hull_2 gives no crew since 08.11.2026, the rifles start empty. 11 pirates: Malakai takes the twelfth rifle seat (docs/design/barge-upgrades-ideas.md, Место Малакая), so hire and upkeep count 11. His seat is not made in the mod yet: the group still has 12 seats and the pirates still stand on all 12, ammo 8 x 12.",
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_inf_slayer_pirates",
+      "stock": 8,
+      "per_seat": 6,
+      "seats": 12
+     }
     },
     "quarrellers": {
      "variant_file": "dwf_quarrellers",
@@ -119,8 +137,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 264,
-     "ammo_source": "wh_main_dwf_inf_quarrellers_0: 22 x 12",
+     "ammo": 192,
+     "ammo_source": "Забияки: primary_ammo 22; × 0,7 вверх = 16 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 264",
      "ui": {
       "name": "Арбалетчики",
       "card": "wh_main_dwf_quarrellers",
@@ -130,7 +148,13 @@
       "unit": "wh_main_dwf_inf_quarrellers_0",
       "count": 11
      },
-     "_note": "Opened by crew_weapons_1 (the training dummies), a choice of the crew panel. 11 as the pirates: Malakai takes the twelfth rifle seat; the seats and the ammo are still for 12."
+     "_note": "Opened by crew_weapons_1 (the training dummies), a choice of the crew panel. 11 as the pirates: Malakai takes the twelfth rifle seat; the seats and the ammo are still for 12.",
+     "ammo_rule": {
+      "analog": "wh_main_dwf_inf_quarrellers_0",
+      "stock": 22,
+      "per_seat": 16,
+      "seats": 12
+     }
     },
     "torpedoes": {
      "vmd": "torpedo_prop3.vmd",
@@ -143,8 +167,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 216,
-     "ammo_source": "wh_main_dwf_inf_irondrakes_2: 18 x 12",
+     "ammo": 156,
+     "ammo_source": "Железные ящеры с торпедами: primary_ammo 18; × 0,7 вверх = 13 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 216",
      "ui": {
       "name": "Ящеры с торпедами",
       "card": "wh_main_dwf_irondrakes_troll_hammer",
@@ -153,6 +177,12 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_inf_irondrakes_2",
       "count": 11
+     },
+     "ammo_rule": {
+      "analog": "wh_main_dwf_inf_irondrakes_2",
+      "stock": 18,
+      "per_seat": 13,
+      "seats": 12
      }
     }
    },
@@ -198,8 +228,8 @@
     },
     "stock": {
      "stock": true,
-     "ammo": 290,
-     "ammo_source": "barge: primary_ammo 40 x 29 over 8 firing seats = 145 x 2",
+     "ammo": 56,
+     "ammo_source": "громобаржа: primary_ammo 40 (общий запас бомб, пушки и гранат; столько показывает карточка); × 0,7 вверх = 28 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 290",
      "ui": {
       "name": "Пушка барки",
       "card": "wh_main_dwf_cannon",
@@ -208,13 +238,19 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_art_cannon",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_veh_thunderbarge",
+      "stock": 40,
+      "per_seat": 28,
+      "seats": 2
      }
     },
     "flaming": {
      "weapon": "wh3_dlc25_dwf_thunderbarge_cannon_flaming",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 290,
-     "ammo_source": "barge: as stock",
+     "ammo": 56,
+     "ammo_source": "громобаржа: как пушка барки; × 0,7 вверх = 28 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 290",
      "ui": {
       "name": "Огненные снаряды",
       "card": "wh3_dlc25_dwf_art_flame_cannon_grudge_unit",
@@ -223,6 +259,12 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_art_cannon",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_veh_thunderbarge",
+      "stock": 40,
+      "per_seat": 28,
+      "seats": 2
      }
     },
     "organ": {
@@ -230,8 +272,8 @@
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_organ_gun",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 192,
-     "ammo_source": "wh_main_dwf_art_organ_gun: 96 per gun x 2",
+     "ammo": 136,
+     "ammo_source": "Органные орудия: primary_ammo 96 на орудие; × 0,7 вверх = 68 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 192",
      "ui": {
       "name": "Органное орудие",
       "card": "wh_main_dwf_organ_gun",
@@ -240,6 +282,12 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_art_organ_gun",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh_main_dwf_art_organ_gun",
+      "stock": 96,
+      "per_seat": 68,
+      "seats": 2
      }
     },
     "clatter": {
@@ -247,8 +295,8 @@
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_clatter_gun",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 480,
-     "ammo_source": "wh_main_dwf_veh_gyrobomber: 240 per craft x 2",
+     "ammo": 336,
+     "ammo_source": "Бомбовоз: пулемёт, primary_ammo 240; × 0,7 вверх = 168 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 480",
      "ui": {
       "name": "Пулемёт",
       "card": "wh_main_dwf_gyrocopter",
@@ -257,6 +305,12 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_veh_gyrobomber",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh_main_dwf_veh_gyrobomber",
+      "stock": 240,
+      "per_seat": 168,
+      "seats": 2
      }
     },
     "flame": {
@@ -264,8 +318,8 @@
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_flame_cannon",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 300,
-     "ammo_source": "wh_main_dwf_art_flame_cannon: 150 per gun x 2",
+     "ammo": 210,
+     "ammo_source": "Огненные пушки: primary_ammo 150 на орудие; × 0,7 вверх = 105 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 300",
      "ui": {
       "name": "Огненная пушка",
       "card": "wh_main_dwf_flame_cannon",
@@ -274,6 +328,12 @@
      "upkeep_from": {
       "unit": "wh_main_dwf_art_flame_cannon",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh_main_dwf_art_flame_cannon",
+      "stock": 150,
+      "per_seat": 105,
+      "seats": 2
      }
     },
     "brimstone": {
@@ -281,8 +341,8 @@
      "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_cannon",
      "weapon": "wh_main_dwf_copter_brimstone_gun",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_cannon",
-     "ammo": 120,
-     "ammo_source": "wh_main_dwf_veh_gyrocopter_1: 60 per craft x 2",
+     "ammo": 84,
+     "ammo_source": "Автожиры (серные пушки): primary_ammo 60; × 0,7 вверх = 42 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 120",
      "ui": {
       "hidden": true
      },
@@ -291,7 +351,13 @@
       "count": 2
      },
      "disabled": true,
-     "_note": "Removed from the variants by the user 04.11.2026; the data stays for later."
+     "_note": "Removed from the variants by the user 04.11.2026; the data stays for later.",
+     "ammo_rule": {
+      "analog": "wh_main_dwf_veh_gyrocopter_1",
+      "stock": 60,
+      "per_seat": 42,
+      "seats": 2
+     }
     },
     "none": {
      "empty": true,
@@ -347,8 +413,8 @@
     },
     "stock": {
      "stock": true,
-     "ammo": 290,
-     "ammo_source": "barge: 145 x 2",
+     "ammo": 56,
+     "ammo_source": "громобаржа: primary_ammo 40; × 0,7 вверх = 28 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 290",
      "ui": {
       "name": "Гранаты",
       "card": "wh_main_dwf_miners_blasting_charges",
@@ -357,6 +423,12 @@
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_veh_thunderbarge",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_veh_thunderbarge",
+      "stock": 40,
+      "per_seat": 28,
+      "seats": 2
      }
     },
     "axes": {
@@ -379,8 +451,8 @@
       "spread": 3.0,
       "base_reload_time": 5.0
      },
-     "ammo": 24,
-     "ammo_source": "wh_dlc06_dwf_inf_rangers_1: 12 x 2",
+     "ammo": 18,
+     "ammo_source": "Егеря (тяжелое оружие), метательные топоры: primary_ammo 12; × 0,7 вверх = 9 залпов на место × 2 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 24",
      "ui": {
       "name": "Топоры",
       "card": "wh_dlc06_dwf_rangers",
@@ -389,6 +461,12 @@
      "upkeep_from": {
       "unit": "wh_dlc06_dwf_inf_rangers_1",
       "count": 2
+     },
+     "ammo_rule": {
+      "analog": "wh_dlc06_dwf_inf_rangers_1",
+      "stock": 12,
+      "per_seat": 9,
+      "seats": 2
      }
     },
     "none": {
@@ -432,8 +510,8 @@
     },
     "stock": {
      "stock": true,
-     "ammo": 580,
-     "ammo_source": "barge: 145 x 4",
+     "ammo": 112,
+     "ammo_source": "громобаржа: primary_ammo 40; × 0,7 вверх = 28 залпов на место × 4 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 580",
      "ui": {
       "name": "Бомбы",
       "card": "wh_main_dwf_gyrobomber",
@@ -443,13 +521,19 @@
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_veh_thunderbarge",
       "count": 4
+     },
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_veh_thunderbarge",
+      "stock": 40,
+      "per_seat": 28,
+      "seats": 4
      }
     },
     "fire": {
      "weapon": "wh3_dlc25_dwf_thunderbarge_fire_bomb",
      "stats_like": "wh3_dlc25_dwf_veh_thunderbarge_bomb",
-     "ammo": 580,
-     "ammo_source": "barge: as stock",
+     "ammo": 112,
+     "ammo_source": "громобаржа: как бомбы; × 0,7 вверх = 28 залпов на место × 4 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 580",
      "ui": {
       "name": "Огненные бомбы",
       "card": "wh3_dlc25_dwf_inf_slayers_grudge_unit",
@@ -461,6 +545,12 @@
      "upkeep_from": {
       "unit": "wh3_dlc25_dwf_veh_thunderbarge",
       "count": 4
+     },
+     "ammo_rule": {
+      "analog": "wh3_dlc25_dwf_veh_thunderbarge",
+      "stock": 40,
+      "per_seat": 28,
+      "seats": 4
      }
     },
     "none": {
