@@ -143,3 +143,13 @@ export async function launch({width = 1200, height = 800, port = 9333, profile =
     };
     return b;
 }
+
+// A debug button of the page's bar (web/index.html, #debug): in a narrow window they fold into «Отладка ▾», opened first when the button is hidden.
+export async function debugRect(b, selector) {
+    let r = await b.rect(selector);
+    if (!r || !r.w) {
+        const t = await b.rect('#debug_toggle');
+        if (t && t.w) { await b.click(t.x, t.y); await sleep(150); r = await b.rect(selector); }
+    }
+    return r;
+}

@@ -9,7 +9,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep, decodePng} from './cdp.mjs';
+import {launch, sleep, decodePng, debugRect} from './cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(tmpdir(), 'mtb_groups3d_tree');
@@ -43,7 +43,7 @@ async function walk(scale) {
         check(`${tag} the page's start loads no crew model`, start.crew === 0, start);
         const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height}; })()`);
         const clickId = async id => { const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); };
-        const button = async sel => { const r = await b.rect(sel); await b.click(r.x, r.y); await sleep(250); };
+        const button = async sel => { const r = /gold_quick|build_|reset_all/.test(sel) ? await debugRect(b, sel) : await b.rect(sel); await b.click(r.x, r.y); await sleep(250); };
         const crew3d = () => b.eval('mtb.viewer.crewState()');
         const view3d = async () => { const r = await b.rect('#view3d canvas'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
         const drawing = async () => { const r = await comp('scheme'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
@@ -161,7 +161,7 @@ async function panelBar() {
         await b.eval('localStorage.clear()');
         await b.reload();
         await b.until('document.body.dataset.ready === "1"', 30000);
-        const r = await b.rect('#build_all'); await b.click(r.x, r.y); await sleep(800);
+        const r = await debugRect(b, '#build_all'); await b.click(r.x, r.y); await sleep(800);
         for (const w of [1024, 1280, 1600, 1920]) {
             await b.size(w, 900); await sleep(500);
             const m = await b.eval(`(() => {
@@ -188,7 +188,61 @@ async function panelBar() {
     }
 }
 
+// The page's own bar in both modes at the same widths: its groups wrap whole, nothing lies on anything, nothing cut, the page starts under it, the
+// feed shortened with "…"; narrow, the debug buttons fold into «Отладка ▾» (its dropdown checked open too). Pictures groups3d/topbar_<width>_<mode>.png.
+async function topBar() {
+    const b = await launch({width: 1280, height: 900, port: 9398, profile: join(tmpdir(), 'mtb_3d_profile_top')});
+    try {
+        await b.open(URL0 + '?mode=game');
+        await b.until('!!(window.mtb && mtb.M && mtb.panel)', 15000);
+        await b.eval('localStorage.clear()');
+        await b.reload();
+        await b.until('document.body.dataset.ready === "1"', 30000);
+        // a long line in the feed, as after a few turns
+        for (let i = 0; i < 3; i++) { const r = await b.rect('#end_turn'); await b.click(r.x, r.y); await sleep(200); }
+        const measure = () => b.eval(`(() => {
+            const vis = e => e.offsetParent !== null && getComputedStyle(e).visibility !== 'hidden' && e.getBoundingClientRect().width > 0;
+            const bar = document.getElementById('bar'), br = bar.getBoundingClientRect();
+            const leaves = [...bar.querySelectorAll('button, input, .tag, #turn, #cx_save, #log li:first-child, .debug-gold')].filter(vis).filter(e => !e.closest('#debug_tools') || getComputedStyle(document.getElementById('debug_tools')).position !== 'absolute');
+            const flat = leaves.filter(e => !leaves.some(o => o !== e && e.contains(o)));
+            const rs = flat.map(e => ({id: e.id || e.className || e.tagName, r: e.getBoundingClientRect(), cut: e.tagName !== 'LI' && e.tagName !== 'INPUT' && e.scrollWidth > e.clientWidth + 1}));
+            const meet = [];
+            for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const a = rs[i].r, c = rs[j].r; if (a.left < c.right - 0.5 && c.left < a.right - 0.5 && a.top < c.bottom - 0.5 && c.top < a.bottom - 0.5) meet.push(rs[i].id + '/' + rs[j].id); }
+            const page = document.body.dataset.mode === 'constructor' ? document.getElementById('constructor') : document.querySelector('main');
+            const log = document.getElementById('log'), li = log.querySelector('li');
+            return {meet, cut: rs.filter(x => x.cut).map(x => x.id), outside: rs.filter(x => x.r.right > window.innerWidth + 0.5 || x.r.left < -0.5).map(x => x.id),
+                    pageTop: page.getBoundingClientRect().top, barBottom: br.bottom, rows: new Set(rs.map(x => Math.round(x.r.top / 4))).size,
+                    feedFits: !li || !vis(log) || li.getBoundingClientRect().right <= log.getBoundingClientRect().right + 0.5, small: rs.filter(x => parseFloat(getComputedStyle(document.getElementById(x.id) || bar).fontSize) < 11).length};
+        })()`);
+        for (const mode of ['game', 'constructor']) {
+            await b.eval(`mtb.setMode('${mode}'); 1`); await sleep(400);
+            for (const w of [1024, 1280, 1600, 1920]) {
+                await b.size(w, 900); await sleep(400);
+                const m = await measure();
+                check(`top bar, ${mode}, ${w}: nothing meets, nothing cut or outside, the page under the bar`, !m.meet.length && !m.cut.length && !m.outside.length && m.pageTop >= m.barBottom - 0.5 && m.feedFits, m);
+                await b.shot(join(SHOTS, `topbar_${w}_${mode}.png`), {x: 0, y: 0, width: w, height: Math.min(900, Math.round(m.barBottom) + 120)});
+                if (mode === 'game' && w <= 1280) {
+                    const t = await b.rect('#debug_toggle');
+                    check(`top bar, ${w}: the debug folded into «Отладка ▾»`, !!t && t.w > 0);
+                    await b.click(t.x, t.y); await sleep(200);
+                    const d = await b.eval(`(() => { const items = [...document.querySelectorAll('#debug_tools button, #debug_tools input')].map(e => e.getBoundingClientRect()); const meet = items.some((a, i) => items.some((c, j) => j > i && a.left < c.right - 0.5 && c.left < a.right - 0.5 && a.top < c.bottom - 0.5 && c.top < a.bottom - 0.5)); return {n: items.length, meet, inside: items.every(r => r.right <= window.innerWidth + 0.5 && r.width > 0)}; })()`);
+                    check(`top bar, ${w}: the debug dropdown opens, its buttons apart and inside`, d.n >= 8 && !d.meet && d.inside, d);
+                    await b.shot(join(SHOTS, `topbar_${w}_game_debug.png`), {x: 0, y: 0, width: w, height: 260});
+                    await b.click(Math.round(w * 0.3), 600); await sleep(200);
+                }
+            }
+        }
+        check('top bar: the console is clean', !b.errors.length, b.errors);
+    } catch (e) {
+        check('top bar: the check ran through', false, e.message);
+    } finally {
+        await b.close();
+        await sleep(1500);
+    }
+}
+
 try {
+    await topBar();
     await panelBar();
     if (!process.env.BAR_ONLY) for (const s of [0.6, 1]) await walk(s);
 } finally {

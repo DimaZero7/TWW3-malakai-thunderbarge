@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep} from './cdp.mjs';
+import {launch, sleep, debugRect} from './cdp.mjs';
 import * as T from '../../web/js/tree_model.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -131,7 +131,7 @@ try {
             for (const t of tops) {
                 const pos = await inSight(t.id);
                 await b.click(pos.x, pos.y); await sleep(150);
-                const r = await b.rect('#build_to'); await b.click(r.x, r.y); await sleep(200);
+                const r = await debugRect(b, '#build_to'); await b.click(r.x, r.y); await sleep(200);
             }
             const built = await b.eval(`${gm}.tree.filter(v => v.node.row && mtb.game.standing(v.node.key)).length`);
             check('1600: the whole tree built: every top level stands', built === tops.length, built);

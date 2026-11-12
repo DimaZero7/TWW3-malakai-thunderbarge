@@ -10,7 +10,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep} from './cdp.mjs';
+import {launch, sleep, debugRect} from './cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(tmpdir(), 'mtb_groups_tree');
@@ -45,7 +45,7 @@ async function walk(scale) {
         const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height}; })()`);
         const shown = id => comp(id).then(r => !!r);
         const clickId = async id => { const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); return r; };
-        const button = async sel => { const r = await b.rect(sel); await b.click(r.x, r.y); await sleep(250); };
+        const button = async sel => { const r = /gold_quick|build_|reset_all/.test(sel) ? await debugRect(b, sel) : await b.rect(sel); await b.click(r.x, r.y); await sleep(250); };
         const gold = () => b.eval('mtb.game.treasury()');
         const hire = (g, o) => b.eval(`mtb.M.crew_options('${g}').find(x => x.key === '${o}').hire`);
         const upkeep = (g, o) => b.eval(`mtb.M.crew_options('${g}').find(x => x.key === '${o}').upkeep`);

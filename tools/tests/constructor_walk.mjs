@@ -14,7 +14,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep} from './cdp.mjs';
+import {launch, sleep, debugRect} from './cdp.mjs';
 import {standDesign} from './constructor_stand.mjs';
 import * as T from '../../web/js/tree_model.mjs';
 
@@ -628,7 +628,7 @@ try {
     // order, turn, short of gold, the crew on the drawing, at the user's scale (~0.6)
     const order = async name => { const n = await inSight(name); await b.click(n.x, n.y); const o = await comp('mtb_ship_order'); await b.click(o.x, o.y); };
     const endTurn = async () => { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(120); };
-    const gold = async v => { const q2 = await b.rect(`.gold_quick[data-gold="${v}"]`); await b.click(q2.x, q2.y); };
+    const gold = async v => { const q2 = await debugRect(b, `.gold_quick[data-gold="${v}"]`); await b.click(q2.x, q2.y); };
     const status = name => b.eval(`(() => { const v = ${gm}.tree.find(v => v.node.name === ${JSON.stringify(name)}); return mtb.M.status(v.node.key); })()`);
     await gold(6000);
     await order('Заготовка под корабль'); await endTurn();
@@ -718,9 +718,9 @@ async function walkCaps() {
         return n;
     };
     const selectInGame = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(150); return n; };
-    const buildTo = async name => { await selectInGame(name); const r = await b.rect('#build_to'); await b.click(r.x, r.y); await sleep(200); };
+    const buildTo = async name => { await selectInGame(name); const r = await debugRect(b, '#build_to'); await b.click(r.x, r.y); await sleep(200); };
     // «Сбросить» reloads the page: the address still says ?mode=constructor, so the game is chosen again
-    const resetGame = async () => { const r = await b.rect('#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
+    const resetGame = async () => { const r = await debugRect(b, '#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
     const visibleText = id => b.eval(`(() => { const t = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); return t ? t.textContent : ''; })()`);
     const infoText = () => b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); return t ? [...t.querySelectorAll('[data-id]')].filter(x => x.offsetParent !== null && x.querySelector('.t')).map(x => x.textContent).join(' | ') : ''; })()`);
 
@@ -1037,8 +1037,8 @@ async function walkChains() {
         return n;
     };
     const selectInGame = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(150); };
-    const buildTo = async name => { await selectInGame(name); const r = await b.rect('#build_to'); await b.click(r.x, r.y); await sleep(250); };
-    const resetGame = async () => { const r = await b.rect('#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
+    const buildTo = async name => { await selectInGame(name); const r = await debugRect(b, '#build_to'); await b.click(r.x, r.y); await sleep(250); };
+    const resetGame = async () => { const r = await debugRect(b, '#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
     const infoText = () => b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); return t ? [...t.querySelectorAll('[data-id]')].filter(x => x.offsetParent !== null && x.querySelector('.t')).map(x => x.textContent).join(' | ') : ''; })()`);
     const ammoOf = () => b.eval(`(async () => { const FX = await import('/js/effects_model.mjs'), C = await import('/js/crew_model.mjs'); const L = mtb.panel.view.data; return FX.crewBonuses(C.crewSources(L, k => mtb.game.has_building(k), k => mtb.game.standing(k)), 'rifles').ammo; })()`);
     const btnIn = async (sel, label) => { const r = await at(`[...document.querySelectorAll(${JSON.stringify(sel)})].find(x => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(label)}))`); if (!r) throw new Error('no ' + label); await b.click(r.x, r.y); await sleep(220); };

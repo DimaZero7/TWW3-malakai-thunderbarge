@@ -11,7 +11,7 @@
 body[data-mode="constructor"] .game-only { display: none !important; }
 body[data-mode="constructor"] main { display: none; }
 body:not([data-mode="constructor"]) #cx_tools { display: none; }
-#cx_tools { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+#cx_tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 auto !important; min-width: 0; }
 #cx_tools .sep { width: 1px; align-self: stretch; margin: 8px 2px; background: #4a4134; }
 #cx_tools button { padding: 5px 10px; white-space: nowrap; }
 #cx_tools button:disabled { opacity: 0.4; cursor: default; }
@@ -22,7 +22,7 @@ body:not([data-mode="constructor"]) #cx_tools { display: none; }
 #cx_save.bad { color: #fff; background: #8a2416; }
 #cx_retry { border-color: #ff8a6a !important; color: #fff !important; background: #6a2414 !important; }
 
-#constructor { position: absolute; top: 41px; left: 0; right: 0; bottom: 0; display: none; color: var(--cx-text); font: 14px/1.35 "Segoe UI", sans-serif; }
+#constructor { position: absolute; top: var(--bar-h, 41px); left: 0; right: 0; bottom: 0; display: none; color: var(--cx-text); font: 14px/1.35 "Segoe UI", sans-serif; }
 body[data-mode="constructor"] #constructor { display: flex; }
 #constructor * { box-sizing: border-box; }
 #constructor button, .cx-pop button, .cx-dialog button { background: #3a3125; color: #f3e3c0; border: 1px solid #7a5a32; padding: 4px 10px; cursor: pointer; font: inherit; border-radius: 2px; }

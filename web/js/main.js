@@ -88,7 +88,13 @@ async function main() {
         for (const b of document.querySelectorAll('#tools3d button')) b.style.display = hullShown() ? '' : 'none';      // no ship, no views of it
     };
     const turnEl = document.getElementById('turn'), logEl = document.getElementById('log'), hullEl = document.getElementById('hull');
-    const log = text => { const li = document.createElement('li'); li.textContent = `Ход ${G.game.turn}: ${text}`; logEl.prepend(li); };
+    const log = text => {
+        const li = document.createElement('li');
+        li.textContent = `Ход ${G.game.turn}: ${text}`;
+        logEl.prepend(li);
+        while (logEl.children.length > 12) logEl.lastChild.remove();
+        logEl.title = [...logEl.children].map(x => x.textContent).join(String.fromCharCode(10));      // the last lines, the newest first
+    };
     const update = () => {
         const {M, panel, game} = G;
         panel.refresh();
@@ -226,6 +232,15 @@ async function main() {
     showFollow();
     const onCrewArea = g => { if (follow && FOLLOW[g] && hullShown()) viewer.flyTo(FOLLOW[g]); };
 
+    // the bar's honest height: the page and the constructor start under it however many rows its groups take
+    const bar = document.getElementById('bar');
+    new ResizeObserver(() => document.documentElement.style.setProperty('--bar-h', bar.offsetHeight + 'px')).observe(bar);
+    // «Отладка ▾»: the debug buttons in a dropdown when the window is narrow (web/css/page.css); a click elsewhere folds it
+    const debugBox = document.getElementById('debug');
+    document.getElementById('debug_toggle').addEventListener('click', e => { e.stopPropagation(); debugBox.classList.toggle('open'); e.currentTarget.setAttribute('aria-expanded', String(debugBox.classList.contains('open'))); });
+    document.addEventListener('click', e => { if (!debugBox.contains(e.target)) debugBox.classList.remove('open'); });
+    // an action done folds it again (the gold's field stays open while it is typed in)
+    document.getElementById('debug_tools').addEventListener('click', e => { if (e.target.closest('button')) debugBox.classList.remove('open'); });
     const fit = () => {
         if (!G) return;
         const area = document.getElementById('left'), root = G.root;
