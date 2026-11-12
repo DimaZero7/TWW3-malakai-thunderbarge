@@ -151,8 +151,9 @@ const cost = (M, k) => M.level(k).cost;
     const game = new GameSim(levels, {...sim, gold: 50000, built: []});
     const M = makeBuildings(levels, game, parts);
     const key = levels.key_of[nid];
-    check('the detail waits while its node does not stand', M.stage('pub') === 'pencil');
+    check('no barge yet: the detail is not on the drawing at all, not even in pencil', M.stage('pub') === 'none');
     for (const n of ['airship_hull_1', 'airship_hull_2']) { M.order(data.prefix + n); game.end_turn(); }
+    check('the barge stands: the detail waits in pencil while its node does not stand', M.stage('pub') === 'pencil');
     M.order(key);
     check('the detail is being built with its node', M.stage('pub') === 'build');
     const before = FX.crewBonuses(crewSources(levels, k => game.has_building(k), k => game.standing(k)), 'rifles').ammo.pct;

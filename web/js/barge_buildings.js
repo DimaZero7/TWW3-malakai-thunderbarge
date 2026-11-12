@@ -126,9 +126,14 @@ export function makeBuildings(data, game, parts) {
     const partOpeners = {};
     for (const row of Object.values(levels)) for (const p of row.parts || []) if (p.part) (partOpeners[p.part] ||= []).push(row.key);
     M.part_openers = part => partOpeners[part] || [];
+    // The part everything else stands on (web/data/blueprint.json, carrier: the base barge): while it is not built (bare timber, the frame on its
+    // slip, the hull being built) no detail and no crew place is on the drawing or the model, in no stage, not even as a pencil of what is to come.
+    M.carrier = Object.keys(parts).find(k => parts[k] && parts[k].carrier) || null;
+    M.carried = () => !M.carrier || M.stage(M.carrier) === 'ink';
     M.stage = part => {
         const p = parts[part];
         if (M.all_parts) return 'ink';
+        if (M.carrier && part !== M.carrier && !p.base && !M.carried()) return 'none';
         const keys = [...(p.building ? [prefix + p.building] : []), ...(partOpeners[part] || [])];
         if (!p.enabled || !keys.length) return 'none';
         // a node's own detail goes when a higher level of its line replaces it without carrying the detail on
@@ -205,7 +210,7 @@ export function makeBuildings(data, game, parts) {
     const opens = (g, o) => ((openers[g] || {})[o] || []).some(r => stands(r));
     M.crew_place = g => {
         const group = data.groups[g];
-        if (!group) return false;
+        if (!group || !M.carried()) return false;          // no barge, no place for a crew on it
         if (group.mount) return opens(g, group.mount);
         return Object.keys(group.options).some(o => o !== group.start && opens(g, o));
     };

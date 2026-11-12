@@ -183,6 +183,19 @@ const opt = (g, k) => data.groups[g].options[k];
     check('harpoon: ink, sketch, empty, tags on the drawing', ['crew_harpoon_on', 'crew_harpoon_on_sketch', 'crew_harpoon_empty', 'crew_harpoon_tag_plus'].every(n => art.places[n]));
 }
 
+// 7b. no barge, nothing on it: before the base barge no detail (not even in pencil) and no crew place; the hull taken from under a crew takes it
+{
+    const {game, M} = fresh();
+    check('carrier: the base barge is the part everything stands on', M.carrier === 'barge');
+    check('carrier: on the bare timber no detail is drawn, not even in pencil', Object.keys(stage.parts).filter(p => p !== 'barge' && !stage.parts[p].base).every(p => M.stage(p) === 'none'));
+    for (const v of levels.tree_rows) M.debug_build_to(v.key);
+    M.set_crew('cannons', M.crew_options('cannons').find(o => !o.empty).key);
+    game.end_turn();
+    check('carrier: with the barge the places and the details are there', M.crew_place('cannons') && M.stage('pub') === 'ink' && M.crew('cannons') !== 'empty');
+    for (let n = 5; n >= 2; n--) game.dismantle(data.prefix + 'airship_hull_' + n);
+    check('carrier: the hull gone, every place and detail goes, the crew leaves', ['rifles', ...groups, 'harpoon'].every(g => !M.crew_place(g)) && M.stage('pub') === 'none' && M.crew('cannons') === 'empty');
+}
+
 // 8. the ammunition in volleys a seat, as the mod's Lua counts it: the group's whole times the bonus, rounded, shared by the seats
 {
     const ammoOf = (n, pct) => { const total = Math.floor(n.ammo * (1 + pct / 100) + 0.5); return {total, per: Math.round(total / n.seats * 10) / 10}; };

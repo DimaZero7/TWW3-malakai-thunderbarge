@@ -79,7 +79,8 @@ async function main() {
     let G = null;           // {game, M, panel, root, designText}
     const hullShown = () => !!hull && (!stage.model_when || G.M.stage(stage.model_when) === 'ink');
     const setParts = () => {
-        for (const [key, spec] of parts) viewer.setPart(spec.model.part, hull === 'hull_base' && G.M.stage(key) === 'ink', spec.model.hides);
+        // a detail only on the barge it belongs to: none hangs in the air while the hull is not shown
+        for (const [key, spec] of parts) viewer.setPart(spec.model.part, hull === 'hull_base' && hullShown() && G.M.stage(key) === 'ink', spec.model.hides);
     };
     const loading = document.getElementById('loading');
     const noShip = document.getElementById('no_ship');
