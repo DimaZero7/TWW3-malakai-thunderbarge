@@ -91,7 +91,8 @@ body[data-mode="constructor"] #constructor { display: flex; }
 .cx-edges .hit { stroke: transparent; stroke-width: 16; fill: none; pointer-events: stroke; cursor: pointer; }
 .cx-edges .ln { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .cx-edges .ar { pointer-events: none; }
-.cx-edges .halo { fill: none; stroke: #fff6d0; stroke-width: 8; stroke-linejoin: round; opacity: 0.8; pointer-events: none; }
+/* the selected link: brighter and a soft glow round it, still one line (no lighter underlay that would read as two edges) */
+.cx-edges .ln.selln { stroke-width: 4.5; filter: brightness(1.35) drop-shadow(0 0 3px rgba(255, 246, 208, 0.9)); }
 .cx-edges g.hot .ln { stroke-width: 4; filter: brightness(1.3); }
 .cx-edges g.hot .ar { filter: brightness(1.3); }
 .cx-edges g.dim { opacity: 0.22; }
@@ -272,10 +273,11 @@ body[data-mode="constructor"] #constructor { display: flex; }
 .cx-node .slot > img.lvl { left: 0; top: 37px; width: 20px; height: 20px; z-index: 2; }
 .cx-node .slot > .lvl.txt { position: absolute; left: 0; top: 37px; min-width: 20px; height: 20px; z-index: 2; font: bold 12px/18px Georgia, serif; color: #e8e8f0; background: #2a2a30; border: 1px solid #8a8a98; text-align: center; }
 /* the next level of the same line: a double line, the branch's colour wide with a dark core */
-.cx-edges .ln.line { stroke-width: 6.5; }
-.cx-edges .ln.core { stroke: #1a1814; stroke-width: 2; }
-.cx-edges g.hot .ln.line { stroke-width: 8; }
-.cx-edges g.hot .ln.core { stroke-width: 2.5; filter: none; }
+/* the next level of a line: the same single line a little heavier, a small diamond of the branch's colour in its middle */
+.cx-edges .ln.line { stroke-width: 3.5; }
+.cx-edges g.hot .ln.line { stroke-width: 4.5; }
+.cx-edges .mark { stroke: #1a1814; stroke-width: 1.5; pointer-events: none; }
+.cx-edges g.hot .mark { filter: brightness(1.3); }
 .cx-lineinfo { color: var(--cx-brass-hi); }
 .cx-line select { margin-bottom: 3px; }
 .cx-check { display: flex !important; align-items: center; gap: 6px; font-weight: 400 !important; color: var(--cx-text) !important; margin-top: 4px; cursor: pointer; }

@@ -471,6 +471,16 @@ export function cxRoutes(design, lines = () => 1) {
         else if (b.row > a.row && b.col !== a.col && free(a.col, a.row + 1, b.row - 1)) l.kind = 'climb';
         else l.kind = 'round';
     }
+    // A long climb beside a straight link of the same column would run along it the whole way and read as the same link doubled: a link into a
+    // building that has a straight link from below climbs in its parent's column (or round by the gap between columns); a link out of a building
+    // that has a straight link up goes up in its child's column (or round)
+    const straightTo = new Set(L.filter(l => l.kind === 'straight').map(l => l.to)), straightFrom = new Set(L.filter(l => l.kind === 'straight').map(l => l.from));
+    for (const l of L) {
+        const a = node[l.from], b = node[l.to], long = b.row - a.row > 1;
+        if (!long) continue;
+        if (l.kind === 'step' && straightTo.has(l.to)) l.kind = free(a.col, a.row + 1, b.row - 1) && !straightFrom.has(l.from) ? 'climb' : 'round';
+        else if (l.kind === 'climb' && straightFrom.has(l.from)) l.kind = free(b.col, a.row + 1, b.row - 1) && !straightTo.has(l.to) ? 'step' : 'round';
+    }
     // the ends
     const spread = (key, other, shift) => {
         const by = {};
@@ -481,7 +491,7 @@ export function cxRoutes(design, lines = () => 1) {
                 .sort((x, y) => Math.abs(card[x[other]].cx - card[id].cx) - Math.abs(card[y[other]].cx - card[id].cx) || card[x[other]].y - card[y[other]].y);
             if (mid) mid[key === 'from' ? 'sx' : 'ex'] = card[id].cx;
             for (const s of [-1, 1]) {
-                const list = side(s), step = Math.min(10, 30 / Math.max(1, list.length));
+                const list = side(s), step = Math.min(14, 34 / Math.max(1, list.length));      // 10 and more apart: two links never read as one doubled
                 list.forEach((l, i) => { l[key === 'from' ? 'sx' : 'ex'] = card[id].cx + s * (i + 1) * step + shift; });
             }
         }
@@ -533,10 +543,11 @@ export function cxRoutes(design, lines = () => 1) {
         const n = ends.length;
         if (ch[0] === 'h') {
             const c = corridor(Number(ch.slice(1)));
-            const step = Math.max(3, Math.min(7, (c.bottom - c.top) / Math.max(1, n)));
-            for (const p of list) p.l[p.f] = c.bottom - step / 2 - p.lane * step;
+            // the lanes from the corridor's foot up to its top: the whole height shared, so many lanes stay 7 and more apart
+            const h = c.bottom - c.top, step = n > 1 ? Math.max(4, Math.min(12, (h - 2) / (n - 1))) : 0;
+            for (const p of list) p.l[p.f] = n > 1 ? c.bottom - 1 - p.lane * step : c.bottom - Math.min(6, h / 2);
         } else {
-            const step = n > 1 ? Math.min(4, 16 / (n - 1)) : 0;
+            const step = n > 1 ? Math.min(10, 22 / (n - 1)) : 0;       // 7 and more apart up to four lanes in the 20 between two cards
             for (const p of list) p.l.x = Number(ch.slice(1)) * CX.CW + (p.lane - (n - 1) / 2) * step;
         }
     }

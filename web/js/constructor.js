@@ -330,6 +330,14 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             (n.parts || []).length ? 'На корабле: ' + n.parts.map(p => (p.part ? partName(p.part) : p.name || 'новая деталь')).join(', ') : '',
             n.note ? 'Заметка: ' + n.note : ''].filter(Boolean).join('\n');
     }
+    // the mark of a line of levels: a diamond 9 x 9 at the middle of the route's longest piece, the branch's colour, a dark edge
+    const diamond = (pts, colour) => {
+        let best = null;
+        for (let i = 1; i < pts.length; i++) { const L = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); if (!best || L > best.L) best = {L, x: (pts[i][0] + pts[i - 1][0]) / 2, y: (pts[i][1] + pts[i - 1][1]) / 2}; }
+        if (!best || best.L < 24) return '';
+        const r = 5;
+        return `<path class="mark" d="M${best.x} ${best.y - r} L${best.x + r} ${best.y} L${best.x} ${best.y + r} L${best.x - r} ${best.y} Z" fill="${colour}"/>`;
+    };
     let tempLink = null;        // {a: {x, y}, b: {x, y}, bad}
     function renderEdges(over = null) {
         const d = cur();
@@ -353,9 +361,11 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const hot = isSel || hotEdge === key || (focus && (focus.has(from) || focus.has(to)));
             const dim = !hot && (focus || hotEdge || selEdge);
             s += `<g data-edge="${esc(key)}" data-pts="${esc(JSON.stringify(pts))}" class="${hot ? 'hot' : ''}${dim ? ' dim' : ''}${line ? ' lineedge' : ''}">`
-                + (isSel ? `<path class="halo" d="${path}"/>` : '')
-                + (line ? `<path class="ln line" d="${path}" stroke="${colour}"/><path class="ln core" d="${path}"/>` : `<path class="ln" d="${path}" stroke="${colour}"/>`)
-                + `<path class="ar" d="M${ex - (line ? 7 : 5)} ${ey + (line ? 9 : 7)} L${ex} ${ey} L${ex + (line ? 7 : 5)} ${ey + (line ? 9 : 7)} Z" fill="${colour}"/>`
+                // one line for every link; the next level of a line: the same line a little heavier with a small diamond of the branch's colour in the
+                // middle of its longest piece (a mark, not a second line); the selected link glows, it is not underlaid by a lighter wider one
+                + `<path class="ln${line ? ' line' : ''}${isSel ? ' selln' : ''}" d="${path}" stroke="${colour}"/>`
+                + (line ? diamond(pts, colour) : '')
+                + `<path class="ar" d="M${ex - 5} ${ey + 7} L${ex} ${ey} L${ex + 5} ${ey + 7} Z" fill="${colour}"/>`
                 + `<path class="hit" d="${path}"/></g>`;
         }
         if (tempLink) s += `<path class="temp${tempLink.bad ? ' bad' : ''}" d="M${tempLink.a.x} ${tempLink.a.y} L${tempLink.b.x} ${tempLink.b.y}"/>`;

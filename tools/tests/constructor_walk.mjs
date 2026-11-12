@@ -140,8 +140,8 @@ const images = () => b.eval(`(async () => {
 })()`);
 
 // CAPS_ONLY=1: only part 4 (the new capabilities), for a quick walk
-if (process.env.CAPS_ONLY || process.env.CHAIN_ONLY) {
-    try { if (process.env.CAPS_ONLY) await walkCaps(); if (process.env.CHAIN_ONLY) await walkChains(); const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e)); check("caps: the console is clean (the 409 of the conflict walked on purpose aside), no dialog", !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]); } catch (e) { failed++; console.log("FAIL walk stopped: " + e.stack); try { await b.shot(join(SHOTS, "caps_walk_error.png")); } catch (x) { /* no picture */ } }
+if (process.env.CAPS_ONLY || process.env.CHAIN_ONLY || process.env.LINES_ONLY) {
+    try { if (process.env.CAPS_ONLY) await walkCaps(); if (process.env.CHAIN_ONLY) { await walkChains(); await walkLines(); } if (process.env.LINES_ONLY) await walkLines(); const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e)); check("caps: the console is clean (the 409 of the conflict walked on purpose aside), no dialog", !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]); } catch (e) { failed++; console.log("FAIL walk stopped: " + e.stack); try { await b.shot(join(SHOTS, "caps_walk_error.png")); } catch (x) { /* no picture */ } }
     await b.close(); server.kill();
     check("the author's working file web/data/tree_design.json untouched, byte for byte", hash(WORK) === workBefore);
     console.log(`checks: ${results.length}, failed: ${failed}`); process.exit(failed ? 1 : 0);
@@ -674,7 +674,7 @@ try {
     im = await images();
     check('game at 1:1: every picture loaded', !im.bad.length && !im.missing.length, im);
     if (!process.env.SKIP_CAPS) await walkCaps();
-    if (!process.env.SKIP_CHAINS) await walkChains();
+    if (!process.env.SKIP_CHAINS) { await walkChains(); await walkLines(); }
     const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e));
     check('the console is clean (the 409 of the conflict walked on purpose aside), no dialog', !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]);
 } catch (e) {
@@ -1230,6 +1230,62 @@ async function walkChains() {
     im = await images();
     check('chains: game: every picture loaded', !im.bad.length && !im.missing.length, im);
     await toConstructor();
+}
+// Part 6: one line a link, on the author's tree of 41 buildings (build/web/tree_design.user_before_lines.json): a link of a line of levels is one
+// path with a small diamond, never two; between two buildings one route; two different links never run side by side closer than a lane (7) over
+// more than 30 along; the selected link is one glowing line. Pictures chain_single_line*.png, chain_user_tree_full.png.
+async function walkLines() {
+    writeFileSync(FILE, readFileSync(join(ROOT, 'build/web/tree_design.user_before_lines.json'), 'utf-8'));
+    await b.size(1280, 800);
+    await b.open(URL0 + '?mode=constructor');
+    await b.until('!!(window.mtb && mtb.editor && mtb.editor.design().nodes.length > 30)', 15000);
+    await sleep(1200);
+    const routes = () => b.eval(`(() => { const out = []; for (const g of document.querySelectorAll('.cx-edges g[data-edge]')) out.push({key: g.dataset.edge, pts: JSON.parse(g.dataset.pts), line: g.classList.contains('lineedge'),
+        paths: g.querySelectorAll('.ln').length, marks: g.querySelectorAll('.mark').length, halo: g.querySelectorAll('.halo').length}); return out; })()`);
+    let r = await routes();
+    const pairs = {};
+    for (const x of r) { const [a, c] = x.key.split('|'); const k = [a, c].sort().join('|'); pairs[k] = (pairs[k] || 0) + 1; }
+    check('lines: between two buildings one route (a node that requires its previous level and continues it: one link)', Object.values(pairs).every(v => v === 1), Object.entries(pairs).filter(([, v]) => v > 1));
+    const lineEdges = r.filter(x => x.line);
+    check('lines: every link of a line of levels is one path with one diamond, no second line', lineEdges.length >= 6 && lineEdges.every(x => x.paths === 1 && x.marks <= 1), lineEdges.filter(x => x.paths !== 1).map(x => x.key));
+    const close = [];
+    const segs = r.flatMap(x => x.pts.slice(1).map((p, i) => ({k: x.key, a: x.pts[i], b: p})));
+    for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+        const s = segs[i], t = segs[j];
+        if (s.k === t.k) continue;
+        const sv = s.a[0] === s.b[0], tv = t.a[0] === t.b[0];
+        if (sv !== tv || (s.a[1] === s.b[1]) !== (t.a[1] === t.b[1])) continue;
+        const ax = sv ? 0 : 1, cr = sv ? 1 : 0;
+        const lo = Math.max(Math.min(s.a[cr], s.b[cr]), Math.min(t.a[cr], t.b[cr])), hi = Math.min(Math.max(s.a[cr], s.b[cr]), Math.max(t.a[cr], t.b[cr]));
+        const dist = Math.abs(s.a[ax] - t.a[ax]);
+        if (hi - lo > 30 && dist < 7) close.push(`${s.k} / ${t.k}: ${dist.toFixed(1)} over ${Math.round(hi - lo)}`);
+    }
+    check('lines: no two different links side by side closer than a lane (7) over more than 30', !close.length, close.slice(0, 8));
+    // the author's case: «Трюм» → «Хранилище», «Хранилище» selected, at 100 % and at 79 %
+    for (const z of [1, 0.79]) {
+        await b.eval(`(() => { ${E}.select(['cargo_hold_2']); const a = mtb.editor.api.cardOf('cargo_hold_1'), c = mtb.editor.api.cardOf('cargo_hold_2'); const r = document.querySelector('.cx-canvas').getBoundingClientRect(), v = mtb.editor.api.view; v.z = ${z}; v.x = r.width / 2 - a.cx * v.z; v.y = r.height / 2 - ((a.y + c.y) / 2 + 40) * v.z; mtb.editor.api.applyView(); })()`);
+        await sleep(300);
+        r = await routes();
+        const sel = r.find(x => x.key === 'cargo_hold_1|cargo_hold_2');
+        const look = await b.eval(`(() => { const g = document.querySelector('.cx-edges g[data-edge="cargo_hold_1|cargo_hold_2"]'); return {hot: g.classList.contains('hot'), halo: g.querySelectorAll('.halo').length, paths: g.querySelectorAll('.ln').length}; })()`);
+        check(`lines ${Math.round(z * 100)} %: «Трюм» → «Хранилище» with «Хранилище» selected: one path, lit, no light underlay`, sel && look.paths === 1 && !look.halo && look.hot, look);
+        const box = await b.eval(`(() => { const ids = ['cargo_hold_1', 'cargo_hold_2'].map(id => document.querySelector('.cx-node[data-id="' + id + '"]').getBoundingClientRect()); return {l: Math.min(...ids.map(r => r.left)) - 220, t: Math.min(...ids.map(r => r.top)) - 40, r: Math.max(...ids.map(r => r.right)) + 260, b: Math.max(...ids.map(r => r.bottom)) + 30}; })()`);
+        const cv = await b.rect('.cx-canvas');
+        const cl = Math.max(cv.l, box.l), ct = Math.max(cv.t, box.t);
+        await b.shot(join(SHOTS, z === 1 ? 'chain_single_line.png' : 'chain_single_line_79.png'), {x: cl, y: ct, width: Math.min(cv.l + cv.w, box.r) - cl, height: Math.min(cv.t + cv.h, box.b) - ct});
+    }
+    // the whole tree, the panels folded
+    await b.eval(`${E}.select([])`);
+    // both side panels folded, the scale that holds the whole tree (an overview: the names smaller than for work)
+    await b.eval(`${E}.fold('palette', true); ${E}.fold('props', true)`);
+    await sleep(300);
+    await b.eval(`(() => { const v = ${E}.view, r = document.querySelector('.cx-canvas').getBoundingClientRect(), cs = mtb.editor.design().nodes.map(n => mtb.editor.api.cardOf(n.id));
+        const x0 = Math.min(...cs.map(c => c.x)) - 10, x1 = Math.max(...cs.map(c => c.x + c.w)) + 10, y0 = Math.min(...cs.map(c => c.y)) - 24, y1 = Math.max(...cs.map(c => c.bottom)) + 10;
+        v.z = Math.min(1, (r.width - 20) / (x1 - x0), (r.height - 20) / (y1 - y0)); v.x = (r.width - (x1 - x0) * v.z) / 2 - x0 * v.z; v.y = (r.height - (y1 - y0) * v.z) / 2 - y0 * v.z; ${E}.applyView(); })()`);
+    await sleep(400);
+    await b.shot(join(SHOTS, 'chain_user_tree_full.png'));
+    await b.eval(`${E}.fold('palette', false); ${E}.fold('props', false)`);
+    await sleep(200);
 }
 console.log(`checks: ${results.length}, failed: ${failed}`);
 console.log(failed ? `failed: ${failed}` : 'failed: 0');

@@ -160,12 +160,25 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? '
     const keys = Object.keys(routes);
     check('stand: a way for each of the 35 links', keys.length === 35 && T.edges(d).length === 35);
     const ends = keys.every(k => { const [f, t] = k.split('|'), p = routes[k], a = T.cxCard(T.byId(d, f)), c = T.cxCard(T.byId(d, t), T.byId(d, t).name.length > 40 ? 3 : T.byId(d, t).name.length > 18 ? 2 : 1);
-        return p[0][1] === a.slotY && Math.abs(p[0][0] - a.cx) <= 28 && p[p.length - 1][1] === c.bottom + 3 && Math.abs(p[p.length - 1][0] - c.cx) <= 28; });
+        return p[0][1] === a.slotY && Math.abs(p[0][0] - a.cx) <= 36 && p[p.length - 1][1] === c.bottom + 3 && Math.abs(p[p.length - 1][0] - c.cx) <= 36; });
     check('stand: out of the parent\'s slot top, into the child\'s card bottom', ends);
+    // two different links never run side by side closer than a lane (7) over more than 30: they would read as one doubled line
     const segs = keys.flatMap(k => routes[k].slice(1).map((q, i) => ({k, a: routes[k][i], b: q})));
-    let shared = 0;
+    const close = [];
     for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
-        const s = segs[i], t = segs[j];
+        const x = segs[i], y = segs[j];
+        if (x.k === y.k) continue;
+        const xv = x.a[0] === x.b[0], yv = y.a[0] === y.b[0];
+        if (xv !== yv || (x.a[1] === x.b[1]) !== (y.a[1] === y.b[1])) continue;
+        const ax = xv ? 0 : 1, cr = xv ? 1 : 0;
+        const lo = Math.max(Math.min(x.a[cr], x.b[cr]), Math.min(y.a[cr], y.b[cr])), hi = Math.min(Math.max(x.a[cr], x.b[cr]), Math.max(y.a[cr], y.b[cr]));
+        if (hi - lo > 30 && Math.abs(x.a[ax] - y.a[ax]) < 7) close.push(x.k + ' / ' + y.k);
+    }
+    check('stand: no two links side by side closer than a lane over more than 30', !close.length, close.slice(0, 5));
+    const segs2 = keys.flatMap(k => routes[k].slice(1).map((q, i) => ({k, a: routes[k][i], b: q})));
+    let shared = 0;
+    for (let i = 0; i < segs2.length; i++) for (let j = i + 1; j < segs2.length; j++) {
+        const s = segs2[i], t = segs2[j];
         if (s.k === t.k) continue;
         const hor = s.a[1] === s.b[1] && t.a[1] === t.b[1] && s.a[1] === t.a[1], ver = s.a[0] === s.b[0] && t.a[0] === t.b[0] && s.a[0] === t.a[0];
         const lo = (x, y) => Math.max(Math.min(x[0], x[1]), Math.min(y[0], y[1])), hi = (x, y) => Math.min(Math.max(x[0], x[1]), Math.max(y[0], y[1]));
