@@ -133,7 +133,8 @@ async function main() {
             const st = crewState(M, a.group);
             const kind = st.place ? st.stand || st.coming : null;
             viewer.setCrew(a.group, kind ? of(kind) : null, kind ? (st.stand ? 'stand' : 'ghost') : null, a.group === 'rifles' && sideReady ? [`ap_crew_${side}_1`] : []);
-            if (a.hides_part === 'lookouts') viewer.setCrew('lookouts', M.stage('lookouts') === 'ink' && st.nobody && !st.coming ? 'lookouts_on' : null, 'stand');
+            // the detail the crew takes the place of (the nests' lookouts), in 3D its own model (blueprint.json, hides_part_3d); none in the tree: nothing
+            if (a.hides_part && a.hides_part_3d) viewer.setCrew(a.hides_part, M.stage(a.hides_part) === 'ink' && st.nobody && !st.coming ? a.hides_part_3d : null, 'stand');
         }
         viewer.setCrew('malakai', sideReady && hullShown() ? 'malakai_' + side : null, 'stand');
     };

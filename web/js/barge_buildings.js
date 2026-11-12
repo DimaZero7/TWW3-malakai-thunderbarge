@@ -128,10 +128,11 @@ export function makeBuildings(data, game, parts) {
     M.part_openers = part => partOpeners[part] || [];
     // The part everything else stands on (web/data/blueprint.json, carrier: the base barge): while it is not built (bare timber, the frame on its
     // slip, the hull being built) no detail and no crew place is on the drawing or the model, in no stage, not even as a pencil of what is to come.
-    M.carrier = Object.keys(parts).find(k => parts[k] && parts[k].carrier) || null;
+    M.carrier = Object.keys(parts || {}).find(k => parts[k] && parts[k].carrier) || null;
     M.carried = () => !M.carrier || M.stage(M.carrier) === 'ink';
     M.stage = part => {
         const p = parts[part];
+        if (!p) return 'none';         // a detail the stage or the tree does not have: simply not there
         if (M.all_parts) return 'ink';
         if (M.carrier && part !== M.carrier && !p.base && !M.carried()) return 'none';
         const keys = [...(p.building ? [prefix + p.building] : []), ...(partOpeners[part] || [])];

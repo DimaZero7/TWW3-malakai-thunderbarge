@@ -961,7 +961,7 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
         // its marks: an hourglass while this kind is hired, the green check while it stands at the rails (the same states the choice shows)
         const waiting = image(card, 'waiting', 'ui/skins/default/icon_hourglass.png', CARD_W - 15, CARD_H - 17, 16, 16);
         const standing = image(card, 'standing', 'ui/skins/default/icon_check_green.png', CARD_W - 16, CARD_H - 15, 17, 15);
-        const info = unitInfo(frame, 'crew_info_' + spec.option, {option, group_data: group, movie: spec.movie, text: spec.text || option.about || ''}, flags);
+        const info = unitInfo(frame, 'crew_info_' + spec.option, {option, group_data: group, movie: spec.movie, text: spec.text || option.about || '', area: (blueprint.crew_areas || []).find(a => a.group === spec.group)}, flags);
         info.hook(card);
         view.crew.push({card, info, tip: info.panel, building: v.node.key, group: spec.group, option: spec.option, waiting, standing, cy: parent.y + cy + CARD_H / 2,
                         x: parent.x + v.button.x - 10 - UNIT_INFO_W});      // beside the card: left of its slot, the card stays clear
@@ -1061,7 +1061,8 @@ function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide) {
             const waiting = image(card, 'waiting', D + 'icon_hourglass.png', CARD_W - 15, CARD_H - 17, 16, 16);
             const standing = image(card, 'standing', D + 'icon_check_green.png', CARD_W - 16, CARD_H - 15, 17, 15);
             const clip = clips[u.group + ':' + u.option] || {};
-            const info = unitInfo(frame, `crew_info_${v.node.row.short}_${u.option}`, {option: u.option_data, group_data: u.group_data, movie: clip.movie || u.option + '_demo', text: clip.text || u.option_data.about || ''}, flags);
+            const info = unitInfo(frame, `crew_info_${v.node.row.short}_${u.option}`, {option: u.option_data, group_data: u.group_data, movie: clip.movie || u.option + '_demo', text: clip.text || u.option_data.about || '',
+                                  area: (blueprint.crew_areas || []).find(a => a.group === u.group)}, flags);
             info.hook(card);
             view.crew.push({card, info, tip: info.panel, building: v.node.key, group: u.group, option: u.option, waiting, standing, v, cardY: cy});
         });

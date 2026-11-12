@@ -292,7 +292,8 @@
       "empty_name": "пустые гнёзда",
       "who": "Метатели"
      },
-     "per": "на гнездо"
+     "per": "на гнездо",
+     "hides_part_3d": "lookouts_on"
     },
     {
      "group": "harpoon",
