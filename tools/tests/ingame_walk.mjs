@@ -97,6 +97,94 @@ const audit = () => b.eval(`(() => {
     return {texts: texts.length, bad, overlap, min: Math.min(...texts.map(t => parseFloat(getComputedStyle(t).fontSize)))};
 })()`);
 
+// The title row measured as drawn (the rule of web/js/panel.js, titlePlate, written again here): the plate panel_title_large.png is 769 x 69, seen
+// 84..685 across and 10..56 down, its dark field 211..558 across and 15..49 down. The title's ink (canvas measureText of the text in its computed
+// font, placed on the line the browser laid out: the range's top is the font's ascent above the baseline) inside the field with at least 1 unit
+// clear and centred on it within 1 unit, both ways; the treasury, the tabs, the «!» mark and the cross clear of the plate as seen. In the units of
+// the interface. sel: the component holding the plate (the panel's frame, or a test holder).
+const titleAudit = (sel = null) => b.eval(`(() => {
+    const host = ${sel ? `document.querySelector(${JSON.stringify(sel)})` : 'mtb.root.el'}, k = mtb.root.el.getBoundingClientRect().width / mtb.root.Width();
+    const q = id => [...host.querySelectorAll('[data-id="' + id + '"]')].find(e => e.offsetParent !== null);
+    const pe = q('title_back'), te = q('title') && q('title').querySelector('.t');
+    if (!pe || !te) return {missing: true};
+    const P = pe.getBoundingClientRect(), kx = P.width / 769, ky = P.height / 69;
+    const field = {l: P.left + 211 * kx, r: P.left + 558 * kx, t: P.top + 15 * ky, b: P.top + 49 * ky};
+    const seen = {l: P.left + 84 * kx, r: P.left + 685 * kx, t: P.top + 10 * ky, b: P.top + 56 * ky};
+    const cs = getComputedStyle(te), c = document.createElement('canvas').getContext('2d');
+    c.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    c.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+    const m = c.measureText(te.textContent), rg = document.createRange();
+    rg.selectNodeContents(te);
+    const R = rg.getBoundingClientRect(), base = R.top + m.fontBoundingBoxAscent * k;
+    const ink = {l: R.left - m.actualBoundingBoxLeft * k, r: R.left + m.actualBoundingBoxRight * k, t: base - m.actualBoundingBoxAscent * k, b: base + m.actualBoundingBoxDescent * k};
+    const u = x => +(x / k).toFixed(2);
+    const out = {size: parseFloat(cs.fontSize), line: u(R.height) - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent),
+        clear: [u(ink.l - field.l), u(field.r - ink.r), u(ink.t - field.t), u(field.b - ink.b)],
+        off: [u((ink.l + ink.r) / 2 - (field.l + field.r) / 2), u((ink.t + ink.b) / 2 - (field.t + field.b) / 2)], hits: []};
+    if (!${!!sel}) for (const id of ['gold_icon', 'gold', 'mtb_tab_ship', 'mtb_tab_tree', 'new_mark', 'mtb_ship_close']) {
+        const e = q(id); if (!e) continue;
+        const t = e.querySelector(':scope > .t'), r = id === 'gold' && t ? (() => { const x = document.createRange(); x.selectNodeContents(t); return x.getBoundingClientRect(); })() : e.getBoundingClientRect();
+        if (r.width && r.left < seen.r && seen.l < r.right && r.top < seen.b && seen.t < r.bottom) out.hits.push(id);
+    }
+    out.ok = Math.abs(out.line) < 1 && out.clear.every(x => x >= 1) && out.off.every(x => Math.abs(x) <= 1) && !out.hits.length;
+    return out;
+})()`);
+// every window, ratio, screen and fit, both modes and both tabs; a 7-digit treasury and the tab's «!» shown
+async function titleRow() {
+    if (!(await b.eval('location.protocol').catch(() => '')).startsWith('http')) { await b.open(URL0 + '?mode=ingame'); await ready(); }
+    const kept = await b.eval('JSON.stringify(Object.entries(localStorage))');      // the game as the walk left it, back after these checks
+    const bad = [];
+    let cases = 0;
+    const both = async label => {
+        for (const t of ['ship', 'tree']) {
+            // the tab by a real click where it is on the window; at 1:1 on a screen larger than the window, by the click's handler (the same path)
+            const r = await b.eval(`(() => { const r = mtb.panel.view.tabs['${t}'].button.el.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, on: r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0}; })()`);
+            if (await b.eval('mtb.panel.view.tab') !== t) { if (r.on) await b.click(r.x, r.y); else await b.eval(`mtb.panel.click(mtb.panel.view.tabs['${t}'].button); 1`); await sleep(150); }
+            if (await b.eval('mtb.panel.view.tab') !== t) bad.push({label, t, tab: 'not switched'});
+            await b.eval(`mtb.game.gold = 1234567; mtb.panel.refresh(); mtb.panel.view.tabMark.SetVisible(true); 1`);
+            await sleep(120);
+            const a = await titleAudit();
+            cases++;
+            if (!a.ok) bad.push({label, t, ...a});
+        }
+    };
+    for (const [W, H] of [[1280, 800], [1920, 1080], [2560, 1440]]) for (const d of [1, 0.67, 1.5]) {
+        await win(W, H, d);
+        await b.open(URL0 + '?mode=ingame'); await ready(); await sleep(300);
+        for (const res of ['1920x1080', '2560x1440', '3840x2160', 'mine']) for (const ui of [1, 1.6, 2]) for (const show of ['one', 'fit']) {
+            await set({res, ui, show});
+            await both(`«Как в игре» ${W}x${H} DPR ${d} ${res} UI ${ui} ${show}`);
+        }
+        await b.open(URL0 + '?mode=game'); await ready(); await sleep(400);
+        await both(`«Игра» ${W}x${H} DPR ${d}`);
+    }
+    check(`the title row: «Дух Грунгни» inside the plate's dark field (1 unit clear at least) and centred on it within 1 unit both ways; the treasury, the tabs, the «!» and the cross clear of the plate (${cases} cases: «Игра» and «Как в игре», both tabs, windows 1280x800..2560x1440, DPR 1, 0.67, 1.5, every screen, UI 1 / 1.6 / 2, 1:1 and fitted)`, !bad.length, bad.slice(0, 4));
+    // less room than the plate's size: the plate and its text shrink together, the rule still holds
+    const narrow = [];
+    for (const half of [300, 200, 120, 60]) {
+        await b.eval(`(async () => { const {titlePlate} = await import('/js/panel.js'); document.querySelector('[data-id="mtb_title_test"]')?.remove();
+            const box = mtb.panel.view.frame.CreateComponent('mtb_title_test', 'holder'); box.Resize(800, 80); box.SetDockOffset(0, 120); titlePlate(box, 400, 33, ${half}, '«Дух Грунгни»'); return 1; })()`);
+        const a = await titleAudit('[data-id="mtb_title_test"]');
+        if (!a.ok) narrow.push({half, ...a});
+    }
+    await b.eval(`document.querySelector('[data-id="mtb_title_test"]')?.remove(); 1`);
+    check('the title plate in less room (300, 200, 120, 60 units each side): plate and text shrink as one, the text inside the dark field and centred', !narrow.length, narrow);
+    // the crew tags clear of the drawing's brass edge (4 units into the sheet) by 3 units more: the nests' tag is drawn at the sheet's very top
+    const tags = await b.eval(`Object.entries(mtb.panel.view.crewAreas).map(([g, c]) => { const t = c.tags.plus, a = c.area, s = mtb.panel.view.sheet;
+        return {g, l: a.x + t.x, t: a.y + t.y, r: s.Width() - (a.x + t.x + t.Width()), b: s.Height() - (a.y + t.y + t.Height())}; })`);
+    check('every crew tag 7 units or more inside the drawing (clear of its brass edge, the nests\' tag no longer on the line)', tags.length && tags.every(x => Math.min(x.l, x.t, x.r, x.b) >= 7 - 0.5), tags);
+    await win(1920, 1080, 1);
+    await b.open(URL0 + '?mode=ingame'); await ready();
+    await b.eval(`localStorage.clear(); for (const [k, v] of ${kept}) localStorage.setItem(k, v); 1`);
+    await b.reload(); await ready(); await sleep(500);
+}
+
+// TITLE_ONLY=1: only the title row's checks (titleRow below)
+if (process.env.TITLE_ONLY) {
+    try { await titleRow(); } catch (err) { check('the walk (title)', false, {err: err.message, stack: err.stack && err.stack.split('\n').slice(0, 3).join(' | ')}); } finally { try { await b.close(); } finally { await server.stop(); } }
+    console.log(failed ? `failed: ${failed}` : 'failed: 0');
+    process.exit(failed ? 1 : 0);
+}
 // FIX2_ONLY=1: only the checks of the second QA pass (fix2 below), for a quick walk
 if (process.env.FIX2_ONLY) {
     try { await fix2(); } catch (err) { check('the walk (fix2)', false, {err: err.message, stack: err.stack && err.stack.split('\n').slice(0, 3).join(' | ')}); } finally { try { await b.close(); } finally { await server.stop(); } }
@@ -361,6 +449,9 @@ try {
 
     // ======== the second QA pass: each defect a check, played at 2560 x 1440, UI 1.6, 1:1 (1920 x 1080, UI 1.0 where said); pictures in shots/fix2 ========
     await fix2();
+
+    // ---- the title row: the name on its plate in every mode, size and tab ----
+    await titleRow();
 
     // ---- the slot's size in the device's pixels: every window, ratio, screen, at 1:1 and fitted ----
     const sizes = [];

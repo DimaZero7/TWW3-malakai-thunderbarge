@@ -82,6 +82,7 @@ function clips() {
     return clipList;
 }
 
+let inkCanvas = null;       // Component.InkDimensions
 let tooltipBox = null;
 let tooltipOwner = null;     // the component whose tooltip is shown
 let clickHandler = () => {};
@@ -154,6 +155,21 @@ export class Component {
         const lineH = parseFloat(getComputedStyle(this.textEl).lineHeight) || 15;
         const h = this.text ? Math.ceil(rect.height / scale) : 0;
         return [Math.ceil(rect.width / scale), h, Math.round(h / lineH)];
+    }
+    // The page's stand-ins for fitting a text to the picture it is written on (the title on its plate): the text's size in units (GAME: a text layout
+    // of a smaller header font), and its ink as drawn, in units at that size: the advance width, the ink's left / right from the start of the line
+    // and its ascent / descent from the baseline, and the font's own ascent / descent (what places the baseline in a line: CSS centres the line, not
+    // the ink, so a word with descenders sits low in its box).
+    SetTextSize(px) { if (this.textEl) this.textEl.style.fontSize = px + 'px'; }
+    TextSize() { return this.textEl ? parseFloat(this.textEl.style.fontSize) || 0 : 0; }
+    InkDimensions() {
+        if (!this.textEl || !this.text) return null;
+        const cs = getComputedStyle(this.textEl), c = (inkCanvas ||= document.createElement('canvas')).getContext('2d');
+        c.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        c.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+        const m = c.measureText(this.textEl.textContent);
+        return {w: m.width, left: -m.actualBoundingBoxLeft, right: m.actualBoundingBoxRight, ascent: m.actualBoundingBoxAscent, descent: m.actualBoundingBoxDescent,
+                fontAscent: m.fontBoundingBoxAscent, fontDescent: m.fontBoundingBoxDescent};
     }
     SetTooltipText(text) { this.tooltip = text; if (tooltipOwner === this) { tooltipBox.innerHTML = colourText(text); if (!text) { tooltipOwner = null; hideTooltip(); } } }
     SetOpacity(a) { this.el.style.opacity = String(a / 255); }      // 0..255 as the game's

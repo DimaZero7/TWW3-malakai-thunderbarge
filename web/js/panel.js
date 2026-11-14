@@ -26,6 +26,7 @@ const LAYOUTS = 'ui/tww3_mtb/';
 const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they would be ui/tww3_mtb/<name>.png like the others
 const DEMOLISH = 'mtb_ship_demolish', TAB = 'mtb_tab_', FIT = 'mtb_tree_fit';
 const SIDE = 'mtb_side_';
+const EDGE_IN = 4, TAG_GAP = 3;     // the drawing's brass edge reaches 4 units into the sheet; a tag keeps 3 more from it (makeCrewArea)
 const CREW_AREA = 'mtb_crew_area_', CREW_PICK = 'mtb_crew_card_pick_', CREW_CLOSE = 'mtb_crew_close_';
 
 // helpers as in the Lua
@@ -47,6 +48,40 @@ function fitLine(c, value) {
     }
     c.SetStateText(value.slice(0, lo).replace(/[\s,.:;]+\S*$/, '') + '…');
     c.SetTooltipText(value, true);
+}
+
+// The title plate: the game's panel_title_large.png at its own proportions, 769 x 69 (squashed to 62 its dark field was 30 units tall, less than the
+// ink of a 32 unit word with descenders: «Д» and «у» ran over its lower brass, and the text, centred by its line box, sat 8 units low). Its parts in the
+// picture's pixels: the plate as seen 84..685 across and 10..56 down, the dark field 211..558 across and 15..49 down.
+// The plate and its text are one component: the plate as large as the room allows (at most the picture's size), the text in its dark field MARGIN
+// units clear of every edge, the ink centred there (not the line box: CSS centres the line, and a font's ascent is not its descent), in the layout's
+// size or smaller when the field is too small for it, so the text can never outgrow the plate. cx, cy: the centre of the plate as seen; half: the
+// room on each side of cx. GAME: the same offsets, measured once on the game's header font (src/tww3_mtb_crew_ui.lua has no ink measure).
+export const TITLE_PLATE = {path: 'ui/skins/wh_main_dwf_dwarfs/panel_title_large.png', w: 769, h: 69, seen: [84, 10, 685, 56], field: [211, 15, 558, 49], margin: 2};
+export function titlePlate(parent, cx, cy, half, value) {
+    const P = TITLE_PLATE, k = Math.max(0.05, Math.min(1, 2 * half / (P.seen[2] - P.seen[0])));
+    const plate = image(parent, 'title_back', P.path, cx - (P.seen[0] + P.seen[2]) / 2 * k, cy - (P.seen[1] + P.seen[3]) / 2 * k, P.w * k, P.h * k);
+    const kx = plate.Width() / P.w, ky = plate.Height() / P.h;
+    const f = {l: plate.x + P.field[0] * kx, r: plate.x + P.field[2] * kx, t: plate.y + P.field[1] * ky, b: plate.y + P.field[3] * ky};
+    const title = make(parent, 'title', 'text_title');
+    title.SetStateText(value);
+    const roomW = f.r - f.l - 2 * P.margin, roomH = f.b - f.t - 2 * P.margin;
+    let s = title.TextSize();
+    for (let i = 0; i < 8; i++) {
+        title.SetTextSize(s);
+        const ink = title.InkDimensions();
+        const iw = ink.right - ink.left, ih = ink.ascent + ink.descent;
+        if (iw <= roomW + 0.01 && ih <= roomH + 0.01) break;
+        s = Math.max(1, Math.floor(s * Math.min(roomW / iw, roomH / ih) * 10) / 10 - 0.1 * i);      // the ink grows with the size; a step more if rounding left it over
+    }
+    const ink = title.InkDimensions();
+    // the box: across the field, the plate's height; moved so the ink's centre is the field's. Centred, the line starts at the box's centre less
+    // half its advance and its ink's centre is (left + right) / 2 after that; the baseline lies (font ascent - font descent) / 2 under the box's
+    // centre and the ink's centre (descent - ascent) / 2 under the baseline.
+    const bw = f.r - f.l, bh = plate.Height();
+    size(title, bw, bh);
+    at(title, (f.l + f.r) / 2 - bw / 2 - ((ink.left + ink.right) / 2 - ink.w / 2), (f.t + f.b) / 2 - bh / 2 - (ink.fontAscent - ink.fontDescent) / 2 - (ink.descent - ink.ascent) / 2);
+    return {plate, text: title, field: f};
 }
 
 // Numbers as the game's Russian texts write them: the percent sign close to the number («+15%», local_ru has no «+15 %»), a decimal comma («16,6»)
@@ -86,9 +121,8 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}, keep
     // the title row: the treasury on the left, the name in the middle, the two tabs and the cross on the right, none over another
     const close_w = 34, tab_w = 160, tab_gap = 6, tabs_w = 2 * tab_w + tab_gap;
     const tabs_x = panel_w - 14 - close_w - 14 - tabs_w;
-    const title_w = Math.max(300, Math.min(769, 2 * (tabs_x - 8) - panel_w));
-    image(frame, 'title_back', 'ui/skins/wh_main_dwf_dwarfs/panel_title_large.png', (panel_w - title_w) / 2, 2, title_w, 62);
-    text(frame, 'title', 'text_title', (panel_w - title_w) / 2, 8, title_w, 50, '«Дух Грунгни»');
+    // the name on its plate, centred on the panel between the treasury (its box ends at 54 + 160) and the tabs, 8 units clear of each
+    view.title = titlePlate(frame, panel_w / 2, 33, Math.min(panel_w / 2 - (54 + 160 + 8), tabs_x - 8 - panel_w / 2), '«Дух Грунгни»');
     const close = image(frame, 'mtb_ship_close', 'ui/skins/default/icon_cross.png', panel_w - 14 - close_w, 14, close_w, close_w);
     close.SetTooltipText('Закрыть', true);
     // the treasury, in the corner: in the game the same number is in the HUD's top bar too
@@ -373,11 +407,18 @@ function makeCrewArea(view, M, data, art, blueprint, flags, sheet, frame, scale,
     at(area, ax, ay);
     area.SetInteractive(true);
     const has = name => !!art.places[name];
-    const lay = name => { const q = place(name); const c = image(area, name, WEB_ART + name + '.png', q[0] * scale - ax, q[1] * scale - ay, q[2] * scale, q[3] * scale); c.SetPassive(); return c; };
+    // The tag (with its leaders and its pulse) clear of the drawing's brass edge: the edge (frame_edge round the sheet, 4 units out) draws its line and
+    // shadow 4 units into the sheet, and the nests' tag is drawn at the sheet's very top (web/art/layers.json: y 1.25), where the line cut its top
+    // border. Moved in by what it lacks of EDGE_IN + TAG_GAP on any side; its leaders' dots still end on the lookouts.
+    const tq = place(`crew_${g}_tag_plus`);
+    const clear = EDGE_IN + TAG_GAP, tx0 = tq[0] * scale, ty0 = tq[1] * scale, tx1 = tx0 + tq[2] * scale, ty1 = ty0 + tq[3] * scale;
+    const tdx = Math.max(0, clear - tx0) - Math.max(0, tx1 - (scheme_w - clear)), tdy = Math.max(0, clear - ty0) - Math.max(0, ty1 - (scheme_h - clear));
+    const shift = name => (/_tag_/.test(name) ? [tdx, tdy] : [0, 0]);
+    const lay = name => { const q = place(name), [dx, dy] = shift(name); const c = image(area, name, WEB_ART + name + '.png', q[0] * scale - ax + dx, q[1] * scale - ay + dy, q[2] * scale, q[3] * scale); c.SetPassive(); return c; };
     const crew = {spec, area, group: g, layers: {}, open: false};
     // the pulse first, under the tag: one picture a phase, switched by a timer (GAME: SetState by core:get_tm():repeat_real_callback, as the side's)
     const gl = a.glow, prefix = gl.prefix || 'crew_glow';
-    crew.glow = image(area, 'crew_glow', WEB_ART + `${prefix}_0.png`, gl.box[0] * scale - ax, gl.box[1] * scale - ay, gl.box[2] * scale, gl.box[3] * scale);
+    crew.glow = image(area, 'crew_glow', WEB_ART + `${prefix}_0.png`, gl.box[0] * scale - ax + tdx, gl.box[1] * scale - ay + tdy, gl.box[2] * scale, gl.box[3] * scale);
     crew.glow.SetPassive();
     crew.glow.el.style.zIndex = 1;      // over the drawing's brass edge: a tag at the sheet's top (the nests') keeps its whole halo
     crew.glow.phases = [];
@@ -400,7 +441,7 @@ function makeCrewArea(view, M, data, art, blueprint, flags, sheet, frame, scale,
     crew.hover = make(area, 'hover', 'hover_holder');
     size(crew.hover, cbox[2] * scale, cbox[3] * scale);
     crew.hover.SetPassive();
-    const inHover = name => { const q = place(name); return image(crew.hover, name, WEB_ART + name + '.png', q[0] * scale - ax, q[1] * scale - ay, q[2] * scale, q[3] * scale); };
+    const inHover = name => { const q = place(name), [dx, dy] = shift(name); return image(crew.hover, name, WEB_ART + name + '.png', q[0] * scale - ax + dx, q[1] * scale - ay + dy, q[2] * scale, q[3] * scale); };
     inHover(`crew_${g}_hover`);
     crew.hoverTags = {plus: inHover(`crew_${g}_tag_plus_hover`), swap: inHover(`crew_${g}_tag_swap_hover`), wait: inHover(`crew_${g}_tag_wait_hover`)};
     area.SetHoverChild(crew.hover);
