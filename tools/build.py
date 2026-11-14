@@ -5,6 +5,7 @@ table fragments named !tww3_mtb (sorted before the game's data__), a .loc, the v
 battle XML and the probe into build/v1/tww3_mtb_v1.pack, then reads the pack back and checks it.
 The campaign pack (build/campaign/pack/tww3_mtb_campaign.pack) carries the author's tree of buildings: tools/tree_port.py runs tools/tree_export.mjs over
 web/data/tree_design.json with the switches of data/tree_port.json into build/tree/tree_rows.json, and its rows go into the tables as they are.
+It also carries the airship screen's logic modules and their config (tools/ship_lua.py, tools/ship_config.mjs: build/tree/ship_config.json), inert.
 Touches nothing outside build/ (no game folder).
 """
 import argparse
@@ -22,6 +23,7 @@ import crew_options  # noqa: E402
 import dbtable  # noqa: E402
 import gamepack  # noqa: E402
 import pfh5  # noqa: E402
+import ship_lua  # noqa: E402
 import tree_port  # noqa: E402
 
 OUT = REPO / "build" / "v1"
@@ -356,6 +358,9 @@ def build_campaign(blob_files, tables, stock):
     files[f"text{sep}db{sep}tww3_mtb.loc"] = loc_bytes(json.loads((DATA / "campaign_text.json").read_text(encoding="utf-8")) | building_text | {
         f"land_units_onscreen_name_{UNIT}": "Malakai Makaisson, Spirit of Grungni"})
     files[f"script{sep}campaign{sep}mod{sep}tww3_mtb_campaign.lua"] = (REPO / "src" / "tww3_mtb_campaign.lua").read_bytes()
+    # the airship screen's logic (src/tww3_mtb_ship.lua, src/tww3_mtb_crew_model.lua) and its config from the tree: packed outside script/campaign/mod,
+    # so the game does not run them yet (tools/ship_lua.py); tools/lua_vectors.py replays the page's vectors on them
+    files.update(ship_lua.files())
     blob = pfh5.pack_files(files)
     (out / CAMPAIGN_PACK).write_bytes(blob)
     # read back

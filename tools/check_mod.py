@@ -282,10 +282,12 @@ def loc_read(blob):
 
 
 def lua_syntax(files):
-    """Every script of the pack and of src/ through the Lua compiler, when one is on the machine (tools/ammo_offline.py needs lupa)."""
-    py = shutil.which("python")
-    code = ("import sys,lupa,pathlib\nrt=lupa.LuaRuntime()\nbad=0\nfor p in sys.argv[1:]:\n  src=pathlib.Path(p).read_text(encoding='utf-8')\n"
-            "  r=rt.globals().load(src)\n  if r is None or (isinstance(r,tuple) and r[0] is None):\n    print('FAIL lua',p,r); bad=1\nsys.exit(bad)\n")
+    """Every script of the pack through the compiler of Lua 5.1, the game's Lua (lupa.lua51 of Python 3.10: py -3.10, as tools/lua_vectors.py)."""
+    py = shutil.which("py")
+    code = ("import sys,lupa.lua51 as l,pathlib\nrt=l.LuaRuntime(unpack_returned_tuples=True)\nassert rt.eval('_VERSION')=='Lua 5.1', rt.eval('_VERSION')\n"
+            "comp=rt.eval('function(s, n) local f, e = loadstring(s, n); if f then return true end; return e end')\nbad=0\n"
+            "for p in sys.argv[1:]:\n  src=pathlib.Path(p).read_text(encoding='utf-8')\n"
+            "  r=comp(src, '@'+pathlib.Path(p).name)\n  if r is not True:\n    print('FAIL lua',p,r); bad=1\nsys.exit(bad)\n")
     temp = REPO / "build" / "check_lua"
     temp.mkdir(parents=True, exist_ok=True)
     paths = []
@@ -294,7 +296,7 @@ def lua_syntax(files):
             target = temp / name.replace(SEP, "_")
             target.write_bytes(blob)
             paths.append(str(target))
-    out = subprocess.run([py, "-c", code, *paths], capture_output=True, text=True, errors="replace")
+    out = subprocess.run([py, "-3.10", "-c", code, *paths], capture_output=True, text=True, errors="replace")
     if out.returncode != 0:
         fail("lua syntax: " + (out.stdout + out.stderr)[-400:])
     return len(paths)
@@ -305,6 +307,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack", default=str(PACK))
     ap.add_argument("--rows", default=str(tree_port.ROWS))
+    ap.add_argument("--vectors", action="store_true", help="also the page's vectors on the pack's Lua (node tools/tests/vectors_export.mjs, py -3.10 tools/lua_vectors.py; about 3 min)")
     args = ap.parse_args(argv)
     files, _ = pfh5.read_pack(Path(args.pack).read_bytes())
     tree_rows = json.loads(Path(args.rows).read_text(encoding="utf-8"))
@@ -493,6 +496,16 @@ def main(argv=None):
                 fail(f"{short}: no frame {spec['card_frame']} of group {group}")
     # 7. Lua
     count = lua_syntax(files)
+    # 8. the airship screen's logic: the page's answers replayed on the packed Lua (docs/design/port-to-game.md, 4.2)
+    if args.vectors:
+        if Path(args.pack).resolve() != PACK.resolve():
+            fail("--vectors replays the built pack only (tools/lua_vectors.py reads build/campaign/pack)")
+        for cmd in ([shutil.which("node"), str(REPO / "tools" / "tests" / "vectors_export.mjs")], [shutil.which("py"), "-3.10", str(REPO / "tools" / "lua_vectors.py")]):
+            run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            print((run.stdout + run.stderr).strip()[-2500:])
+            if run.returncode != 0:
+                fail(f"{Path(cmd[-1]).name}: exit {run.returncode}")
+                break
     print(f"{len(side)} building levels in {len(by_chain)} chains, {sum(1 for p in pers if p.startswith('mtb_bp_'))} seat rows, {count} scripts, {len(loc)} texts, {len(errors)} failures")
     return 1 if errors else 0
 

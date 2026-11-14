@@ -45,6 +45,13 @@
 - Переключатели вопросов В1–В4 (ключи, очки развития, ванильные цепочки, тиры и `slot_cap`) — в `data/tree_port.json`. Другой ответ автора — правка этого файла и пересборка.
 - `py -3.14 tools/check_mod.py [--pack P] [--rows R]` сверяет пак с `tree_rows.json` и с данными игры. `--pack` проверяет другой файл пака: так делается проверка заведомо сломанной копии.
 - `py -3.14 tools/tree_port.py` — только выгрузка дерева, без пака.
+
+### Логика экрана на Lua (перенос, этапы 2–3, без игры)
+
+- Сборка кладёт в пак `src/tww3_mtb_ship.lua` (порт `barge_buildings.js`), `src/tww3_mtb_crew_model.lua` (порт `crew_model.mjs`) и `tww3_mtb_ship_config.lua` из `build/tree/ship_config.json` (`tools/ship_config.mjs`: дерево так, как его строит страница, в ключах мода). Папка `script/campaign/tww3_mtb/`: игра их сама не запускает. Нужен `build/web/data.json` (`py -3.14 tools/web_export.py --data`).
+- `node tools/tests/vectors_export.mjs` — сценарии тестов страницы и 200 случайных прогулок по 60 шагов над моделями страницы → `build/vectors/*.json`.
+- `py -3.10 tools/lua_vectors.py` — те же шаги на Lua 5.1 из пака с подделкой игры `tools/tests/fake_game.lua`, сверка каждого ответа побайтно; код выхода 1 при расхождении.
+- Всё сразу: `py -3.14 tools/build.py`, затем `py -3.14 tools/check_mod.py --vectors` (около 3–4 мин; без `--vectors` — прежняя быстрая проверка, синтаксис Lua теперь по Lua 5.1).
 - `py -3.14 tools/refresh_layouts.py` находит схему RPFM соседнего проекта на её новом месте (`TWW3-batle-ai/tmp/rpfm`).
 
 ### Что даёт memreader Plus
