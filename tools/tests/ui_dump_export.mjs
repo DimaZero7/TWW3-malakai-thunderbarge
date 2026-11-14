@@ -87,11 +87,6 @@ try {
         await b.eval(`localStorage.setItem('mtb_panel_tab', 'tree'); for (const k of Object.keys(localStorage)) if (k.startsWith('mtb_panel_pan_')) localStorage.removeItem(k); 1`);
         await b.reload();
         await ready();
-        // the page builds its screen before it reads the save back (web/js/main.js buildGame): what it lays out by the state at its build (the tree's
-        // home place, the order of a crew's kinds) is then the fresh campaign's. The game builds the panel on the loaded state: so the screen is built
-        // again on it, at its home place, and only then written
-        await b.eval('mtb.rebuild(); mtb.panel.view.pan.home(); mtb.panel.refresh(); 1');
-        await b.until('!!(mtb.root && mtb.root.pictures)', 20000);
         const snapshot = await b.eval(`JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith('mtb_web_state_'))))`);
         // the view acted on: ids of the components as the Lua names them; a slot by its node
         const resolved = [];

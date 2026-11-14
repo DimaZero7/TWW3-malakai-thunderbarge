@@ -4,7 +4,7 @@
 Lua 5.1 (lupa.lua51). The modules as packed (build/campaign/pack/tww3_mtb_campaign.pack: py -3.14 tools/build.py first) or, with --src, as they are
 in src/ with the configs of build/tree: src/tww3_mtb_ship_ui.lua over src/tww3_mtb_ship.lua and src/tww3_mtb_crew_model.lua, the fake game
 tools/tests/fake_game.lua and the fake UIComponent tools/tests/fake_uic.lua. For every state the page wrote (build/ui_dump/*.json: node
-tools/tests/ui_dump_export.mjs first) the same state is made on the Lua (the page's saved state, its keys turned into the mod's), the panel built
+tools/tests/ui_dump_export.mjs first) the same state is made on the Lua (the page's saved state, its keys turned into the mod's save keys and read by Ship.load_state), the panel built
 at the same root (1600 x 900), the same clicks and the mouse on the same component, and the Lua's component tree is compared with the page's: a
 component missing or extra, an offset or a size more than 1 unit apart, a text, state, picture, visibility, colour, shader, opacity, tooltip, glow,
 layer, interactive flag differing. Texts are measured with the page's own numbers (the dump's measures); a text the page never measured is a
@@ -90,24 +90,15 @@ def main(argv=None):
     CM = module("tww3_mtb_crew_model.lua")
     Ship = module("tww3_mtb_ship.lua")
     UI = module("tww3_mtb_ship_ui.lua")
-    # JSON into Lua tables here, not by the module's decoder: what is compared is the drawing, and the module's own JSON is the logic's pass
-    def to_lua(v):
-        if isinstance(v, dict):
-            return lua.table_from({k: to_lua(x) for k, x in v.items() if x is not None})
-        if isinstance(v, list):
-            return lua.table_from([to_lua(x) for x in v])
-        return v
-
-    def decode(text):
-        return to_lua(json.loads(text))
+    # every JSON text into Lua by the module's own decoder (Ship.decode, under the game's string functions), as the mod reads its saved state
+    decode = Ship.decode
     if files is None:
         config = decode((REPO / "build" / "tree" / "ship_config.json").read_text(encoding="utf-8"))
-        cfg_json = json.loads((REPO / "build" / "tree" / "ship_ui_config.json").read_text(encoding="utf-8"))
-        cfg = decode(json.dumps(cfg_json, ensure_ascii=False))
+        cfg = decode((REPO / "build" / "tree" / "ship_ui_config.json").read_text(encoding="utf-8"))
     else:
         config = module("tww3_mtb_ship_config.lua")
         cfg = module("tww3_mtb_ship_ui_config.lua")
-        cfg_json = py(cfg)
+    cfg_json = py(cfg)
     FakeGame = load((REPO / "tools" / "tests" / "fake_game.lua").read_text(encoding="utf-8"), "fake_game.lua")
     FakeUIC = load((REPO / "tools" / "tests" / "fake_uic.lua").read_text(encoding="utf-8"), "fake_uic.lua")
     prefix = cfg_json["data"]["rows"][0]["key"][: -len(cfg_json["data"]["rows"][0]["id"])] if cfg_json["data"]["rows"] else ""
@@ -118,23 +109,19 @@ def main(argv=None):
         return key_of.get(k, k)
 
     def lj(v):
-        return decode(json.dumps(v, ensure_ascii=False))
+        return json.dumps(v, ensure_ascii=False, separators=(",", ":"))
 
-    # the Lua side of one state: the page's saved state on the fake game and the module, the panel built, the view acted on
-    build_state = lua.eval("""function(UI, Ship, CM, FakeGame, FakeUIC, config, cfg, snap, actions, measures)
+    # the Lua side of one state: the game's part of the page's save on the fake game, the mod's part as the save keys the mod writes (Ship.save_state)
+    # read back by Ship.load_state, the panel built on that, the view acted on. Every JSON text decoded by Ship.decode.
+    build_state = lua.eval("""function(UI, Ship, CM, FakeGame, FakeUIC, config, cfg, game_json, saved, actions_json, measures_json)
+        local snap, actions, measures = Ship.decode(game_json), Ship.decode(actions_json), Ship.decode(measures_json)
         local game = FakeGame.new(config, {turn = snap.turn, gold = snap.gold, income = 0, demolish = 'step_down', built = {}})
         game.restore({turn = snap.turn, gold = snap.gold, built = snap.built, queue = snap.queue})
         local M = Ship.make(config, game, CM)
-        if snap.side then M.set_side_silently(snap.side) end
-        M.set_side_chosen_silently(snap.side_chosen)
-        M.set_crew_silently(snap.crew)
-        M.set_crew_chosen_silently(snap.crew_chosen)
-        M.set_news_silently(snap.ship)
-        M.set_message_silently(snap.message)
-        M.sync_ship()
+        local keep = Ship.load_state(M, function(k) return saved[k] end)
         local ui = FakeUIC.new{measures = measures, text = cfg.text, w = 1600, h = 900}
         local t0 = os.clock()
-        local panel = UI.make_panel{root = ui.root, M = M, cfg = cfg, CM = CM, Ship = Ship, flags = {}, keep = {tab = 'tree'}}
+        local panel = UI.make_panel{root = ui.root, M = M, cfg = cfg, CM = CM, Ship = Ship, flags = {}, keep = {tab = keep.tab, pan = keep.scroll}}
         panel.refresh()
         local built = os.clock() - t0
         local made = ui.count
@@ -157,19 +144,32 @@ def main(argv=None):
             continue
         d = json.loads((DUMPS / f"{name}.json").read_text(encoding="utf-8"))
         snap = d["snapshot"]
-        snap_l = {
+        # the game's own save (its buildings, the queue, the treasury, the turn)
+        game_l = {
             "turn": snap["turn"], "gold": snap["gold"], "built": [mk(k) for k in snap["built"]],
             "queue": [{"key": mk(k), "turns_left": q["turns_left"], "paid": q["paid"]} for k, q in snap["queue"]],
-            "side": snap.get("side"), "side_chosen": bool(snap.get("side_chosen")),
-            "crew": [{"group": g, "standing": st["standing"], **({"order": st["order"]} if st.get("order") else {})} for g, st in (snap.get("crew") or {}).items() if st],
-            "crew_chosen": snap.get("crew_chosen") or {},
-            "ship": {"unseen": bool((snap.get("ship") or {}).get("unseen")),
-                     **({"news": {**snap["ship"]["news"], "built": [mk(k) for k in snap["ship"]["news"].get("built", [])]}} if (snap.get("ship") or {}).get("news") else {})},
-            "message": snap.get("message") or {},
         }
-        snap_l = {k: v for k, v in snap_l.items() if v is not None}
+        # the mod's save: the page's state written as the keys Ship.save_state writes (src/tww3_mtb_ship.lua, SAVE_KEYS), the panel on «Постройки»
+        # at its home place (the page's exporter forgets the tab and the tree's place of the last visit)
+        crew = [(g, st) for g, st in (snap.get("crew") or {}).items() if st]
+        ship = snap.get("ship") or {}
+        msg = snap.get("message") or {}
+        saved = {
+            "mtb_crew_groups": ",".join(g for g, _ in crew),
+            **{"mtb_crew_" + g: lj({"standing": st["standing"], **({"order": st["order"]} if st.get("order") else {})}) for g, st in crew},
+            "mtb_crew_chosen": lj(snap.get("crew_chosen") or {}),
+            "mtb_ship_news": lj({**ship["news"], "built": [mk(k) for k in ship["news"].get("built", [])]}) if ship.get("news") else "",
+            "mtb_ship_unseen": "1" if ship.get("unseen") else "0",
+            "mtb_ship_message": msg.get("text") or "",
+            "mtb_ship_turn_line": lj(msg["turn_line"]) if msg.get("turn_line") else "",
+            "mtb_malakai_side_chosen": "1" if snap.get("side_chosen") else "0",
+            "mtb_ship_tab": "tree",
+            "mtb_ship_scroll": "",
+        }
+        if snap.get("side"):
+            saved["mtb_malakai_side"] = snap["side"]
         try:
-            out = py(build_state(UI, Ship, CM, FakeGame, FakeUIC, config, cfg, lj(snap_l), lj(d["actions"]), lj(d["measures"])))
+            out = py(build_state(UI, Ship, CM, FakeGame, FakeUIC, config, cfg, lj(game_l), lua.table_from(saved), lj(d["actions"]), lj(d["measures"])))
         except lupa51.LuaError as e:
             print(f"[{name}] the Lua failed: {e}")
             total_diffs += 1

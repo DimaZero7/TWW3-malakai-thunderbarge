@@ -152,10 +152,11 @@ async function main() {
     const TAB_KEY = 'mtb_panel_tab', PAN_KEY = 'mtb_panel_pan_' + stageName;
     const screenSpec = () => (document.body.dataset.mode === 'ingame' && ig ? ig.spec() : {w: 1600, h: 900});
     const screenKey = () => { const s = screenSpec(); return `${s.w}x${s.h}`; };
-    const makeScreen = () => {
+    // selected0: the slot selected in the save (the first build after a load); a screen built again keeps its own panel's
+    const makeScreen = (selected0 = null) => {
         const s = screenSpec();
         const old = G.panel ? G.panel.view : null;
-        const selected = old ? old.selected : null;
+        const selected = old ? old.selected : selected0;
         let tab = old ? old.tab : null;
         if (!tab) { try { tab = localStorage.getItem(TAB_KEY); } catch (e) { /* no storage */ } }
         if (flags.tab) tab = flags.tab;
@@ -202,12 +203,10 @@ async function main() {
         }
         M.all_parts = flags.all_parts;
         G = {game, M, panel: null, root: null, levels, bp: design ? {...blueprint, tree: null} : blueprint, designText: design ? T.serialize(design) : null};
-        makeScreen();
-        const {panel} = G;
         game.on('MilitaryForceBuildingCompleteEvent', ctx => log(`постройка завершена: «${M.level(ctx.building).name}»`));
-        M.on_change(update);
-        M.on_change(save);
-        M.on_change(showGold);
+        // The saved game first, the screen after: the panel lays out by the state it is built on (the tree's home place, the order of a crew's
+        // kinds), as the game builds its panel on the loaded campaign
+        let selected = null;
         try {
             const saved = JSON.parse(localStorage.getItem(saveKey) || 'null');
             if (saved && !flags.steps) {
@@ -218,11 +217,15 @@ async function main() {
                 M.set_crew_chosen_silently(saved.crew_chosen);
                 M.set_news_silently(saved.ship);
                 M.set_message_silently(saved.message);      // the foot line as it was before the reload
-                if (saved.selected && M.level(saved.selected)) panel.view.selected = saved.selected;
+                if (saved.selected && M.level(saved.selected)) selected = saved.selected;
             }
         } catch (e) { /* a broken or missing save: start fresh */ }
         M.sync_ship();          // what stands now is what the next building is compared with
         if (flags.gold !== undefined) game.gold = Number(flags.gold);      // ?gold=500: start with this much, to see the short of gold state
+        makeScreen(selected);
+        M.on_change(update);
+        M.on_change(save);
+        M.on_change(showGold);
         fit();
         update();
         goldInput.value = game.treasury();
@@ -344,14 +347,16 @@ async function main() {
     let mode = flags.mode;
     if (!mode) { try { mode = localStorage.getItem('mtb_mode'); } catch (e) { /* no storage */ } }
     ig = makeInGame({host, flags, get G() { return G; }, rebuild: ensureScreen, refresh: () => { if (G) G.panel.refresh(); }});
-    if (mode === 'ingame') document.body.dataset.mode = 'ingame';      // the first screen is built at the size of the mode it opens in
-    buildGame(design);
-    setMode(['constructor', 'ingame'].includes(mode) ? mode : 'game');
+    mode = ['constructor', 'ingame'].includes(mode) ? mode : 'game';
+    // «Игра» and «Как в игре»: the screen built once, by setMode, where it is shown (in the frame of «Как в игре», at its size) and on the saved
+    // game (buildGame). The constructor's mode: the game built now where it is not seen (for the console's checks), built again once shown.
+    if (mode === 'constructor') buildGame(design);
+    setMode(mode);
 
     // for checks from the browser's console: the state as text
     window.mtb = {get game() { return G.game; }, get M() { return G.M; }, get panel() { return G.panel; }, get root() { return G.root; }, ig, viewer, get editor() { return editor; }, setMode,
-        // the exporter of the screen's dumps (tools/tests/ui_dump_export.mjs): the state written as the page writes it, the screen redrawn or built anew
-        save: () => save(), update: () => update(), rebuild: () => { makeScreen(); update(); },
+        // the exporter of the screen's dumps (tools/tests/ui_dump_export.mjs): the state written as the page writes it, the screen redrawn
+        save: () => save(), update: () => update(),
         describe: () => ({turn: G.game.turn, gold: G.game.treasury(), hull: viewer.current, mode: document.body.dataset.mode,
             levels: G.panel.view.tree.map(v => ({key: v.node.key, name: v.node.name, ...G.M.status(v.node.key)})),
             stage: stageName, port: blueprint.parts.port ? G.M.stage('port') : null, message: G.M.message(),

@@ -656,9 +656,18 @@ try {
     const e2 = await b.rect('#end_turn'); await b.click(e2.x, e2.y); await sleep(300);
     check('the five crews hired on the drawing, standing after the turn', hired && await b.eval(`['rifles', 'cannons', 'bombs', 'cupolas', 'harpoon'].every(g => mtb.M.crew(g) && !mtb.M.crew_order(g))`));
     const before = await b.eval(`JSON.stringify({c: mtb.M.crew_snapshot(), g: mtb.game.treasury(), t: mtb.game.turn, tab: mtb.panel.view.tab, b: mtb.panel.view.tree.map(v => mtb.M.status(v.node.key).state)})`);
+    // What the panel lays out by the state it is built on, as the game builds it on the loaded campaign: the tree's home place (what can be done
+    // now) and the order of each crew's kinds in its choice (by the buildings that stand). Expected: the same state reached without a reload, the
+    // place pan.home() gives now and the order M.crew_options gives now; the tree's place of the last visit forgotten, so the reload opens at home.
+    const laidOut = `JSON.stringify({home: mtb.panel.view.pan.state(), kinds: Object.fromEntries(Object.entries(mtb.panel.view.crewAreas).map(([g, c]) => [g, c.slots.map(s => s.key)]))})`;
+    const expected = await b.eval(`(() => { const p = mtb.panel.view.pan, was = p.state(); p.home(); const home = p.state(); Object.assign(p, {x: was.x, y: was.y, z: was.z, back: was.back}); p.clamp();
+        return JSON.stringify({home, kinds: Object.fromEntries(Object.keys(mtb.panel.view.crewAreas).map(g => [g, mtb.M.crew_options(g).map(o => o.key)]))}); })()`);
+    await b.eval(`for (const k of Object.keys(localStorage)) if (k.startsWith('mtb_panel_pan_')) localStorage.removeItem(k); 1`);
     await b.reload(); await ready(); await sleep(600);
     const after = await b.eval(`JSON.stringify({c: mtb.M.crew_snapshot(), g: mtb.game.treasury(), t: mtb.game.turn, tab: mtb.panel.view.tab, b: mtb.panel.view.tree.map(v => mtb.M.status(v.node.key).state)})`);
     check('F5: the buildings, the crews, the treasury, the turn and the tab as they were', before === after, {before: before.slice(0, 300), after: after.slice(0, 300)});
+    const got = await b.eval(laidOut);
+    check('F5 mid-campaign: the tree opens at the home place and each crew\'s choice has its kinds in the order of the loaded state, not of a fresh campaign', got === expected, {expected, got});
     await set({res: '2560x1440', show: 'one'});
     await b.move(2, 2); await sleep(300);
     const sh = await comp('scheme');
