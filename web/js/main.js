@@ -14,6 +14,7 @@ import {Viewer} from './viewer3d.js';
 import {makeOverview} from './overview.js';
 import * as T from './tree_model.mjs';
 import {makeConstructor} from './constructor.js';
+import {makeInGame} from './ingame.js';
 
 const flags = Object.fromEntries(new URLSearchParams(location.search));
 
@@ -144,6 +145,27 @@ async function main() {
     const goldInput = document.getElementById('gold_value');
     const showGold = () => { if (document.activeElement !== goldInput) goldInput.value = G.game.treasury(); };
 
+    // The game's screen: the root at the size the game would give it (1600 x 900 in «Игра»; in «Как в игре» the chosen screen and UI scale,
+    // web/js/ingame.js) and the panel built on it. Built again when that size or the layout's sketch changes; the game's state (G.game, G.M) stays.
+    let ig = null;
+    const screenSpec = () => (document.body.dataset.mode === 'ingame' && ig ? ig.spec() : {w: 1600, h: 900, layout: flags.layout || 'A'});
+    const screenKey = () => { const s = screenSpec(); return `${s.w}x${s.h}:${s.layout}`; };
+    const makeScreen = () => {
+        const s = screenSpec();
+        const selected = G.panel ? G.panel.view.selected : null;
+        host.innerHTML = '';
+        const root = makeRoot(host, s.w, s.h);
+        setTooltipRoot(root);
+        const panel = makePanel(root, G.M, G.levels, art, G.bp, {...flags, layout: s.layout}, cards);
+        onClick(c => panel.click(c));
+        panel.view.onSelect = save;
+        panel.view.onCrewArea = g => onCrewArea(g);
+        if (selected && G.M.level(selected)) panel.view.selected = selected;
+        G.panel = panel; G.root = root; G.screenKey = screenKey();
+    };
+    // the screen again when its size or sketch is not the one shown (a mode, a screen or a layout chosen)
+    const ensureScreen = () => { if (G && G.screenKey !== screenKey()) { makeScreen(); update(); } };
+
     const buildGame = design => {
         // the levels: the file's nodes (web/js/tree_model.mjs, gameData), or the mod's data and blueprint.json's tree without a file
         joinParts(design);
@@ -159,18 +181,13 @@ async function main() {
             for (const k of treeSpec.not_connected || []) M.not_connected.add(data.prefix + k);
         }
         M.all_parts = flags.all_parts;
-        host.innerHTML = '';
-        const root = makeRoot(host);
-        setTooltipRoot(root);
-        const panel = makePanel(root, M, levels, art, design ? {...blueprint, tree: null} : blueprint, flags, cards);
-        onClick(c => panel.click(c));
-        G = {game, M, panel, root, designText: design ? T.serialize(design) : null};
+        G = {game, M, panel: null, root: null, levels, bp: design ? {...blueprint, tree: null} : blueprint, designText: design ? T.serialize(design) : null};
+        makeScreen();
+        const {panel} = G;
         game.on('MilitaryForceBuildingCompleteEvent', ctx => log(`постройка завершена: «${M.level(ctx.building).name}»`));
         M.on_change(update);
         M.on_change(save);
         M.on_change(showGold);
-        panel.view.onSelect = save;
-        panel.view.onCrewArea = g => onCrewArea(g);
         try {
             const saved = JSON.parse(localStorage.getItem(saveKey) || 'null');
             if (saved && !flags.steps) {
@@ -245,6 +262,7 @@ async function main() {
     document.getElementById('debug_tools').addEventListener('click', e => { if (e.target.closest('button')) debugBox.classList.remove('open'); });
     const fit = () => {
         if (!G) return;
+        if (document.body.dataset.mode === 'ingame') { if (ig) ig.fit(); return; }
         const area = document.getElementById('left'), root = G.root;
         if (!area.clientWidth) return;          // hidden while the constructor is shown
         // ?k=1: the game's own pixels, scrolled (for close looks); otherwise the whole root fits the left side
@@ -281,22 +299,28 @@ async function main() {
         for (const b of modeButtons) b.classList.toggle('on', b.dataset.mode === mode);
         try { localStorage.setItem('mtb_mode', mode); } catch (e) { /* no storage */ }
         if (mode === 'constructor') {
+            ig.leave();
             if (!editor) editor = makeConstructor(document.getElementById('constructor'), {data, cards, design, problems, onChange: d => { design = d; }, catalog, blueprint: blueprintAll, art, version: fileVersion, migrated});
             editor.show();
         } else {
             if (editor) { editor.hide(); design = editor.design(); }
+            // «Как в игре»: the screen's host goes into the frame of the game's screen; back beside the overview in «Игра»
+            if (mode === 'ingame') ig.enter(); else ig.leave();
             if (!G || (design && G.designText !== T.serialize(design))) buildGame(design);
+            else ensureScreen();
             requestAnimationFrame(fit);
         }
     };
     for (const b of modeButtons) b.addEventListener('click', () => setMode(b.dataset.mode));
     let mode = flags.mode;
     if (!mode) { try { mode = localStorage.getItem('mtb_mode'); } catch (e) { /* no storage */ } }
+    ig = makeInGame({host, flags, get G() { return G; }, rebuild: ensureScreen, refresh: () => { if (G) G.panel.refresh(); }});
+    if (mode === 'ingame') document.body.dataset.mode = 'ingame';      // the first screen is built at the size of the mode it opens in
     buildGame(design);
-    setMode(mode === 'constructor' ? 'constructor' : 'game');
+    setMode(['constructor', 'ingame'].includes(mode) ? mode : 'game');
 
     // for checks from the browser's console: the state as text
-    window.mtb = {get game() { return G.game; }, get M() { return G.M; }, get panel() { return G.panel; }, viewer, get editor() { return editor; }, setMode,
+    window.mtb = {get game() { return G.game; }, get M() { return G.M; }, get panel() { return G.panel; }, get root() { return G.root; }, ig, viewer, get editor() { return editor; }, setMode,
         describe: () => ({turn: G.game.turn, gold: G.game.treasury(), hull: viewer.current, mode: document.body.dataset.mode,
             levels: (G.panel.view.tree ? G.panel.view.tree.map(v => ({key: v.node.key, name: v.node.name, ...G.M.status(v.node.key)})) : G.panel.view.levels.map(l => ({name: l.name, ...G.M.status(l.key)}))),
             stage: stageName, port: blueprint.parts.port ? G.M.stage('port') : null, message: G.M.message(),

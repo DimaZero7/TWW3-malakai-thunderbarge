@@ -33,6 +33,14 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     let scheme_w = scheme_h * data.art.size[0] / data.art.size[1];
     let column_w = panel_w - scheme_w - pad * 3;
     if (column_w < 360) { column_w = 360; scheme_w = panel_w - column_w - pad * 3; scheme_h = scheme_w * data.art.size[1] / data.art.size[0]; }
+    // Sketches of the screen's layout for the game (?layout=, the page's mode «Как в игре» compares them; the game's panel is A):
+    //   A  as now: the drawing at the full height, the tree in the column beside it;
+    //   B  the tree in the drawing's place at its size, the drawing behind a tab of the column; the column holds what the selected building gives;
+    //   C  the drawing smaller, the selected building and the commands under it, the tree in a wide column at the full height.
+    const layout = data.tree_rows && (flags.layout === 'B' || flags.layout === 'C') ? flags.layout : 'A';
+    const full_h = scheme_h;
+    if (layout === 'C') { column_w = Math.round((panel_w - pad * 3) * 0.46); scheme_w = panel_w - column_w - pad * 3; scheme_h = scheme_w * data.art.size[1] / data.art.size[0]; }
+    const col_h = layout === 'C' ? full_h : scheme_h;      // the column's height: the drawing's, or the whole panel's under the title in C
     const scale = scheme_w / data.art.size[0];
     const top = title_h;
 
@@ -140,8 +148,11 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
 
     // the column: the levels of the chain, then what the selected one gives, then the commands
     const cx = sx + scheme_w + pad;
+    // C: a dark box under the drawing for the selected building and the commands (the column's own components, placed over it)
+    const box_y = scheme_h + pad;
+    if (layout === 'C') { const box = make(frame, 'selected_box', 'frame_dark'); size(box, scheme_w, col_h - box_y); at(box, sx, sy + box_y); }
     const column = make(frame, 'column', 'frame_dark');
-    size(column, column_w, scheme_h);
+    size(column, column_w, col_h);
     at(column, cx, sy);
     view.head = text(column, 'head', 'text_head', 14, 6, column_w - 28, 28, 'Корабль');
     view.about = text(column, 'about', 'text_body', 14, 32, column_w - 28, 40, '');
@@ -150,16 +161,23 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     // with the tree at the game's size (slots of 74, 106 from one to the next) the column is tight: the tree starts right under the caption and the note
     // at the foot takes only its three lines
     const rows_top = 80, row_gap = 4, foot_h = treeMode ? 56 : 82;
-    const row_h = Math.min(92, Math.floor((scheme_h - rows_top - foot_h - row_gap * (MAX_ROWS - 1) - 8) / MAX_ROWS));
+    const row_h = Math.min(92, Math.floor((col_h - rows_top - foot_h - row_gap * (MAX_ROWS - 1) - 8) / MAX_ROWS));
     view.detail_top = rows_top;
+    view.layout = layout;
+    // where the selected building and the commands are: the column's foot (A, B), the box under the drawing (C), in the column's offsets
+    const cmd = layout === 'C' ? {x: sx - cx + 14, w: scheme_w - 28} : {x: 14, w: column_w - 28};
     if (treeMode && data.tree_rows) {
         // the tree of the constructor's file (web/data/tree_design.json): its own places, in a window of the column that pans when the tree is larger
-        const tree_bottom = scheme_h - foot_h - 42 - 30 - 56 - 6;
+        const tree_bottom = layout === 'C' ? col_h - 14 : col_h - foot_h - 42 - 30 - 56 - 6;
         // opened, the tree's window spans the panel from the drawing's left edge to the column's, between the column's head and its commands
         const wide = {x: sx - cx, y: 40, w: cx - sx + column_w - 14, h: tree_bottom - 40};
-        view.detail_top = rows_top - 8 + makeFileTree(column, view, M, blueprint, flags, 14, rows_top - 8, column_w - 28, tree_bottom - (rows_top - 8), wide) + 6;
-        view.selName = text(column, 'sel_name', 'text_head', 14, 0, column_w - 28, 26, '');
-        view.selMeta = text(column, 'sel_meta', 'text_line', 14, 0, column_w - 28, 20, '');
+        if (layout === 'B') {
+            // the tree's window over the drawing, at its size; the column's tab shows the drawing in its place
+            makeFileTree(column, view, M, blueprint, flags, sx - cx, 0, scheme_w, scheme_h, null, {over: true, btnRight: column_w - 14});
+            view.selTop = rows_top - 4;
+        } else view.detail_top = rows_top - 8 + makeFileTree(column, view, M, blueprint, flags, 14, rows_top - 8, column_w - 28, tree_bottom - (rows_top - 8), layout === 'C' ? null : wide) + 6;
+        view.selName = text(column, 'sel_name', 'text_head', cmd.x, 0, cmd.w, 26, '');
+        view.selMeta = text(column, 'sel_meta', 'text_line', cmd.x, 0, cmd.w, 20, '');
     } else if (treeMode) {
         view.detail_top = rows_top - 8 + makeTree(column, view, M, blueprint, flags, 14, rows_top - 8, column_w - 28) + 6;
         view.selName = text(column, 'sel_name', 'text_head', 14, 0, column_w - 28, 26, '');
@@ -172,16 +190,19 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}) {
     view.lines = text(column, 'lines', 'text_green', 14, 0, column_w - 28, 80, '');
     // commands
     // the three commands in one row at the foot, so the tree and the details above have the room
-    const button_w = (column_w - 28 - 16) / 3, button_h = 42;
-    const buttons_y = scheme_h - foot_h - button_h - 30;
-    view.order = makeButton(column, ORDER, 14, buttons_y, button_w, button_h, 'Заказать');
-    view.cancel = makeButton(column, CANCEL, 14 + button_w + 8, buttons_y, button_w, button_h, 'Отменить');
-    view.demolish = makeButton(column, DEMOLISH, 14 + 2 * (button_w + 8), buttons_y, button_w, button_h, 'Снести');
+    const button_w = Math.min(200, (cmd.w - 16) / 3), button_h = 42;
+    // C: the name and its line at the box's top, the commands under them, the message and the note to the box's foot
+    const buttons_y = layout === 'C' ? box_y + 66 : col_h - foot_h - button_h - 30;
+    const message_y = layout === 'C' ? buttons_y + button_h + 4 : col_h - foot_h - 26;
+    const foot_y = layout === 'C' ? message_y + 24 : col_h - foot_h + 2;
+    view.order = makeButton(column, ORDER, cmd.x, buttons_y, button_w, button_h, 'Заказать');
+    view.cancel = makeButton(column, CANCEL, cmd.x + button_w + 8, buttons_y, button_w, button_h, 'Отменить');
+    view.demolish = makeButton(column, DEMOLISH, cmd.x + 2 * (button_w + 8), buttons_y, button_w, button_h, 'Снести');
     view.demolishShown = !!blueprint.demolish;
     view.demolish.button.SetVisible(!!(flags.full || blueprint.demolish));
     view.demolish.button.SetTooltipText('Снести постройку. Золото не возвращается: возврата при сносе в данных нет (допущение). В игре корпус снести нельзя, здесь можно для проверки', true);
-    view.message = text(column, 'message', 'text_copper', 14, scheme_h - foot_h - 26, column_w - 28, 22, '');
-    text(column, 'foot', 'text_note', 14, scheme_h - foot_h + 2, column_w - 28, foot_h - 6,
+    view.message = text(column, 'message', 'text_copper', cmd.x, message_y, cmd.w, 22, '');
+    text(column, 'foot', 'text_note', cmd.x, foot_y, cmd.w, col_h - foot_y - 4,
         'Постройка идёт через очередь игры: цена списывается при заказе, отмена в том же ходу возвращает всё. Готовая часть встаёт на модель и на чертёж в начале хода.');
 
     // which levels show: the first of the chain now, all of it behind ?full=1
@@ -974,12 +995,15 @@ function makeTree(parent, view, M, blueprint, flags, x, y, w) {
 // tree_model.mjs linkSegments (the same as the constructor draws), the small crew cards of what each node opens. The column is narrow: the tree
 // lies in a window that pans by dragging (and by the wheel) when it is larger; "Всё" shows the whole of it smaller, "1:1" back to the game's
 // size. Nothing of the slot changes its size at 1:1.
-function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide) {
+// opts.over: the window lies over the drawing (layout B): its tab button shows the drawing or the tree; opts.btnRight: the right edge of the buttons
+// in the parent's offsets (the window's right edge by default). wide null: no «Развернуть дерево».
+function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide, opts = {}) {
     const rows = view.data.tree_rows;
     const D = 'ui/skins/default/';
     const win = make(parent, 'tree_window', 'tree_window');
     size(win, w, h);
     at(win, x, y);
+    if (opts.over) win.el.classList.add('open');
     const holder = make(win, 'tree_holder', 'tree_holder');
     const pan = view.pan = {x: 0, y: 0, z: 1, win, holder};
     const c0 = rows.length ? Math.min(...rows.map(r => r.col)) : 0, r1 = rows.length ? Math.max(...rows.map(r => r.row)) : 0;
@@ -1069,16 +1093,24 @@ function makeFileTree(parent, view, M, blueprint, flags, x, y, w, h, wide) {
     }
     // "Всё" / "1:1": the whole tree smaller, or the game's size; shown only when the tree is larger than its window
     // in the column's head row, right of its title: never over the tree
-    const fitBtn = makeButton(parent, 'mtb_tree_fit', x + w - 64, 4, 64, 26, 'Всё');
+    const right = opts.btnRight !== undefined ? opts.btnRight : x + w;
+    const fitBtn = makeButton(parent, 'mtb_tree_fit', right - 64, 4, 64, 26, 'Всё');
     pan.fitBtn = fitBtn;
     pan.fits = cw <= w && ch <= h;
     fitBtn.button.SetVisible(!pan.fits);
     // «Развернуть дерево»: the window opens over the drawing, across the whole panel, at the game's size; «Свернуть» back into the column
-    const openBtn = makeButton(parent, 'mtb_tree_expand', x + w - 64 - 8 - 150, 4, 150, 26, 'Развернуть дерево');
-    openBtn.button.SetVisible(!pan.fits);
-    openBtn.button.SetTooltipText('Дерево поверх чертежа на всю панель, в игровом размере', true);
+    const openBtn = makeButton(parent, 'mtb_tree_expand', right - 64 - 8 - 150, 4, 150, 26, opts.over ? 'Показать чертёж' : 'Развернуть дерево');
+    openBtn.button.SetVisible(opts.over || (!pan.fits && !!wide));
+    openBtn.button.SetTooltipText(opts.over ? 'Чертёж с местами экипажа на месте дерева; дерево — той же кнопкой' : 'Дерево поверх чертежа на всю панель, в игровом размере', true);
     pan.open = false;
-    pan.expand = () => {
+    pan.hidden = false;
+    pan.expand = opts.over ? () => {
+        // B: the tab between the tree and the drawing under it
+        pan.hidden = !pan.hidden;
+        win.SetVisible(!pan.hidden);
+        fitBtn.button.SetVisible(!pan.hidden && (!pan.fits || pan.z < 1));
+        openBtn.label.SetStateText(pan.hidden ? 'Показать дерево' : 'Показать чертёж');
+    } : () => {
         pan.open = !pan.open;
         const r = pan.open ? wide : {x, y, w, h};
         size(win, r.w, r.h); at(win, r.x, r.y);
@@ -1504,8 +1536,10 @@ function refresh(view, M) {
         view.selMeta.SetVisible(!!node);
         if (node) {
             // the name and one line of state right over the commands; what the building gives is in its information window, on hover
-            at(view.selName, 14, view.order.button.y - 56);
-            at(view.selMeta, 14, view.order.button.y - 28);
+            // B: at the column's top, what the building gives under them (the tree is over the drawing)
+            const top = view.selTop !== undefined ? view.selTop : view.order.button.y - 56;
+            at(view.selName, view.order.button.x, top);
+            at(view.selMeta, view.order.button.x, top + 28);
             view.selName.SetStateText(node.node.name);
         }
     }
@@ -1519,13 +1553,13 @@ function refresh(view, M) {
     if (view.tree) view.demolish.button.SetVisible(!!(view_flags.full || view.demolishShown));
     const sel = view.selected && M.level(view.selected);
     for (const c of [view.detail, view.lines, view.order.button, view.cancel.button]) c.SetVisible(!!sel);
-    if (view.tree) { view.detail.SetVisible(false); view.lines.SetVisible(false); }
+    if (view.tree && view.selTop === undefined) { view.detail.SetVisible(false); view.lines.SetVisible(false); }
     if (!sel) {
         view.demolish.button.SetVisible(false);
         view.message.SetStateText(M.message() || '');
         return;
     }
-    const y = view.tree ? view.detail_top + 52 : view.detail_top + rowsShown * 96 + 8;
+    const y = view.selTop !== undefined ? view.selTop + 56 : view.tree ? view.detail_top + 52 : view.detail_top + rowsShown * 96 + 8;
     at(view.detail, 14, y);
     const card = view.cards[sel.key];
     if (view.selMeta) {
@@ -1536,7 +1570,9 @@ function refresh(view, M) {
     }
     view.detail.SetStateText(firstPart(sel.text || (card && card.text)));
     // the green lines and what the level opens in the crew panel: under the description as tall as its text (uic:TextDimensions), down to the commands
-    const lines_y = view.tree ? y + Math.max(1, view.detail.TextDimensions()[2]) * 15 + 4 : y + 46;
+    // B: the description as tall as its text, the lines under it
+    if (view.selTop !== undefined) size(view.detail, view.detail.Width(), Math.max(20, view.detail.TextDimensions()[1] + 2));
+    const lines_y = view.selTop !== undefined ? y + view.detail.Height() + 8 : view.tree ? y + Math.max(1, view.detail.TextDimensions()[2]) * 15 + 4 : y + 46;
     at(view.lines, 14, lines_y);
     size(view.lines, view.lines.Width(), Math.max(80, view.order.button.y - lines_y - 4));
     view.lines.SetStateText(detailLines(sel, card).join('\n'));

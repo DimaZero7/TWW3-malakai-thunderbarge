@@ -12,7 +12,17 @@
 </head>
 <body>
 <header id="bar">
-  <span id="mode"><button data-mode="constructor" title="Собрать дерево построек: узлы, связи, тексты">Конструктор</button><button data-mode="game" title="Экран корабля: дерево из файла, заказы и ходы">Игра</button></span>
+  <span id="mode"><button data-mode="constructor" title="Собрать дерево построек: узлы, связи, тексты">Конструктор</button><button data-mode="game" title="Экран корабля: дерево из файла, заказы и ходы">Игра</button><button data-mode="ingame" title="Только экран корабля, в размере и масштабе игры на выбранном разрешении: без 3D и обзора цепочек. То же сохранение, что в «Игре»">Как в игре</button></span>
+  <span id="ig_tools" class="bar-group ingame-only">
+    <label title="Разрешение экрана игры">Экран <select id="ig_res"></select></label>
+    <label title="Настройка игры «Масштаб интерфейса» (preferences.script.txt, ui_scale). Ниже 1440p игра интерфейс не увеличивает">UI <select id="ig_ui"></select></label>
+    <span class="seg"><button id="ig_fit" title="Весь экран игры в окне (клавиша 0)">Вписать</button><button id="ig_one" title="Один пиксель игры — один пиксель монитора (клавиша 1)">1:1</button></span>
+    <button id="ig_full" title="Во весь экран (F). Esc — назад. В 1:1 плашка прячется, P — показать">Во весь экран</button>
+    <button id="ig_ruler" class="toggle" title="Размеры элементов в пикселях игры и сетка 100 px (L)">Линейка</button>
+    <button id="ig_font" class="toggle" title="Шрифты старых раскладок страницы в размере игры: кегль игры 12 = 16 px (gameui.js). Выключено — как в режиме «Игра»">Шрифт игры</button>
+    <label title="Эскизы раскладки экрана для сравнения. Игра сейчас — A">Раскладка <select id="ig_layout"></select></label>
+    <button id="ig_report_btn" class="toggle" title="Сводка: сколько дерева видно и какого размера всё на каждом разрешении (R)">Сводка</button>
+  </span>
   <span id="cx_tools"></span>
   <span class="bar-group game-only"><span class="tag">Проверка без игры</span>
     <span id="turn">Ход 1</span>
@@ -56,6 +66,7 @@
   </section>
 </main>
 <div id="constructor"></div>
+<div id="ingame"><div id="ig_stage"><div id="ig_screen"><div id="ig_overlay"></div><div id="ig_label"></div></div></div><div id="ig_report"></div></div>
 <script type="module" src="/js/main.js"></script>
 </body>
 </html>
