@@ -47,7 +47,7 @@ SEP = chr(92)
 DEFAULT_LIMIT = 3600
 END_TURN_LIMIT = 480     # item 12: the turn end is the slowest and least sure step; after this the next items still run if the map answers
 # Per item: seconds before the item is cut off (its steps stop, the next item goes on).
-BUDGET = {"census": 60, "smoke": 120, "find4": 30, "0": 60, "7": 120, "8": 150, "10": 60, "6a": 60, "5": 60, "11": 90, "setup": 60, "1": 240, "2": 240, "3": 90, "4": 900, "12": END_TURN_LIMIT + 240, "13": 120, "14": 60, "6b": 90, "9": 90}
+BUDGET = {"census": 60, "smoke": 120, "logic": 60, "find4": 30, "0": 60, "7": 120, "8": 150, "10": 60, "6a": 60, "5": 60, "11": 90, "setup": 60, "1": 240, "2": 240, "3": 90, "4": 900, "12": END_TURN_LIMIT + 240, "13": 120, "14": 60, "6b": 90, "9": 90}
 RISKY = {"6b": "a game template (ui/templates/listview) instantiated in our layout",
          "9": "a game template with the game's own bindings (ui/templates/building_frame) given a context by script",
          "find4": "the game's own string.find with a 4th argument: suspected to break the bindings until a restart (run 20261114-210531)"}
@@ -88,6 +88,8 @@ def lua_lib():
 CENSUS_BEGIN, CENSUS_END = "-- ==== CENSUS BEGIN ====", "-- ==== CENSUS END ===="
 CENSUS_FILE = "lua_env_census.txt"      # in the run folder; a real run's copy also goes to build/port_probe/ for the fake game
 SMOKE_FILE = "smoke.txt"                # in the run folder: one line per helper step
+LOGIC_FILE = "logic_selftest.txt"       # in the run folder: the self-test's text as the game returned it
+LOGIC_F32_FILE = "logic_f32.json"       # in the run folder: the f32.* answers (the game's own number behaviour)
 
 
 def census_code():
@@ -585,6 +587,48 @@ class Probe:
         answer = (f"{len(steps)} steps, {len(failed)} failed: " + ("; ".join(f"{s['step']}: {s['result'][4:220]}" for s in failed) or "none") +
                   f"; game bindings (canary) first broken after: {info.get('first_broken', '?')}; file {path.name}")
         return "answered", answer, {"steps": steps, "info": info}
+
+    # -- logic: tools/tests/logic_selftest.py's chunk (both logic modules of src/ inline + the self-test), alone, compared with its 30 answers.
+    #    Never aborts the session; no UI, no cm, no game state touched.
+    def ilogic(self):
+        sys.path.insert(0, str(TESTS))
+        import logic_selftest as LS
+        code = LS.game_code()
+        exempt = {}
+        if self.fake:
+            # the fake reads literals as doubles: give the f32.* inputs as the game would read them (float32), like logic_selftest.run(game=True);
+            # float32 arithmetic itself (f32.step) cannot be emulated in doubles
+            import game_lua_env as genv
+            tail = "return T(Ship, CM)._text\n"
+            assert code.endswith(tail), "logic_selftest.game_code() changed its last line"
+            code = code[:-len(tail)] + f"return T(Ship, CM, {lua_literal([genv.f32(x) for x in LS.F32_LITERALS])})._text\n"
+            exempt["f32.step"] = "float32 arithmetic is not emulated by the fake (doubles)"
+        size = len(code.encode("utf-8"))
+        try:
+            row = self.send(code, 30)
+        except TimeoutError:
+            raise
+        except Exception as e:
+            row = {"ok": False, "result": f"{type(e).__name__}: {e}"}
+        text = str(row.get("result"))
+        (self.dir / LOGIC_FILE).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+        if not row.get("ok"):
+            return "inconclusive", f"the logic chunk ({size} bytes) failed or got no answer: {text[:600]}", {"raw": text[:4000], "bytes": size}
+        got = LS.parse(text)
+        f32 = {k: v for k, v in got.items() if k.startswith("f32.")}
+        (self.dir / LOGIC_F32_FILE).write_text(json.dumps({"fake": self.fake, "f32": f32}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        diff = LS.compare(text)
+        bad = [d for d in diff if d[0] not in exempt]
+        n = len(LS.compare(""))       # every expected answer
+        if bad:
+            answer = f"{len(bad)} of {n} differ: " + "; ".join(f"{k}: expected {w!r}, got {g!r}" for k, w, g in bad)
+        else:
+            answer = f"all {n - len(exempt)} agree" if exempt else f"all {n} agree"
+        if exempt:
+            answer += "; not compared: " + "; ".join(f"{k} ({why}; got {got.get(k)!r})" for k, why in exempt.items())
+        answer += f"; chunk {size} bytes; files {LOGIC_FILE}, {LOGIC_F32_FILE}"
+        return "answered", answer, {"bytes": size, "differ": [{"name": k, "expected": w, "got": g} for k, w, g in bad],
+                                    "exempt": exempt, "f32": f32, "answers": len(got)}
 
     # -- the last item: the game's string.find with a 4th argument between two canaries (the suspected cause of run 20261114-210531)
     def ifind4(self):
@@ -1147,6 +1191,7 @@ class Probe:
     def run(self):
         order = [("census", "Lua environment census (standalone, before everything)", self.icensus),
                  ("smoke", "every shared helper once, protected, with a canary of the game's bindings after each", self.ismoke),
+                 ("logic", "the two logic modules of src/ and their self-test in the game's Lua (30 expected answers)", self.ilogic),
                  ("0", "API surface of UIComponent (no walk)", self.i0),
                  ("7", "TextDimensions on our own text", self.i7),
                  ("8", "time to create and destroy 1500 components", self.i8),
@@ -1183,7 +1228,7 @@ class Probe:
                 if no == "smoke" and self.smoke_broken:
                     # the game's bindings stopped answering during the smoke: nothing after it can be trusted until the game restarts
                     raise SessionAbort(f"the game's bindings broke during the smoke stage: {str(rec.get('answer'))[:600]}")
-                if no in ("census", "smoke"):
+                if no in ("census", "smoke", "logic"):
                     continue
                 if len(first) < ABORT_AFTER:
                     first.append(error_key(rec["answer"]) if rec["status"] == "error" else None)
@@ -1463,6 +1508,7 @@ def plan_text(args, limit):
         "        the user's save/settings folders copied and put back; autosave off.",
         "  2. main menu -> new campaign wh3_dlc25_dwf_malakai (frontend.start_campaign), wait for the end turn button, peace with everyone, events accepted.",
         f"  3. census of the game's Lua (alone, -> <run>/{CENSUS_FILE}); smoke: every shared helper once, protected, canary after each (-> <run>/{SMOKE_FILE});",
+        f"     logic: src/ logic modules + their self-test, 30 answers compared (-> <run>/{LOGIC_FILE}, {LOGIC_F32_FILE}; never aborts);",
         "     the session ABORTS (game closed as in 4) if the canary broke in the smoke, or if items 0, 7, 8 all fail with one error;",
         "     items 0, 7, 8, 10, 6a, 5, 11 (our own components only), 14 (reads), setup (gold, points, hull top), 1, 2, 3, 4 (one real battle),",
         f"     12 (ONE turn end by script, hard limit {END_TURN_LIMIT} s; then a cancel and a dismantle), 13, then the risky 6b, 9, find4 (last).",
