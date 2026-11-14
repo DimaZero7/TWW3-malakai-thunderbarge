@@ -48,84 +48,313 @@ GRAPHICS = {
 
 
 class FocusGuard:
-    """Gives the foreground straight back to the window that had it when the game takes it (CLAUDE.md: the game runs without focus).
+    """Keeps the game out of the foreground for the whole run (CLAUDE.md: the game runs without focus, under other windows).
 
-    Why the game gets it: STARTUPINFO's SW_SHOWNOACTIVATE only covers the first ShowWindow; the game then activates its own window, and
-    Windows lets it because it was started from the process tree that has the foreground right (the user's terminal session). A process
-    that is not in the foreground cannot lock that out in advance (LockSetForegroundWindow only works for the foreground process), so the
-    guard polls and gives the foreground back: SetForegroundWindow on the window that had it, and if Windows refuses, the same with this
-    thread's input attached to the game's for the moment of the call (AttachThreadInput). No keys, no mouse. Every take and give-back is
-    written to the log with the time it took. tick() is cheap: call it every ~50 ms.
+    Why the game gets it: STARTUPINFO's SW_SHOWNOACTIVATE only covers the first ShowWindow; the game then activates its own window
+    (again when it recreates the window or loads a campaign or battle), and Windows lets it. Our process is not the foreground one, so a
+    plain SetForegroundWindow back is refused (run 20261114-222543: REFUSED in 2 ms), and LockSetForegroundWindow, AllowSetForegroundWindow
+    and SPI_SETFOREGROUNDLOCKTIMEOUT only work for a caller that already may set the foreground. No keys and no mouse are ever sent.
+
+    start() runs a thread for the whole run: a foreground event hook (EVENT_SYSTEM_FOREGROUND) plus a 20 ms poll. When the game is in
+    the foreground, the methods are tried in order until the window that had it has it again:
+      attach_both  this thread's input attached to the game's (foreground) thread AND the target window's thread, then
+                   BringWindowToTop + SetForegroundWindow on the target: accepted every time in the stand-in test, ~10 ms (the old
+                   guard attached to the game's thread only and was refused, as in run 20261114-222543); while the game's window
+                   thread pumps no messages (loading), the call waits for it and the foreground comes back the moment the game wakes;
+      attach       the same attached to the target's thread only: never waits on the game, but Windows accepts it only sometimes;
+      minimize     ShowWindowAsync(game, SW_MINIMIZE): Windows itself activates the next window in Z order; if that is not the
+                   target, attach from there; then ShowWindowAsync(game, SW_SHOWNOACTIVATE) at once (a minimised window neither
+                   renders nor answers PrintWindow, so it never stays minimised; at most once per 1.5 s); last resort;
+      switch       SwitchToThisWindow(target): not in the default order, refused in tools/tests/focus_guard_test.py.
+    and the game window goes to the bottom of the Z order without activation. The user is never fought: when another window (not the
+    game) becomes the foreground, that window is remembered; if it is closed, the next window in Z order gets the foreground back.
+    A click into the game is given back too, and the log says so. Every take, give-back, refusal and user switch goes to the log
+    with milliseconds; self.events keeps the same for tests. Proof without the game: py -3.14 tools/tests/focus_guard_test.py.
     """
 
-    def __init__(self, pid, log):
+    ORDER = ("attach_both", "attach", "minimize")
+    MIN_GAP = 1.5       # seconds between two minimise-and-restore of the game window
+
+    def __init__(self, pid, log, methods=ORDER, poll=0.02):
         import ctypes
         import ctypes.wintypes as wt
-        self.ctypes, self.wt = ctypes, wt
-        self.u = ctypes.WinDLL("user32", use_last_error=True)
-        self.k = ctypes.WinDLL("kernel32", use_last_error=True)
-        self.u.GetForegroundWindow.restype = wt.HWND
-        self.u.GetWindowThreadProcessId.restype = wt.DWORD
-        self.u.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
-        self.u.SetForegroundWindow.argtypes = [wt.HWND]
-        self.u.IsWindow.argtypes = [wt.HWND]
-        self.u.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
-        self.u.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
-        self.pid, self.log = pid, log
-        self.prev = None
+        import threading
+        self.ctypes, self.wt, self.threading = ctypes, wt, threading
+        u = self.u = ctypes.WinDLL("user32", use_last_error=True)
+        k = self.k = ctypes.WinDLL("kernel32", use_last_error=True)
+        H, D, B = wt.HWND, wt.DWORD, wt.BOOL
+        for f, res, args in [
+            (u.GetForegroundWindow, H, []), (u.GetWindowThreadProcessId, D, [H, ctypes.POINTER(D)]),
+            (u.SetForegroundWindow, B, [H]), (u.IsWindow, B, [H]), (u.IsIconic, B, [H]), (u.BringWindowToTop, B, [H]),
+            (u.AttachThreadInput, B, [D, D, B]), (u.GetWindowTextW, ctypes.c_int, [H, wt.LPWSTR, ctypes.c_int]),
+            (u.SwitchToThisWindow, None, [H, B]), (u.ShowWindowAsync, B, [H, ctypes.c_int]),
+            (u.SetWindowPos, B, [H, H, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.UINT]),
+            (u.GetLastInputInfo, B, [ctypes.c_void_p]), (u.SystemParametersInfoW, B, [wt.UINT, wt.UINT, ctypes.c_void_p, wt.UINT]),
+            (u.SetWinEventHook, wt.HANDLE, [D, D, wt.HMODULE, ctypes.c_void_p, D, D, D]), (u.UnhookWinEvent, B, [wt.HANDLE]),
+            (u.MsgWaitForMultipleObjects, D, [D, ctypes.c_void_p, B, D, D]),
+            (u.PeekMessageW, B, [ctypes.c_void_p, H, wt.UINT, wt.UINT, wt.UINT]),
+            (u.TranslateMessage, B, [ctypes.c_void_p]), (u.DispatchMessageW, ctypes.c_ssize_t, [ctypes.c_void_p]),
+            (u.IsWindowVisible, B, [H]), (u.GetWindowLongW, ctypes.c_long, [H, ctypes.c_int]),
+            (u.GetWindowTextLengthW, ctypes.c_int, [H]), (u.EnumWindows, B, [ctypes.c_void_p, wt.LPARAM]),
+            (k.GetCurrentThreadId, D, []), (k.GetTickCount, D, []), (k.OpenProcess, wt.HANDLE, [D, B, D]),
+            (k.CloseHandle, B, [wt.HANDLE]), (k.QueryFullProcessImageNameW, B, [wt.HANDLE, D, wt.LPWSTR, ctypes.POINTER(D)]),
+        ]:
+            f.restype, f.argtypes = res, args
+        self.pid, self.log, self.methods, self.poll = pid, log, tuple(methods), poll
+        self.prev = None            # the window that gets the foreground back
+        self.landed = None          # a window our minimise handed the foreground to that is not prev: not a user's choice
         self.taken = self.given = 0
-        fg = self.u.GetForegroundWindow()
+        self.events = []            # one dict per take, for tests
+        self._hold = None           # the take in progress: dict
+        self._last_min = -1e9
+        self._minimized = None
+        self._no_fg = False
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = None
+        self._flag = False
+        fg = u.GetForegroundWindow()
         if fg and self.owner(fg) != pid:
             self.prev = fg
-        self.write(f"focus guard: foreground before the game {self.describe(self.prev)}")
+        lock_timeout = wt.DWORD()
+        u.SystemParametersInfoW(0x2000, 0, ctypes.byref(lock_timeout), 0)      # SPI_GETFOREGROUNDLOCKTIMEOUT, read only
+        self.write(f"focus guard: foreground before the game {self.describe(self.prev)}; methods {', '.join(self.methods)}; "
+                   f"user idle {self.idle_ms() / 1000:.0f} s; ForegroundLockTimeout {lock_timeout.value} ms")
 
+    # ---- helpers
     def write(self, text):
         with Path(self.log).open("a", encoding="utf-8") as f:
-            f.write(time.strftime("%H:%M:%S ") + text + "\n")
+            f.write(datetime.now().strftime("%H:%M:%S.%f")[:-3] + " " + text + "\n")
 
     def owner(self, hwnd):
         pid = self.wt.DWORD()
         self.u.GetWindowThreadProcessId(hwnd, self.ctypes.byref(pid))
         return pid.value
 
+    def thread_of(self, hwnd):
+        return self.u.GetWindowThreadProcessId(hwnd, None)
+
+    def is_game(self, hwnd):
+        return bool(hwnd) and self.owner(hwnd) == self.pid
+
+    def idle_ms(self):
+        info = (self.wt.UINT * 2)(8, 0)        # LASTINPUTINFO
+        self.u.GetLastInputInfo(info)
+        return (self.k.GetTickCount() - info[1]) & 0xFFFFFFFF
+
     def describe(self, hwnd):
         if not hwnd:
             return "none"
         buf = self.ctypes.create_unicode_buffer(120)
         self.u.GetWindowTextW(hwnd, buf, 120)
-        return f"{int(hwnd)} «{buf.value[:60]}»"
+        exe = "?"
+        handle = self.k.OpenProcess(0x1000, False, self.owner(hwnd))       # PROCESS_QUERY_LIMITED_INFORMATION
+        if handle:
+            name = self.ctypes.create_unicode_buffer(400)
+            size = self.wt.DWORD(400)
+            if self.k.QueryFullProcessImageNameW(handle, 0, name, self.ctypes.byref(size)):
+                exe = name.value.rsplit("\\", 1)[-1]
+            self.k.CloseHandle(handle)
+        return f"{int(hwnd)} {exe} «{buf.value[:50]}»"
 
+    def next_window(self):
+        """The topmost visible, not minimised, not tool top-level window that is not the game's, or None (EnumWindows is in Z order)."""
+        found = []
+        proto = self.ctypes.WINFUNCTYPE(self.wt.BOOL, self.wt.HWND, self.wt.LPARAM)
+
+        def visit(hwnd, _):
+            ex = self.u.GetWindowLongW(hwnd, -20)        # GWL_EXSTYLE
+            if (self.u.IsWindowVisible(hwnd) and not self.u.IsIconic(hwnd) and not ex & 0x80 and not ex & 0x8000000   # TOOLWINDOW, NOACTIVATE
+                    and self.u.GetWindowTextLengthW(hwnd) and not self.is_game(hwnd)):
+                found.append(hwnd)
+                return False
+            return True
+        cb = proto(visit)
+        self.u.EnumWindows(cb, 0)
+        return found[0] if found else None
+
+    def _wait_fg(self, done, seconds):
+        end = time.perf_counter() + seconds
+        while True:
+            fg = self.u.GetForegroundWindow()
+            if done(fg) or time.perf_counter() > end:
+                return fg
+            time.sleep(0.002)
+
+    def push_behind(self, game):
+        # HWND_BOTTOM; NOSIZE | NOMOVE | NOACTIVATE | NOOWNERZORDER | ASYNCWINDOWPOS: a busy game thread cannot block the guard
+        self.u.SetWindowPos(game, 1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200 | 0x4000)
+
+    # ---- the methods: each returns a short note; success is judged by the foreground afterwards
+    def _by_attach(self, fg, target, with_foreground=False):
+        me = self.k.GetCurrentThreadId()
+        threads = {t for t in (self.thread_of(fg) if with_foreground else 0, self.thread_of(target)) if t and t != me}
+        attached = [t for t in threads if self.u.AttachThreadInput(me, t, True)]
+        try:
+            self.u.BringWindowToTop(target)
+            self.u.SetForegroundWindow(target)
+        finally:
+            for t in attached:
+                self.u.AttachThreadInput(me, t, False)
+        self._wait_fg(lambda f: f == target, 0.05 if with_foreground else 0.02)
+        return f"attached {len(attached)}/{len(threads)}"
+
+    def _by_attach_both(self, fg, target):
+        return self._by_attach(fg, target, with_foreground=True)
+
+    def _by_switch(self, fg, target):
+        self.u.SwitchToThisWindow(target, True)
+        self._wait_fg(lambda f: f == target, 0.05)
+        return ""
+
+    def _by_minimize(self, fg, target):
+        game = fg
+        self._last_min = time.perf_counter()
+        self._minimized = game
+        note = ""
+        try:
+            self.u.ShowWindowAsync(game, 6)        # SW_MINIMIZE: the system activates the next window in Z order
+            now = self._wait_fg(lambda f: f and not self.is_game(f), 0.5)
+            if target and now and not self.is_game(now) and now != target:
+                note = f"Windows chose {self.describe(now)}; "
+                self._by_attach(now, target)
+        finally:
+            self._restore(game)
+        if self.u.IsIconic(game):
+            note += "STILL MINIMISED"
+        return note + "restored without activation"
+
+    def _restore(self, game):
+        self.u.ShowWindowAsync(game, 4)            # SW_SHOWNOACTIVATE: back to its size, not activated
+        end = time.perf_counter() + 2
+        while self.u.IsIconic(game) and time.perf_counter() < end:
+            time.sleep(0.005)
+        self.push_behind(game)
+        if not self.u.IsIconic(game):
+            self._minimized = None
+
+    # ---- the watch
     def tick(self):
+        """One check; the thread of start() calls it every 20 ms and on every foreground change."""
+        with self._lock:
+            self._check()
+
+    def _check(self):
         fg = self.u.GetForegroundWindow()
         if not fg:
+            if not self._no_fg:
+                self._no_fg = True
+                self.write("no foreground window")
             return
-        if self.owner(fg) != self.pid:
-            self.prev = fg          # whatever the user is in now gets the foreground back next time
+        self._no_fg = False
+        if not self.is_game(fg):
+            if self._hold:
+                self._close_hold(fg)
+            if fg != self.prev and fg != self.landed:
+                self.prev, self.landed = fg, None
+                self.write(f"foreground now {self.describe(fg)}: remembered as the window to give back to")
             return
-        self.taken += 1
-        t0 = time.perf_counter()
-        if not self.prev or not self.u.IsWindow(self.prev):
-            self.write(f"the game took the foreground (#{self.taken}); no earlier window to give it back to")
-            self.prev = None
+        now = time.perf_counter()
+        if not self._hold:
+            self.taken += 1
+            idle = self.idle_ms()
+            self._hold = {"n": self.taken, "t": now, "window": int(fg), "attempts": 0, "tried": [], "next": now,
+                          "user_input_ms": idle, "logged": now}
+            why = ""
+            if idle < 500:
+                why = (f"; the user's own input {idle} ms before it (a click into the game?): given back anyway, "
+                       f"automated runs stay unfocused (CLAUDE.md)")
+            self.write(f"the game took the foreground (#{self.taken}) {self.describe(fg)}{why}")
+        hold = self._hold
+        if now < hold["next"]:
             return
-        way = "SetForegroundWindow"
-        ok = bool(self.u.SetForegroundWindow(self.prev)) and self.u.GetForegroundWindow() == self.prev
-        if not ok:
-            way = "AttachThreadInput + SetForegroundWindow"
-            me = self.k.GetCurrentThreadId()
-            game_thread = self.u.GetWindowThreadProcessId(fg, None)
-            attached = bool(self.u.AttachThreadInput(me, game_thread, True))
-            try:
-                self.u.SetForegroundWindow(self.prev)
-            finally:
-                if attached:
-                    self.u.AttachThreadInput(me, game_thread, False)
-            ok = self.u.GetForegroundWindow() == self.prev
-        ms = (time.perf_counter() - t0) * 1000
-        if ok:
+        target = self.prev if self.prev and self.u.IsWindow(self.prev) else None
+        if not target:
+            target = self.next_window()
+            if target and not hold.get("next_logged"):
+                hold["next_logged"] = True
+                self.write(f"  #{hold['n']}: the remembered window is gone; giving it to the next window in Z order {self.describe(target)}")
+        hold["attempts"] += 1
+        for name in self.methods:
+            if name != "minimize" and not target:
+                continue            # nothing to give back to: only the minimise hands the foreground to the next window
+            if name == "minimize" and now - self._last_min < self.MIN_GAP:
+                continue
+            t0 = time.perf_counter()
+            note = getattr(self, "_by_" + name)(fg, target)
+            after = self.u.GetForegroundWindow()
+            ms = (time.perf_counter() - t0) * 1000
+            ok = bool(after) and not self.is_game(after)
+            hold["tried"].append(f"{name} {'ok' if ok else 'refused'} {ms:.0f} ms{(' (' + note + ')') if note else ''}")
+            if ok:
+                hold["method"] = name
+                if not self.prev or not self.u.IsWindow(self.prev):
+                    self.prev = after
+                elif after != self.prev:
+                    self.landed = after
+                break
+        else:
+            self.push_behind(fg)
+            hold["next"] = time.perf_counter() + 0.1       # every 100 ms while Windows refuses everything
+            if hold["attempts"] == 1 or time.perf_counter() - hold["logged"] > 5:
+                hold["logged"] = time.perf_counter()
+                self.write(f"  #{hold['n']} still in the game after {(time.perf_counter() - hold['t']) * 1000:.0f} ms, "
+                           f"attempt {hold['attempts']}: " + "; ".join(hold["tried"][-len(self.methods):]))
+            return
+        self.push_behind(fg)
+        self._close_hold(self.u.GetForegroundWindow())
+
+    def _close_hold(self, fg):
+        hold, self._hold = self._hold, None
+        ms = (time.perf_counter() - hold["t"]) * 1000
+        method = hold.get("method", "none of ours (the foreground moved by itself)")
+        if "method" in hold:
             self.given += 1
-        self.write(f"the game took the foreground (#{self.taken}); given back to {self.describe(self.prev)} by {way}: "
-                   f"{'ok' if ok else 'REFUSED by Windows'} in {ms:.0f} ms")
+        self.write(f"  #{hold['n']} given back to {self.describe(fg)} by {method} in {ms:.0f} ms, attempts {hold['attempts']}"
+                   + (f"; tried: {'; '.join(hold['tried'])}" if hold["tried"] else ""))
+        self.events.append(dict(hold, back=time.perf_counter(), ms=ms, to=int(fg), method=method,
+                                to_prev=bool(self.prev) and fg == self.prev))
+
+    def _run(self):
+        ctypes, wt = self.ctypes, self.wt
+        proto = ctypes.WINFUNCTYPE(None, wt.HANDLE, wt.DWORD, wt.HWND, ctypes.c_long, ctypes.c_long, wt.DWORD, wt.DWORD)
+
+        def on_foreground(*_):
+            self._flag = True
+        self._callback = proto(on_foreground)
+        hook = self.u.SetWinEventHook(3, 3, None, ctypes.cast(self._callback, ctypes.c_void_p), 0, 0, 0)  # EVENT_SYSTEM_FOREGROUND
+        msg = (ctypes.c_byte * 64)()
+        failed = False
+        try:
+            while not self._stop.is_set():
+                self.u.MsgWaitForMultipleObjects(0, None, False, int(self.poll * 1000), 0x04FF)   # QS_ALLINPUT
+                while self.u.PeekMessageW(msg, None, 0, 0, 1):    # PM_REMOVE
+                    self.u.TranslateMessage(msg)
+                    self.u.DispatchMessageW(msg)
+                self._flag = False
+                try:
+                    self.tick()
+                except Exception as e:      # never let the guard die silently
+                    if not failed:
+                        failed = True
+                        self.write(f"focus guard error: {e!r}")
+        finally:
+            if hook:
+                self.u.UnhookWinEvent(hook)
+
+    def start(self):
+        self._thread = self.threading.Thread(target=self._run, name="focus-guard", daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(5)
+        with self._lock:
+            if self._minimized and self.u.IsWindow(self._minimized) and self.u.IsIconic(self._minimized):
+                self._restore(self._minimized)
+        self.write(f"focus guard stopped: the game took the foreground {self.taken} times, given back {self.given}")
 
 
 def game_running():
@@ -262,6 +491,7 @@ def main(argv=None):
 
     lock = shared_game.take_lock()
     process = None
+    guard = None
     status = "setup_failed"
     started = time.time()
     try:
@@ -273,7 +503,7 @@ def main(argv=None):
         info.dwFlags = subprocess.STARTF_USESHOWWINDOW
         info.wShowWindow = 4    # SW_SHOWNOACTIVATE: do not take the focus from whatever the user is doing
         process = subprocess.Popen(f'"{GAME / "Warhammer3.exe"}" {arguments}', cwd=GAME, startupinfo=info)
-        guard = FocusGuard(process.pid, run / "window.log")
+        guard = FocusGuard(process.pid, run / "window.log").start()      # its own thread for the whole run
         print(f"started PID {process.pid}, run {run}", flush=True)
         status = "timeout"
         offset, loaded, fighting, loaded_at = 0, False, False, 0.0
@@ -339,15 +569,15 @@ def main(argv=None):
                             status, done = row.get("status", "completed"), True
                 if done:
                     break
-            for _ in range(4):      # the focus guard every 50 ms
-                guard.tick()
-                time.sleep(0.05)
+            time.sleep(0.2)
         if status == "completed":
             time.sleep(2)   # let the last lines reach the file before the game is closed
     finally:
         cleanup = {"status": status, "seconds": round(time.time() - started)}
         game_gone = stop_own_game(process)
         cleanup["game_gone"] = game_gone
+        if guard is not None:
+            guard.stop()
         if events.exists():
             shutil.copy(events, run / "events.raw.jsonl")
         if game_gone:

@@ -156,6 +156,7 @@ def main(argv=None):
 
     lock = rb.shared_game.take_lock()
     process = None
+    guard = None
     status = "setup_failed"
     started = time.time()
     placed_save = None
@@ -179,14 +180,13 @@ def main(argv=None):
         info.dwFlags = subprocess.STARTF_USESHOWWINDOW
         info.wShowWindow = SW_SHOWMINNOACTIVE if args.minimized else SW_SHOWNOACTIVATE
         process = subprocess.Popen(f'"{rb.GAME / "Warhammer3.exe"}" {start_args}', cwd=rb.GAME, startupinfo=info)
-        guard = rb.FocusGuard(process.pid, run / "window.log")      # gives the foreground back when the game takes it (CLAUDE.md)
+        guard = rb.FocusGuard(process.pid, run / "window.log").start()  # own thread: gives the foreground back all run (CLAUDE.md)
         STATE.write_text(json.dumps({"pid": process.pid, "run": str(run), "started": started,
                                      "x_res": int(settings.get("x_res", 2560)), "y_res": int(settings.get("y_res", 1440))}), encoding="utf-8")
         print(f"started PID {process.pid}, run {run}", flush=True)
         status = "timeout"
         behind = rb.capture.KeepBehind(process.pid, run / "window.log")
         while time.time() - started < args.timeout:
-            guard.tick()
             behind.tick()
             if process.poll() is not None:
                 status = f"process_exited_{process.returncode}"
@@ -206,13 +206,13 @@ def main(argv=None):
                         except OSError:
                             pass
                 break
-            for _ in range(10):     # the focus guard every 50 ms, the rest every 0.5 s
-                guard.tick()
-                time.sleep(0.05)
+            time.sleep(0.5)
     finally:
         cleanup = {"status": status, "seconds": round(time.time() - started)}
         game_gone = rb.stop_own_game(process)
         cleanup["game_gone"] = game_gone
+        if guard is not None:
+            guard.stop()
         for name in SESSION_FILES:
             path = rb.GAME / name
             if path.exists():
