@@ -35,15 +35,22 @@ local function mtb_pp_census()
     'loadstring', 'module', 'newproxy', 'next', 'pairs', 'pcall', 'print', 'rawequal', 'rawget', 'rawlen', 'rawset', 'require', 'select', 'setfenv',
     'setmetatable', 'tonumber', 'tostring', 'type', 'unpack', 'xpcall', 'math', 'string', 'table', 'os', 'io', 'debug', 'coroutine', 'package',
     'bit', 'bit32', 'jit', 'utf8', 'cm', 'core', 'common', 'cco', 'find_uicomponent', 'UIComponent', 'CampaignUI', 'out', 'bm', 'get_cm', 'mtb'}
+  -- G: the name as this chunk sees it (its environment: the remote runs chunks with the mod scripts' environment, which is NOT _G there:
+  -- run 20261114-210531 showed core, common, UIComponent... nil in _G); GG: the same name in _G
+  local okenv, env = P(getfenv, 1)
+  if not okenv or type(env) ~= 'table' then env = _G end
   for i = 1, #globals do
     local g = globals[i]
-    local ok, t = P(function() return type(_G[g]) end)
+    local ok, t = P(function() return type(env[g]) end)
     put('G', g, ok and t or ('ERR ' .. str(t)))
+    local ok2, t2 = P(function() return type(_G[g]) end)
+    put('GG', g, ok2 and t2 or ('ERR ' .. str(t2)))
   end
   local libs = {
     {'math', {'abs', 'acos', 'asin', 'atan', 'atan2', 'ceil', 'cos', 'cosh', 'deg', 'exp', 'floor', 'fmod', 'frexp', 'huge', 'ldexp', 'log', 'log10',
       'max', 'min', 'modf', 'pi', 'pow', 'rad', 'random', 'randomseed', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'maxinteger', 'mininteger', 'round', 'clamp'}},
-    {'string', {'byte', 'char', 'dump', 'find', 'format', 'gmatch', 'gsub', 'len', 'lower', 'match', 'rep', 'reverse', 'sub', 'upper', 'gfind'}},
+    {'string', {'byte', 'char', 'dump', 'find', 'format', 'gmatch', 'gsub', 'len', 'lower', 'match', 'rep', 'reverse', 'sub', 'upper', 'gfind',
+      'find_lua', 'sub_lua', 'len_lua'}},
     {'table', {'concat', 'insert', 'maxn', 'remove', 'sort', 'getn', 'setn', 'foreach', 'foreachi', 'unpack', 'pack'}},
     {'os', {'clock', 'date', 'difftime', 'execute', 'exit', 'getenv', 'remove', 'rename', 'setlocale', 'time', 'tmpname'}},
     {'io', {'close', 'flush', 'input', 'lines', 'open', 'output', 'popen', 'read', 'stderr', 'stdin', 'stdout', 'tmpfile', 'type', 'write'}},
@@ -106,6 +113,16 @@ local function mtb_pp_census()
   try('gsub function', function() return string.gsub('a"b', '"', function(c) return 'Q' end) end)
   try('gsub table', function() return string.gsub('a"b', '"', {['"'] = 'T'}) end)
   try('pattern %z', function() return string.find('a\0b', '%z') end)
+  -- the game replaces find/sub/len with UTF-8 versions (lib_lua_extensions.lua: find without patterns and without a 4th argument);
+  -- the originals stay as *_lua. Never call the game's string.find with 4 arguments here: suspected to break the bindings (run 210531).
+  try('find_lua %z', function() return string.find_lua('a\0b', '%z') end)
+  try('find_lua plain 4 args', function() return string.find_lua('a.b', '.', 1, true) end)
+  try('game find plain 2 args', function() return string.find('a.b', '.') end)
+  try('game find utf8', function() return string.find('\208\176\208\177\208\178', '\208\178') end)
+  try('game sub utf8', function() return string.sub('\208\176\208\177\208\178', 2, 2) end)
+  try('sub_lua utf8', function() return #string.sub_lua('\208\176\208\177\208\178', 2, 2) end)
+  try('game len utf8', function() return string.len('\208\176\208\177\208\178') end)
+  try('float model 1e38*10', function() local x = 1e38; return tostring(x * 10) end)
   try('pattern %c', function() return string.find('a\nb', '%c') end)
   try('collectgarbage count', function() return collectgarbage('count') end)
   try('gcinfo', function() return gcinfo() end)
@@ -137,6 +154,28 @@ local LAYOUT = 'ui/tww3_mtb_pp/'
 local ROOT_ID = 'tww3_mtb_pp_root'
 local LISTENER = 'tww3_mtb_pp_'
 
+-- The game replaces string.find / string.sub / string.len with its own UTF-8 C++ versions (census K lines; data_script.pack
+-- _lib/lib_lua_extensions.lua): its find has no patterns and takes no 4th argument; vanilla keeps its `string.find(s, x, 1, true)` calls
+-- commented out ("uncomment if we move to a later version of lua"). Run 20261114-210531: the first such call (make(), below) was followed
+-- by game bindings returning garbage (root:Width() a function, string.sub(text, 1, 6000) = '6000') until the game was closed.
+-- The probe uses only the originals, kept by the game as *_lua.
+local sfind = string.find_lua or string.find
+local ssub = string.sub_lua or string.sub
+
+-- An error with the caller's stack: xpcall + debug.traceback when the game has it (census: it does), else pcall's message.
+local TRACEBACK = type(debug) == 'table' and type(debug.traceback) == 'function' and debug.traceback or nil
+local function protect(fn, ...)
+  local n, args = select('#', ...), {...}
+  if TRACEBACK then
+    -- not a tail call: the item's frame stays in the traceback
+    local function pack(...) return {n = select('#', ...), ...} end
+    return xpcall(function() local r = pack(fn(unpack(args, 1, n))); return unpack(r, 1, r.n) end,
+      function(e) return TRACEBACK(tostring(e), 2) end)
+  end
+  return pcall(fn, ...)
+end
+PP.protect = protect
+
 -- ---------------------------------------------------------------- JSON ----------------------------------------------------------------
 -- esc is the same code as src/tww3_mtb_remote.lua's quote, which the game has run (its results carry "): string.byte, '%04x',
 -- gsub with a function and the %z class are proven by it, though data_script.pack itself never uses them.
@@ -153,8 +192,10 @@ local function J(v, depth)
   if v == nil then return 'null' end
   if t == 'boolean' then return tostring(v) end
   if t == 'number' then
-    -- NaN and the infinities by comparisons only (no math.huge, no arithmetic): a comparison of two numbers cannot raise
-    if v ~= v or v > 1.7e308 or v < -1.7e308 then return '"' .. tostring(v) .. '"' end
+    -- NaN and the infinities by comparisons only (no math.huge, no arithmetic): a comparison of two numbers cannot raise.
+    -- The game's numbers are 32-bit floats (census: tostring(16777217) = 16777216, 1e15 = 9.999999869911e+14): a literal 1.7e308 IS
+    -- infinity there, so the bound is 3e38 (below the float maximum 3.4e38)
+    if v ~= v or v > 3e38 or v < -3e38 then return '"' .. tostring(v) .. '"' end
     -- '%d' only in the int32 range: Lua 5.1 here formats 3e9 as -2147483648 (census 'format %d 3e9'); beyond it tostring is exact to 1e14
     if v == math.floor(v) and v > -2147483648 and v < 2147483648 then return string.format('%d', v) end
     return tostring(v)      -- Lua 5.1 writes %.14g: valid JSON for a finite number; '%g' has no precedent in the game's scripts
@@ -204,7 +245,7 @@ local function gold() return cm:get_faction(faction()):treasury() end
 -- One read of a context expression: {t = type, v = value} or {err = text}.
 local function read(object, id, expr)
   local ok, v = pcall(common.get_context_value, object, id, expr)
-  if not ok then return {err = string.sub(tostring(v), 1, 160)} end
+  if not ok then return {err = ssub(tostring(v), 1, 160)} end
   if v == nil then return {t = 'nil'} end
   local tv = type(v)
   if tv == 'number' or tv == 'string' or tv == 'boolean' then return {t = tv, v = v} end
@@ -305,16 +346,22 @@ PP.slots_info = slots_info
 
 -- ---------------------------------------------------------------- our own UI ----------------------------------------------------------------
 local function make(parent, id, layout)
-  local path = string.find(layout, '/', 1, true) and layout or LAYOUT .. layout
+  local path = sfind(layout, '/', 1, true) and layout or LAYOUT .. layout
   return UIComponent(parent:CreateComponent(id, path))
 end
 
 local function size(c, w, h)
+  if type(w) ~= 'number' or type(h) ~= 'number' then
+    error('size: width and height must be numbers, got ' .. type(w) .. ' and ' .. type(h) .. ' (a game call returned something else?)', 2)
+  end
   w, h = math.floor(w + 0.5), math.floor(h + 0.5)
   c:SetCanResizeWidth(true)
   c:SetCanResizeHeight(true)
   c:Resize(w, h)
-  for i = 0, c:NumImages() - 1 do
+  -- NumImages: not used by any vanilla script (return shape not established): image 0 only when it does not answer a number
+  local okn, images = pcall(function() return c:NumImages() end)
+  if not okn or type(images) ~= 'number' then images = 1 end
+  for i = 0, images - 1 do
     c:SetCanResizeCurrentStateImageWidth(i, true)
     c:SetCanResizeCurrentStateImageHeight(i, true)
     c:ResizeCurrentStateImage(i, w, h)
@@ -451,7 +498,7 @@ function I.api()
   local flags = {}
   for _, k in ipairs(want) do flags[k] = has[k] == true or present(k) end
   local scroll = {}
-  for _, k in ipairs(m) do if string.find(string.lower(k), 'scroll', 1, true) or string.find(string.lower(k), 'clip', 1, true) or string.find(string.lower(k), 'slider', 1, true) then scroll[#scroll + 1] = k end end
+  for _, k in ipairs(m) do if sfind(string.lower(k), 'scroll', 1, true) or sfind(string.lower(k), 'clip', 1, true) or sfind(string.lower(k), 'slider', 1, true) then scroll[#scroll + 1] = k end end
   for _, k in ipairs({'SetScrollPosition', 'ScrollTo', 'Scroll', 'SetScroll', 'ScrollPosition', 'SetSliderPosition', 'SetSliderValue', 'SetValue',
     'SetCurrentValue', 'SetClipChildren', 'ClipChildren', 'SetClip'}) do
     if not has[k] and present(k) then scroll[#scroll + 1] = k end
@@ -483,7 +530,7 @@ function I.text(a)
         local ok, w1, h1, l1 = pcall(function() return c:TextDimensions() end)
         row.now = ok and {w1, h1, l1} or {err = tostring(w1)}
         local ok2, w2, h2, l2 = pcall(function() return c:TextDimensionsForText(s) end)
-        row.for_text = ok2 and {w2, h2, l2} or {err = string.sub(tostring(w2), 1, 80)}
+        row.for_text = ok2 and {w2, h2, l2} or {err = ssub(tostring(w2), 1, 80)}
         local ok3, back = pcall(function() return c:GetStateText() end)
         row.same_text = ok3 and back == s
         rows[#rows + 1] = row
@@ -600,7 +647,7 @@ function I.mouse_setup()
   for _, ev in ipairs({'ComponentMouseOn', 'ComponentMouseOff', 'ComponentLClickUp', 'ComponentLClickDown'}) do
     core:remove_listener(LISTENER .. ev)
     local ok, err = pcall(function()
-      core:add_listener(LISTENER .. ev, ev, function(context) return string.sub(tostring(context.string), 1, 3) == 'pp_' end, function(context)
+      core:add_listener(LISTENER .. ev, ev, function(context) return ssub(tostring(context.string), 1, 3) == 'pp_' end, function(context)
         local list = _G.mtb_pp_state.events
         list[#list + 1] = {event = ev, id = tostring(context.string), clock = os.clock()}
       end, true)
@@ -906,8 +953,8 @@ function I.events_on(a)
       core:add_listener(LISTENER .. 'ev_' .. ev, ev, true, function(context)
         local st = _G.mtb_pp_state
         local d = describe(context)
-        local ours = string.find(tostring(d.faction), me_faction, 1, true) or string.find(tostring(d.character), me_cqi, 1, true)
-          or string.find(tostring(d.military_force), me_cqi, 1, true)
+        local ours = sfind(tostring(d.faction), me_faction, 1, true) or sfind(tostring(d.character), me_cqi, 1, true)
+          or sfind(tostring(d.military_force), me_cqi, 1, true)
         if WORLDWIDE[ev] and not ours then
           st.noise[ev] = (st.noise[ev] or 0) + 1
           return
@@ -1023,7 +1070,7 @@ local function fallback(name, out, enc_err)
     local item_err = out.err and ('; the item itself: ' .. tostring(out.err)) or ''
     return '{"ok":false,"item":' .. plain_quote(tostring(name)) .. ',"item_ok":' .. tostring(out.ok == true) ..
       ',"err":' .. plain_quote('encoder failed: ' .. tostring(enc_err) .. item_err) ..
-      ',"raw":' .. plain_quote(string.sub(raw_dump(out.data, 0), 1, 6000)) .. '}'
+      ',"raw":' .. plain_quote(ssub(raw_dump(out.data, 0), 1, 6000)) .. '}'
   end)
   if ok then return text end
   return '{"ok":false,"err":"encoder failed and the fallback too"}'
@@ -1036,7 +1083,7 @@ function PP.run(name, args)
   if not fn then
     out = {ok = false, err = 'no item ' .. tostring(name)}
   else
-    local ok, res = pcall(fn, args or {})
+    local ok, res = protect(fn, args or {})     -- the error carries the stack: the caller, not only the helper
     out = {ok = ok, data = ok and res or nil, err = (not ok) and tostring(res) or nil}
   end
   out.item = name
@@ -1044,8 +1091,169 @@ function PP.run(name, args)
   if okc and okt then out.cpu_ms = math.floor((t1 - t0) * 1000 + 0.5) end
   local okj, text = pcall(J, out)
   if not okj or type(text) ~= 'string' then text = fallback(name, out, text) end
-  if mtb and mtb.log then pcall(mtb.log, 'port_probe', string.sub(text, 1, 6000)) end
+  if mtb and mtb.log then pcall(mtb.log, 'port_probe', ssub(text, 1, 6000)) end
   return text
+end
+
+-- ---------------------------------------------------------------- smoke ----------------------------------------------------------------
+-- Every shared helper once, each in its own protected call, before the items: one run reports ALL broken helpers instead of one launch
+-- per wrong assumption. Read-only for the campaign (no order, no selection, no gold); our own components only, destroyed at the end.
+-- After every step a canary (the game's bindings still answer as they should) names the first step after which they stopped.
+-- Text only (no encoder): S TAB n step TAB ok types | ERR error with traceback TAB canary;  C TAB first_broken TAB step or none.
+
+local function flat(s)
+  s = tostring(s)
+  s = string.gsub(s, '[\r\n]+', ' | ')
+  s = string.gsub(s, '\t', ' ')
+  return ssub(s, 1, 900)
+end
+
+local function describe_values(n, values)
+  local out = ''
+  for i = 1, n do
+    local v = values[i]
+    local okt, s = pcall(tostring, v)
+    out = out .. (i > 1 and ', ' or '') .. type(v) .. ' ' .. ssub(okt and s or '?', 1, 80)
+  end
+  return n == 0 and '(nothing)' or out
+end
+
+local function canary()
+  local bad = ''
+  local function check(label, fn)
+    local ok, v = pcall(fn)
+    if not ok or not v then bad = bad .. (bad == '' and '' or ', ') .. label .. (ok and '' or (': ' .. flat(v))) end
+  end
+  check('sub_lua', function() return ssub('abcdef', 2, 3) == 'bc' end)
+  check('game string.sub', function() return string.sub('abcdef', 2, 3) == 'bc' end)
+  check('root Id string', function() return type(core:get_ui_root():Id()) == 'string' end)
+  check('root Width number', function() return type(core:get_ui_root():Width()) == 'number' end)
+  check('turn_number number', function() return type(cm:turn_number()) == 'number' end)
+  return bad
+end
+
+function PP.smoke(a)
+  a = a or {}
+  local out, n, first_broken, broken = '', 0, nil, 0
+  local function step(name, fn)
+    n = n + 1
+    local results = {protect(fn)}
+    local ok = results[1]
+    local count = 0
+    for i = 2, 12 do if results[i] ~= nil then count = i - 1 end end
+    local values = {}
+    for i = 1, count do values[i] = results[i + 1] end
+    local c = canary()
+    if c ~= '' and not first_broken then first_broken = n .. ' ' .. name end
+    if not ok then broken = broken + 1 end
+    out = out .. 'S\t' .. n .. ' ' .. name .. '\t' .. (ok and ('ok ' .. describe_values(count, values)) or ('ERR ' .. flat(results[2]))) ..
+      '\t' .. (c == '' and 'canary ok' or ('canary BROKEN: ' .. c)) .. '\n'
+    if ok then return results[2], results[3] end
+  end
+  local key = a.key or (PREFIX .. 'airship_hull_1')
+  step('canary before anything', function() local c = canary(); if c ~= '' then error(c) end; return true end)
+  -- the root and the reads of its size, every way the probe reads them
+  local ui = step('ui_root() = core:get_ui_root()', function() return ui_root() end)
+  step('root:Id()', function() return ui:Id() end)
+  step('root:Width(), root:Height()', function() return ui:Width(), ui:Height() end)
+  step('root:Dimensions()', function() return ui:Dimensions() end)
+  step('root:Bounds()', function() return ui:Bounds() end)
+  step('root:Position()', function() return ui:Position() end)
+  step('core:get_screen_resolution()', function() return core:get_screen_resolution() end)
+  step('test_origin(100, 50)', function() return test_origin(100, 50) end)
+  step('find_uicomponent(root, hud_campaign, faction_buttons_docker)', function() return find_uicomponent(ui, 'hud_campaign', 'faction_buttons_docker') end)
+  step('find_uicomponent(root, absent id)', function() return find_uicomponent(ui, ROOT_ID .. '_absent') end)
+  step('healthy()', function() local h = healthy(); return h.ui_root, h.hud_path end)
+  step('members(root) count', function() return #members(ui) end)
+  step('sfind plain 4 args (string.find_lua)', function() return sfind('a.b', '.', 1, true) end)
+  step('ssub (string.sub_lua)', function() return ssub('abcdef', 2, 3) end)
+  step('J({1, 2.5, x = "q"})', function() return J({1, 2.5, 'q'}) end)
+  step('os.clock()', function() return os.clock() end)
+  -- the campaign: read-only wrappers the items rely on
+  step('cm:model():world():faction_list():num_items()', function() return cm:model():world():faction_list():num_items() end)
+  local m = step('malakai()', function() return malakai() end)
+  step('malakai():character_subtype_key()', function() return m:character_subtype_key() end)
+  step('cqi()', function() return cqi() end)
+  step('faction()', function() return faction() end)
+  step('gold() = cm:get_faction(f):treasury()', function() return gold() end)
+  step('cm:turn_number()', function() return cm:turn_number() end)
+  step('malakai():military_force():command_queue_index()', function() return m:military_force():command_queue_index() end)
+  step('slot_list():num_items()', function() return slot_list():num_items() end)
+  step('slot_list():item_at(0):has_building(), :building()', function() local s = slot_list():item_at(0); return s:has_building(), s:has_building() and s:building() end)
+  step('slots() first and count', function() local s = slots(); return s[1], #s end)
+  step('index_of(slot 0 key)', function() return index_of(slots()[1]) end)
+  step('slot_read(1).empty, .item', function() local r = slot_read(1); return r.empty, r.item, r.building end)
+  step('first_empty()', function() return first_empty() end)
+  step('slots_info() num_items, cco_size, dev, gold', function() local i = slots_info(); return i.num_items, i.cco_size, i.dev, i.gold end)
+  step('read(CcoCampaignCharacter) IsContextValid(MilitaryForceContext)', function() local r = char('IsContextValid(MilitaryForceContext)'); return r.t, r.v, r.err end)
+  step('read(CcoCampaignCharacter) BuildingSlotList.Size', function() local r = char(SLOTS .. '.Size'); return r.t, r.v, r.err end)
+  step('rec(key, Key)', function() local r = rec(key, 'Key'); return r.t, r.v, r.err end)
+  step('rec(key, Level)', function() local r = rec(key, 'Level'); return r.t, r.v, r.err end)
+  step('rec(key, EffectList.Size)', function() local r = rec(key, 'EffectList.Size'); return r.t, r.v, r.err end)
+  step('read(CcoCampaignRoot) IsContextValid(SelectedCharacter)', function() local r = read('CcoCampaignRoot', '', 'IsContextValid(SelectedCharacter)'); return r.t, r.v, r.err end)
+  step('cco(CcoBuildingLevelRecord, key)', function() return cco('CcoBuildingLevelRecord', key) end)
+  step('cco(...):Call(Key)', function() return cco('CcoBuildingLevelRecord', key):Call('Key') end)
+  step('cco(CcoCampaignCharacter, cqi):Call(slot 1)', function() return cco('CcoCampaignCharacter', cqi()):Call(SLOTS .. '.At(1)') end)
+  step('common.get_localised_string', function() return common.get_localised_string('effects_description_wh3_dlc25_effect_agent_enable_recruitment_dignitary_dragon_slayer') end)
+  step('core:add_listener + remove_listener (never fires)', function()
+    core:add_listener(LISTENER .. 'smoke', 'ComponentLClickUp', function() return false end, function() end, true)
+    core:remove_listener(LISTENER .. 'smoke')
+    return true
+  end)
+  step('CampaignUI type', function() return type(CampaignUI), type(CampaignUI and CampaignUI.ClearSelection) end)
+  -- our own components: one of each layout the probe uses, under a holder of ours
+  local holder = step('make(root, smoke holder, pp_zone)', function() return make(ui, ROOT_ID .. '_smoke', 'pp_zone') end)
+  local W, H = 800, 600
+  local okw, w0, h0 = pcall(function() return ui:Width(), ui:Height() end)
+  if okw and type(w0) == 'number' and type(h0) == 'number' then W, H = w0, h0 end
+  if holder then
+    step('size(holder, root size)', function() size(holder, W, H); return holder:Width(), holder:Height() end)
+    step('holder:MoveTo(0, 0)', function() holder:MoveTo(0, 0); return holder:Position() end)
+  end
+  local images = {pp_red = LAYOUT .. 'green.png', pp_green = LAYOUT .. 'red.png', pp_black = LAYOUT .. 'red.png', pp_button = LAYOUT .. 'green.png'}
+  local texts = {pp_text_title = true, pp_text_head = true, pp_text_name = true, pp_text_line = true, pp_text_body = true}
+  local layouts = {'pp_zone', 'pp_clip', 'pp_red', 'pp_green', 'pp_black', 'pp_button', 'pp_text_title', 'pp_text_head', 'pp_text_name', 'pp_text_line',
+    'pp_text_body', 'ui/tww3_mtb/frame'}
+  for i, layout in ipairs(layouts) do
+    if not holder then break end
+    local c = step(layout .. ': make', function() return make(holder, 'pp_smoke_' .. i, layout) end)
+    if c then
+      step(layout .. ': size(40, 30)', function() size(c, 40, 30); return c:Width(), c:Height() end)
+      step(layout .. ': at(10 + i * 50, 40)', function() at(c, 10 + i * 50, 40); return c:Position() end)
+      step(layout .. ': rect', function() local r = rect(c); return r.x, r.y, r.w, r.h end)
+      step(layout .. ': NumImages()', function() return c:NumImages() end)
+      if images[layout] then
+        step(layout .. ': SetImagePath', function() return c:SetImagePath(images[layout]) end)
+        step(layout .. ': GetImagePath', function() return c:GetImagePath() end)
+      end
+      if texts[layout] then
+        step(layout .. ': SetStateText', function() return c:SetStateText('Дух Грунгни') end)
+        step(layout .. ': GetStateText', function() return c:GetStateText() end)
+        step(layout .. ': TextDimensions', function() return c:TextDimensions() end)
+      end
+      step(layout .. ': SetOpacity(200), Opacity()', function() c:SetOpacity(200); return c:Opacity() end)
+      step(layout .. ': CurrentState, Visible, VisibleFromRoot', function() return c:CurrentState(), c:Visible(), c:VisibleFromRoot() end)
+      step(layout .. ': Destroy', function() c:Destroy(); return true end)
+    end
+  end
+  if holder then step('holder:Destroy', function() holder:Destroy(); return true end) end
+  -- the composite helpers the items start with
+  step('new_root()', function() local r = new_root(); return r:Width(), r:Height() end)
+  step('clear()', function() return clear() end)
+  out = out .. 'C\tfirst_broken\t' .. (first_broken or 'none') .. '\n'
+  out = out .. 'C\tsteps\t' .. n .. '\n'
+  out = out .. 'C\tfailed\t' .. broken .. '\n'
+  return out
+end
+
+-- Last of the run (nothing after it can be spoiled): the game's own string.find with a 4th argument, between two canaries. Confirms or
+-- clears the suspected cause of run 20261114-210531. Text only.
+function PP.find4()
+  local before = canary()
+  local ok, a, b = pcall(string.find, 'abc', 'b', 1, true)
+  local after = canary()
+  return 'canary before: ' .. (before == '' and 'ok' or before) .. '; string.find(abc, b, 1, true): ' .. tostring(ok) .. ' ' .. tostring(a) .. ' ' ..
+    tostring(b) .. '; canary after: ' .. (after == '' and 'ok' or after) .. '; find_lua present: ' .. tostring(string.find_lua ~= nil)
 end
 
 return 'ready'

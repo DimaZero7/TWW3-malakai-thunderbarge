@@ -47,9 +47,10 @@ SEP = chr(92)
 DEFAULT_LIMIT = 3600
 END_TURN_LIMIT = 480     # item 12: the turn end is the slowest and least sure step; after this the next items still run if the map answers
 # Per item: seconds before the item is cut off (its steps stop, the next item goes on).
-BUDGET = {"census": 60, "0": 60, "7": 120, "8": 150, "10": 60, "6a": 60, "5": 60, "11": 90, "setup": 60, "1": 240, "2": 240, "3": 90, "4": 900, "12": END_TURN_LIMIT + 240, "13": 120, "14": 60, "6b": 90, "9": 90}
+BUDGET = {"census": 60, "smoke": 120, "find4": 30, "0": 60, "7": 120, "8": 150, "10": 60, "6a": 60, "5": 60, "11": 90, "setup": 60, "1": 240, "2": 240, "3": 90, "4": 900, "12": END_TURN_LIMIT + 240, "13": 120, "14": 60, "6b": 90, "9": 90}
 RISKY = {"6b": "a game template (ui/templates/listview) instantiated in our layout",
-         "9": "a game template with the game's own bindings (ui/templates/building_frame) given a context by script"}
+         "9": "a game template with the game's own bindings (ui/templates/building_frame) given a context by script",
+         "find4": "the game's own string.find with a 4th argument: suspected to break the bindings until a restart (run 20261114-210531)"}
 UI_STRINGS = ["Дух Грунгни", "Постройки", "Корабль", "Экипаж", "Всё дерево", "Вблизи", "Казна: 12 345", "Закажите первую постройку — Заготовка под корабль",
               "Нужно: Корпус II, Пивной чертог", "Уже строится", "Не хватает золота", "+5%", "−30%", "2 500", "3 хода", "+N"]
 
@@ -86,6 +87,7 @@ def lua_lib():
 
 CENSUS_BEGIN, CENSUS_END = "-- ==== CENSUS BEGIN ====", "-- ==== CENSUS END ===="
 CENSUS_FILE = "lua_env_census.txt"      # in the run folder; a real run's copy also goes to build/port_probe/ for the fake game
+SMOKE_FILE = "smoke.txt"                # in the run folder: one line per helper step
 
 
 def census_code():
@@ -398,6 +400,7 @@ class Probe:
         self.healthy = True
         self.last_fail = None
         self.census = None
+        self.smoke_broken = False
 
     # -- plumbing
     def sleep(self, seconds):
@@ -496,7 +499,7 @@ class Probe:
                 self.write(record)
                 raise
         except Exception as e:      # one item's failure never loses the others
-            record.update(status="error", answer=f"{type(e).__name__}: {str(e)[:600]}")
+            record.update(status="error", answer=f"{type(e).__name__}: {str(e)[:1500]}")
             self.shot(f"pp_failed_{no}")
         finally:
             self.item_end = None
@@ -556,6 +559,42 @@ class Probe:
                   f"behaviours that raise {failing or 'none'}; tostring(1/0) {c['B'].get('tostring 1/0')}; format %d 1.0 {c['B'].get('format %d 1.0')}; "
                   f"file {path.name}")
         return "answered", answer, c
+
+    # -- smoke: every shared helper once, each protected, with a canary after each step; never stops on its own failures
+    def ismoke(self):
+        path = self.dir / SMOKE_FILE
+        try:
+            row = self.send(self.lib + f"\nreturn _G.mtb_pp.smoke({lua_literal({'key': self.cfg.get('hull_top')})})", 60)
+        except TimeoutError:
+            raise
+        except Exception as e:
+            row = {"ok": False, "result": f"{type(e).__name__}: {e}"}
+        text = str(row.get("result"))
+        path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+        if not row.get("ok"):
+            return "inconclusive", f"the smoke chunk itself failed (the file does not load?): {text[:600]}", {"raw": text[:4000]}
+        steps, info = [], {}
+        for line in text.splitlines():
+            parts = line.split("\t")
+            if parts[0] == "S" and len(parts) >= 4:
+                steps.append({"step": parts[1], "result": parts[2], "canary": parts[3]})
+            elif parts[0] == "C" and len(parts) >= 3:
+                info[parts[1]] = parts[2]
+        failed = [s for s in steps if s["result"].startswith("ERR")]
+        self.smoke_broken = info.get("first_broken", "none") != "none"
+        answer = (f"{len(steps)} steps, {len(failed)} failed: " + ("; ".join(f"{s['step']}: {s['result'][4:220]}" for s in failed) or "none") +
+                  f"; game bindings (canary) first broken after: {info.get('first_broken', '?')}; file {path.name}")
+        return "answered", answer, {"steps": steps, "info": info}
+
+    # -- the last item: the game's string.find with a 4th argument between two canaries (the suspected cause of run 20261114-210531)
+    def ifind4(self):
+        row = self.send(self.lib + "\nreturn _G.mtb_pp.find4()", 20)
+        text = str(row.get("result"))
+        if not row.get("ok"):
+            return "inconclusive", f"chunk failed: {text[:400]}", {"raw": text[:2000]}
+        broke = "canary after: ok" not in text and "canary before: ok" in text
+        verdict = "CONFIRMED: the call broke the bindings" if broke else "the call did not break the bindings here" if "canary after: ok" in text else "canary already broken before"
+        return "answered", f"{verdict}: {text[:500]}", {"raw": text}
 
     # -- 0. the API
     def i0(self):
@@ -1107,6 +1146,7 @@ class Probe:
     # -- all of them
     def run(self):
         order = [("census", "Lua environment census (standalone, before everything)", self.icensus),
+                 ("smoke", "every shared helper once, protected, with a canary of the game's bindings after each", self.ismoke),
                  ("0", "API surface of UIComponent (no walk)", self.i0),
                  ("7", "TextDimensions on our own text", self.i7),
                  ("8", "time to create and destroy 1500 components", self.i8),
@@ -1123,7 +1163,8 @@ class Probe:
                  ("12", "event order at a turn start, on a cancel and a dismantle; the slot at each event", self.i12),
                  ("13", "a requirement whose level was replaced by the next level of its chain", self.i13),
                  ("6b", "the game's list template in our layout: clipping, slider, wheel", self.i6b),
-                 ("9", "SetContextObject on ui/templates/building_frame", self.i9)]
+                 ("9", "SetContextObject on ui/templates/building_frame", self.i9),
+                 ("find4", "the game's string.find with a 4th argument, between two canaries (suspected cause of run 20261114-210531)", self.ifind4)]
         how = "completed"
         first = []      # error keys of the first ABORT_AFTER items after the census (None: the item did not fail)
         try:
@@ -1131,7 +1172,7 @@ class Probe:
                 skip = None
                 if no in RISKY and not self.healthy:
                     skip = "the UI was not healthy after the previous item"
-                elif no in ("12", "13", "6b", "9") and not self.fake and self.s.mode() != "campaign":
+                elif no in ("12", "13", "6b", "9", "find4") and not self.fake and self.s.mode() != "campaign":
                     skip = "not on the campaign map (after item 4)"
                 if skip:
                     rec = {"item": no, "title": title, "status": "skipped", "answer": skip}
@@ -1139,7 +1180,10 @@ class Probe:
                     self.results[no] = rec
                     continue
                 rec = self.item(no, title, fn)
-                if no == "census":
+                if no == "smoke" and self.smoke_broken:
+                    # the game's bindings stopped answering during the smoke: nothing after it can be trusted until the game restarts
+                    raise SessionAbort(f"the game's bindings broke during the smoke stage: {str(rec.get('answer'))[:600]}")
+                if no in ("census", "smoke"):
                     continue
                 if len(first) < ABORT_AFTER:
                     first.append(error_key(rec["answer"]) if rec["status"] == "error" else None)
@@ -1202,10 +1246,11 @@ function U:SetDockOffset(x, y) assert(type(x) == 'number' and type(y) == 'number
 function U:MoveTo(x, y) self._x, self._y = x, y end
 function U:Position() local x, y, p = self._x, self._y, self._parent; while p do x, y = x + p._x, y + p._y; p = p._parent end; return x, y end
 function U:Bounds() return self._w, self._h end
+function U:Dimensions() return self._w, self._h end     -- vanilla: local w, h = uic:Dimensions()
 function U:Width() return self._w end
 function U:Height() return self._h end
 function U:SetStateText(t) assert(type(t) == 'string'); self._text = t end
-function U:GetStateText() return self._text end
+function U:GetStateText() return self._text, '' end       -- vanilla: local unparsed_text, text_source = uic:GetStateText()
 function U:TextDimensions() return #self._text * 7, 18, 1 end
 function U:SetOpacity(v) assert(type(v) == 'number'); self._op = v end
 function U:Opacity() return self._op end
@@ -1235,7 +1280,7 @@ function find_uicomponent(parent, ...)
   for _, name in ipairs({...}) do u = u and find_in(u, name) end
   return u or false
 end
-core = {get_ui_root = function() return root end, get_screen_resolution = function() return 1920, 1080 end,
+core = {get_ui_root = function() return root end, get_screen_resolution = function(self) return root:Dimensions() end,   -- lib_core.lua: self.ui_root:Dimensions()
   add_listener = function(self, name, ev, cond, cb) listeners[name] = {event = ev, cond = cond, cb = cb} end,
   remove_listener = function(self, name) listeners[name] = nil end}
 -- the campaign
@@ -1339,17 +1384,75 @@ class FakeSession:
 GAME_LACKS = ["math.huge"]
 
 
+# Standard Lua names the census may report missing. Game API names (core, cm, UIComponent...) are never removed from the fake on a census:
+# the census of run 20261114-210531 read them through _G, where the game does not keep them (the chunk's environment does).
+STANDARD_GLOBALS = {"assert", "collectgarbage", "dofile", "error", "gcinfo", "getfenv", "getmetatable", "ipairs", "load", "loadfile", "loadstring",
+                    "module", "newproxy", "next", "pairs", "pcall", "print", "rawequal", "rawget", "rawset", "require", "select", "setfenv",
+                    "setmetatable", "tonumber", "tostring", "type", "unpack", "xpcall", "io", "os", "debug", "coroutine", "package"}
+
+
 def game_lacks():
     """[(name, why)]: the names the fake game removes from desktop Lua 5.1."""
     out = [(n, "known: run 20261114-204941") for n in GAME_LACKS]
     path = OUT / CENSUS_FILE
     if path.exists():
         c = parse_census(path.read_text(encoding="utf-8"))
-        for kind in ("G", "M"):
-            for name, t in c[kind].items():
-                if t == "nil" and name not in GAME_LACKS:
-                    out.append((name, f"census {path.name}"))
+        for name, t in c["G"].items():
+            if t == "nil" and name in STANDARD_GLOBALS and name not in GAME_LACKS:
+                out.append((name, f"census {path.name}"))
+        for name, t in c["M"].items():
+            if t == "nil" and name not in GAME_LACKS and name.split(".", 1)[1] not in ("find_lua", "sub_lua", "len_lua"):
+                out.append((name, f"census {path.name}"))
     return out
+
+
+# The game's own string functions (data_script.pack _lib/lib_lua_extensions.lua; census K lines of run 20261114-210531): find, sub and len
+# are UTF-8 versions, find without patterns and without the 4th argument; the originals are kept as find_lua, sub_lua, len_lua.
+# The fake refuses a 4th argument to string.find: the game cannot be made to show the binding damage that followed such a call in
+# run 20261114-210531, so the fake stops at the call itself.
+GAME_STRINGS = r"""
+local find, sub, len, byte = string.find, string.sub, string.len, string.byte
+string.find_lua, string.sub_lua, string.len_lua = find, sub, len
+local function starts(s)       -- byte index of every UTF-8 character
+  local out, i, n = {}, 1, len(s)
+  while i <= n do
+    out[#out + 1] = i
+    local b = byte(s, i)
+    i = i + ((b >= 240 and 4) or (b >= 224 and 3) or (b >= 192 and 2) or 1)
+  end
+  return out, n
+end
+local function char_index(k, count)
+  if k < 0 then k = count + k + 1 end
+  return k
+end
+string.len = function(s) local st = starts(s); return #st end
+string.sub = function(s, i, j)
+  local st, n = starts(s)
+  local count = #st
+  i = char_index(i or 1, count); j = char_index(j or count, count)
+  if i < 1 then i = 1 end
+  if j > count then j = count end
+  if i > j then return '' end
+  local last = (st[j + 1] or (n + 1)) - 1
+  return sub(s, st[i], last)
+end
+string.find = function(s, needle, init, extra)
+  if extra ~= nil then
+    error("the game's string.find (UTF-8) takes 3 arguments and no patterns; a 4th argument preceded broken game bindings in run 20261114-210531: use string.find_lua", 2)
+  end
+  local st = starts(s)
+  local from = st[char_index(init or 1, #st)] or (len(s) + 1)
+  local a, b = find(s, needle, from, true)
+  if not a then return nil end
+  local ca, cb
+  for k, pos in ipairs(st) do
+    if pos == a then ca = k end
+    if pos <= b then cb = k end
+  end
+  return ca, cb
+end
+"""
 
 
 REDUCE = r"""
@@ -1389,6 +1492,8 @@ def fake_main(config_path, lua_file=None):
         if not ok:
             return 2
     rt.execute(FAKE_GAME)
+    rt.execute(GAME_STRINGS)
+    print("fake string library: the game's UTF-8 find/sub/len, originals as find_lua/sub_lua/len_lua; string.find refuses a 4th argument")
     lacks = game_lacks()
     removed = rt.execute(REDUCE)(rt.table_from([n for n, _ in lacks]))
     print(f"fake standard library reduced to the game's: removed {removed or 'nothing'} ({'; '.join(f'{n}: {w}' for n, w in lacks)})")
@@ -1440,9 +1545,10 @@ def plan_text(args, limit):
         f"        (used_mods.txt only read); low graphics, windowed {res}, Normal difficulty, RTX checked; SW_SHOWNOACTIVATE + KeepBehind (no focus, under other windows);",
         "        the user's save/settings folders copied and put back; autosave off.",
         "  2. main menu -> new campaign wh3_dlc25_dwf_malakai (frontend.start_campaign), wait for the end turn button, peace with everyone, events accepted.",
-        f"  3. census of the game's Lua (alone, -> <run>/{CENSUS_FILE}); the session ABORTS (game closed as in 4) if items 0, 7, 8 all fail with one error;",
+        f"  3. census of the game's Lua (alone, -> <run>/{CENSUS_FILE}); smoke: every shared helper once, protected, canary after each (-> <run>/{SMOKE_FILE});",
+        "     the session ABORTS (game closed as in 4) if the canary broke in the smoke, or if items 0, 7, 8 all fail with one error;",
         "     items 0, 7, 8, 10, 6a, 5, 11 (our own components only), 14 (reads), setup (gold, points, hull top), 1, 2, 3, 4 (one real battle),",
-        f"     12 (ONE turn end by script, hard limit {END_TURN_LIMIT} s; then a cancel and a dismantle), 13, then the risky 6b, 9.",
+        f"     12 (ONE turn end by script, hard limit {END_TURN_LIMIT} s; then a cancel and a dismantle), 13, then the risky 6b, 9, find4 (last).",
         f"  4. STOP flag -> run_game.py closes only the game it started (its PID), waits until tasklist has no Warhammer3.exe, then removes the lock;",
         "     the same on an error, a timeout or a crash. Item 12 is the only turn end of the probe.",
         f"  hard limit {limit} s (~{limit // 60} min); expected 30-45 min: start and new campaign 8-12, UI items 3-4, buildings 4-6, battle 4-7, turn end with 12/13 3-10, risky 2.",
@@ -1475,7 +1581,7 @@ def run(args):
     fake = subprocess.run(["py", "-3.10", str(Path(__file__).resolve()), "_fake", str(CONFIG)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     print("Lua 5.1 check and fake game (py -3.10, lupa):")
     fake_lines = (fake.stdout + fake.stderr).strip().splitlines()
-    head = [l for l in fake_lines[:-40] if l.startswith(("syntax ", "fake standard library"))]
+    head = [l for l in fake_lines[:-40] if l.startswith(("syntax ", "fake standard library", "fake string library"))]
     print("\n".join("  " + l for l in head + fake_lines[-40:]))
     print(plan_text(args, limit))
     if args.dry_run:

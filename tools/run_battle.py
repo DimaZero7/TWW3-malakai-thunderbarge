@@ -47,6 +47,87 @@ GRAPHICS = {
 }
 
 
+class FocusGuard:
+    """Gives the foreground straight back to the window that had it when the game takes it (CLAUDE.md: the game runs without focus).
+
+    Why the game gets it: STARTUPINFO's SW_SHOWNOACTIVATE only covers the first ShowWindow; the game then activates its own window, and
+    Windows lets it because it was started from the process tree that has the foreground right (the user's terminal session). A process
+    that is not in the foreground cannot lock that out in advance (LockSetForegroundWindow only works for the foreground process), so the
+    guard polls and gives the foreground back: SetForegroundWindow on the window that had it, and if Windows refuses, the same with this
+    thread's input attached to the game's for the moment of the call (AttachThreadInput). No keys, no mouse. Every take and give-back is
+    written to the log with the time it took. tick() is cheap: call it every ~50 ms.
+    """
+
+    def __init__(self, pid, log):
+        import ctypes
+        import ctypes.wintypes as wt
+        self.ctypes, self.wt = ctypes, wt
+        self.u = ctypes.WinDLL("user32", use_last_error=True)
+        self.k = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.u.GetForegroundWindow.restype = wt.HWND
+        self.u.GetWindowThreadProcessId.restype = wt.DWORD
+        self.u.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+        self.u.SetForegroundWindow.argtypes = [wt.HWND]
+        self.u.IsWindow.argtypes = [wt.HWND]
+        self.u.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
+        self.u.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
+        self.pid, self.log = pid, log
+        self.prev = None
+        self.taken = self.given = 0
+        fg = self.u.GetForegroundWindow()
+        if fg and self.owner(fg) != pid:
+            self.prev = fg
+        self.write(f"focus guard: foreground before the game {self.describe(self.prev)}")
+
+    def write(self, text):
+        with Path(self.log).open("a", encoding="utf-8") as f:
+            f.write(time.strftime("%H:%M:%S ") + text + "\n")
+
+    def owner(self, hwnd):
+        pid = self.wt.DWORD()
+        self.u.GetWindowThreadProcessId(hwnd, self.ctypes.byref(pid))
+        return pid.value
+
+    def describe(self, hwnd):
+        if not hwnd:
+            return "none"
+        buf = self.ctypes.create_unicode_buffer(120)
+        self.u.GetWindowTextW(hwnd, buf, 120)
+        return f"{int(hwnd)} «{buf.value[:60]}»"
+
+    def tick(self):
+        fg = self.u.GetForegroundWindow()
+        if not fg:
+            return
+        if self.owner(fg) != self.pid:
+            self.prev = fg          # whatever the user is in now gets the foreground back next time
+            return
+        self.taken += 1
+        t0 = time.perf_counter()
+        if not self.prev or not self.u.IsWindow(self.prev):
+            self.write(f"the game took the foreground (#{self.taken}); no earlier window to give it back to")
+            self.prev = None
+            return
+        way = "SetForegroundWindow"
+        ok = bool(self.u.SetForegroundWindow(self.prev)) and self.u.GetForegroundWindow() == self.prev
+        if not ok:
+            way = "AttachThreadInput + SetForegroundWindow"
+            me = self.k.GetCurrentThreadId()
+            game_thread = self.u.GetWindowThreadProcessId(fg, None)
+            attached = bool(self.u.AttachThreadInput(me, game_thread, True))
+            try:
+                self.u.SetForegroundWindow(self.prev)
+            finally:
+                if attached:
+                    self.u.AttachThreadInput(me, game_thread, False)
+            ok = self.u.GetForegroundWindow() == self.prev
+        ms = (time.perf_counter() - t0) * 1000
+        if ok:
+            self.given += 1
+        self.write(f"the game took the foreground (#{self.taken}); given back to {self.describe(self.prev)} by {way}: "
+                   f"{'ok' if ok else 'REFUSED by Windows'} in {ms:.0f} ms")
+
+
 def game_running():
     out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Warhammer3.exe", "/NH"], capture_output=True, text=True).stdout
     return "Warhammer3.exe" in out
@@ -192,6 +273,7 @@ def main(argv=None):
         info.dwFlags = subprocess.STARTF_USESHOWWINDOW
         info.wShowWindow = 4    # SW_SHOWNOACTIVATE: do not take the focus from whatever the user is doing
         process = subprocess.Popen(f'"{GAME / "Warhammer3.exe"}" {arguments}', cwd=GAME, startupinfo=info)
+        guard = FocusGuard(process.pid, run / "window.log")
         print(f"started PID {process.pid}, run {run}", flush=True)
         status = "timeout"
         offset, loaded, fighting, loaded_at = 0, False, False, 0.0
@@ -257,7 +339,9 @@ def main(argv=None):
                             status, done = row.get("status", "completed"), True
                 if done:
                     break
-            time.sleep(0.2)
+            for _ in range(4):      # the focus guard every 50 ms
+                guard.tick()
+                time.sleep(0.05)
         if status == "completed":
             time.sleep(2)   # let the last lines reach the file before the game is closed
     finally:
