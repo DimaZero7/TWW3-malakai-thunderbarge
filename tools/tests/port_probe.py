@@ -1378,98 +1378,15 @@ class FakeSession:
         return "campaign"
 
 
-# What the game's Lua is KNOWN to lack (run 20261114-204941: `-math.huge` raised "arithmetic on field 'huge' (a nil value)").
-# The fake game removes these, and also every global / standard member that the newest real census (build/port_probe/lua_env_census.txt,
-# written by item "census" of a real run) reported as nil. Never add here what was not seen missing in the game.
-GAME_LACKS = ["math.huge"]
-
-
-# Standard Lua names the census may report missing. Game API names (core, cm, UIComponent...) are never removed from the fake on a census:
-# the census of run 20261114-210531 read them through _G, where the game does not keep them (the chunk's environment does).
-STANDARD_GLOBALS = {"assert", "collectgarbage", "dofile", "error", "gcinfo", "getfenv", "getmetatable", "ipairs", "load", "loadfile", "loadstring",
-                    "module", "newproxy", "next", "pairs", "pcall", "print", "rawequal", "rawget", "rawset", "require", "select", "setfenv",
-                    "setmetatable", "tonumber", "tostring", "type", "unpack", "xpcall", "io", "os", "debug", "coroutine", "package"}
+# The game's Lua as the fake runs it (the game's UTF-8 string.find/sub/len, the library reduced to the game's): one description for every
+# offline runner, tools/game_lua_env.py. Kept under the old names here.
+import game_lua_env as genv  # noqa: E402
+GAME_LACKS, STANDARD_GLOBALS, GAME_STRINGS, REDUCE = genv.GAME_LACKS, genv.STANDARD_GLOBALS, genv.GAME_STRINGS, genv.REDUCE
 
 
 def game_lacks():
     """[(name, why)]: the names the fake game removes from desktop Lua 5.1."""
-    out = [(n, "known: run 20261114-204941") for n in GAME_LACKS]
-    path = OUT / CENSUS_FILE
-    if path.exists():
-        c = parse_census(path.read_text(encoding="utf-8"))
-        for name, t in c["G"].items():
-            if t == "nil" and name in STANDARD_GLOBALS and name not in GAME_LACKS:
-                out.append((name, f"census {path.name}"))
-        for name, t in c["M"].items():
-            if t == "nil" and name not in GAME_LACKS and name.split(".", 1)[1] not in ("find_lua", "sub_lua", "len_lua"):
-                out.append((name, f"census {path.name}"))
-    return out
-
-
-# The game's own string functions (data_script.pack _lib/lib_lua_extensions.lua; census K lines of run 20261114-210531): find, sub and len
-# are UTF-8 versions, find without patterns and without the 4th argument; the originals are kept as find_lua, sub_lua, len_lua.
-# The fake refuses a 4th argument to string.find: the game cannot be made to show the binding damage that followed such a call in
-# run 20261114-210531, so the fake stops at the call itself.
-GAME_STRINGS = r"""
-local find, sub, len, byte = string.find, string.sub, string.len, string.byte
-string.find_lua, string.sub_lua, string.len_lua = find, sub, len
-local function starts(s)       -- byte index of every UTF-8 character
-  local out, i, n = {}, 1, len(s)
-  while i <= n do
-    out[#out + 1] = i
-    local b = byte(s, i)
-    i = i + ((b >= 240 and 4) or (b >= 224 and 3) or (b >= 192 and 2) or 1)
-  end
-  return out, n
-end
-local function char_index(k, count)
-  if k < 0 then k = count + k + 1 end
-  return k
-end
-string.len = function(s) local st = starts(s); return #st end
-string.sub = function(s, i, j)
-  local st, n = starts(s)
-  local count = #st
-  i = char_index(i or 1, count); j = char_index(j or count, count)
-  if i < 1 then i = 1 end
-  if j > count then j = count end
-  if i > j then return '' end
-  local last = (st[j + 1] or (n + 1)) - 1
-  return sub(s, st[i], last)
-end
-string.find = function(s, needle, init, extra)
-  if extra ~= nil then
-    error("the game's string.find (UTF-8) takes 3 arguments and no patterns; a 4th argument preceded broken game bindings in run 20261114-210531: use string.find_lua", 2)
-  end
-  local st = starts(s)
-  local from = st[char_index(init or 1, #st)] or (len(s) + 1)
-  local a, b = find(s, needle, from, true)
-  if not a then return nil end
-  local ca, cb
-  for k, pos in ipairs(st) do
-    if pos == a then ca = k end
-    if pos <= b then cb = k end
-  end
-  return ca, cb
-end
-"""
-
-
-REDUCE = r"""
-return function(names)
-  local ipairs, match, type, concat, G = ipairs, string.match, type, table.concat, _G
-  local done = {}
-  for _, name in ipairs(names) do
-    local lib, member = match(name, '^([%w_]+)%.([%w_]+)$')
-    if lib then
-      if type(G[lib]) == 'table' then G[lib][member] = nil; done[#done + 1] = name end
-    elseif name ~= '_G' then
-      G[name] = nil; done[#done + 1] = name
-    end
-  end
-  return concat(done, ' ')
-end
-"""
+    return genv.game_lacks(OUT / CENSUS_FILE)
 
 
 def fake_main(config_path, lua_file=None):

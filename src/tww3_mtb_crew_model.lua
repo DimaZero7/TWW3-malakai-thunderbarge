@@ -13,6 +13,9 @@
 --   apply_pct(base, pct, kind)                                     a number with a bonus (effects_model.mjs applyPct)
 --   crew_places(n, men), crew_ammo(n, pct, men), plural(v, forms), ammo_share(a, group, per)
 --
+-- The same in the game's Lua and in plain Lua 5.1 (tools/game_lua_env.py; the replay runs under it): no string cutting, no math.huge, numbers
+-- written by M.num; every number of the crew is whole and far below 2^24 except the fractional multipliers of the config (float32 in the game),
+-- whose products are rounded to whole by round() before anyone reads them.
 -- Loaded as a module (it returns its table and sets nothing global). Not read by the running mod yet: src/tww3_mtb_crew.lua keeps its own rule
 -- until stage 3 calls this one.
 
@@ -144,7 +147,7 @@ function M.crew_ammo(n, pct, men)
     local places = M.crew_places(n, men)
     local base = n.ammo
     if places ~= 0 and places ~= n.seats then base = round(n.ammo * places / n.seats) end
-    local total = floor(base * (1 + (pct or 0) / 100) + 0.5)
+    local total = round(base * (1 + (pct or 0) / 100))      -- the page's Math.floor(x + 0.5): round() is the same, and the float32 check sees x
     local each = total
     if places ~= 0 then each = total / places end
     return {places = places, base = base, total = total, each = each, whole = each == floor(each), per = round(each)}
@@ -164,10 +167,32 @@ function M.plural(v, forms)
     return forms[3]
 end
 
--- a whole number as JS writes it in a template (`${n}`)
+-- a number as JS writes it in a template (`${n}`), the same in the game's Lua (32-bit floats, %d wraps above 2^31, no %g in vanilla
+-- scripts) and in plain Lua: a whole number in full (%d below 2^31, %.0f beyond), a fraction to 6 significant digits with the trailing zeros
+-- cut (the text JS writes for a number of at most 6 digits; tostring would write 16.60000038147 for the game's 16.6). As Ship.num.
+local sformat, sgsub, sfind = string.format, string.gsub, string.find_lua or string.find
+local TWO31 = 2147483648
+local function whole(n)
+    if n > -TWO31 and n < TWO31 then return sformat('%d', n) end
+    return sformat('%.0f', n)
+end
 function M.num(n)
-    if n == floor(n) and n > -1e15 and n < 1e15 then return string.format('%d', n) end
-    return tostring(n)
+    if n ~= n or n == 1 / 0 or n == -1 / 0 then return tostring(n) end
+    if n == floor(n) then return whole(n) end
+    local a = n < 0 and -n or n
+    local p
+    if a >= 1 then
+        p = 6 - #whole(floor(a))
+        if p < 0 then p = 0 end
+    else      -- the place of the first digit read off the printed number (a * 10 rounds differently in a float and in a double)
+        local zeros = string.match(sformat('%.50f', a), '^0%.(0*)[1-9]')
+        if not zeros then return '0' end
+        p = 6 + #zeros
+    end
+    local s = sformat('%.' .. whole(p) .. 'f', n)
+    if sfind(s, '.', 1, true) then s = sgsub(sgsub(s, '0+$', ''), '%.$', '') end
+    if s == '-0' then s = '0' end
+    return s
 end
 
 function M.ammo_share(a, group, per)

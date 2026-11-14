@@ -19,6 +19,16 @@
 
 local Ship = {}
 
+-- ---- the game's Lua (build/port_probe/lua_env_census.txt; tools/game_lua_env.py emulates it offline) ----
+-- The game replaces string.find, string.sub and string.len with UTF-8 versions: sub and len count characters, find takes 3 arguments and no
+-- patterns (a 4th argument preceded broken game bindings in run 20261114-210531). The originals stay as string.find_lua / sub_lua / len_lua;
+-- plain Lua 5.1 has only the originals. This module cuts and searches bytes, so it takes the originals once, here, and never calls the game's.
+-- `#s` is the byte length in both (the census: #'Дух' = 6). No math.huge (nil in the game). Numbers are 32-bit floats in the game: whole
+-- numbers exact up to 2^24, %d wraps above 2^31; the numbers here are written by whole() and digits() below, without %g.
+local sfind = string.find_lua or string.find
+local ssub = string.sub_lua or string.sub
+local sbyte, sformat, sgsub, smatch, sgmatch = string.byte, string.format, string.gsub, string.match, string.gmatch
+
 -- ---- small helpers: the page's JS idioms ----
 local function push(list, v) list[#list + 1] = v end
 local function includes(list, v)
@@ -54,24 +64,58 @@ local function ssort(list, less)
     end
     return list
 end
-local function starts(s, p) return string.sub(s, 1, #p) == p end
+local function starts(s, p) return ssub(s, 1, #p) == p end
 local function truthy(s) return s ~= nil and s ~= false and s ~= '' and s ~= 0 end
 local floor = math.floor
--- a number as a JS template writes it (`${n}`): the page's numbers here are whole
+-- a whole number in digits: %d below 2^31 (above it wraps: the census, %d of 3e9 = -2147483648), %.0f beyond (exact for any whole number)
+local TWO31 = 2147483648
+local function whole(n)
+    if n > -TWO31 and n < TWO31 then return sformat('%d', n) end
+    return sformat('%.0f', n)
+end
+Ship.whole = whole
+-- a fraction to n significant digits, the trailing zeros cut (%.Nf; no %g in vanilla scripts). 9 digits hold any float32 exactly: the saved
+-- state reads back the game's number bit for bit. 6 digits are what the player reads: the same text from a float32 and from a double when the
+-- number has at most 6 digits (16.6, where tostring writes 16.60000038147 in the game)
+-- (the place of the first digit is read off the printed number, never computed: a * 10 rounds differently in a float and in a double)
+local function digits(v, n)
+    local a = v < 0 and -v or v
+    local p
+    if a >= 1 then
+        p = n - #whole(floor(a))
+        if p < 0 then p = 0 end
+    else
+        local zeros = smatch(sformat('%.50f', a), '^0%.(0*)[1-9]')
+        if not zeros then return '0' end
+        p = n + #zeros
+    end
+    local s = sformat('%.' .. whole(p) .. 'f', v)
+    if sfind(s, '.', 1, true) then s = sgsub(sgsub(s, '0+$', ''), '%.$', '') end
+    if s == '-0' then s = '0' end
+    return s
+end
+Ship.digits = digits
+-- a number as a JS template writes it (`${n}`): a whole number in full, a fraction to 6 significant digits
 local function num(n)
     if type(n) ~= 'number' then return tostring(n) end
-    if n == floor(n) and n > -1e15 and n < 1e15 then return string.format('%d', n) end
-    return tostring(n)
+    if n ~= n or n == 1 / 0 or n == -1 / 0 then return tostring(n) end
+    if n == floor(n) then return whole(n) end
+    return digits(n, 6)
 end
 Ship.num = num
--- the first letter up, as JS toUpperCase: ASCII and the Cyrillic of the texts (а-я, ё)
+-- the first letter up, as JS toUpperCase: ASCII and the Cyrillic of the texts (а-я, ё). A table of the letters: no string.char
+local UPPER = {}
+do
+    local lo, up = 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    for i = 1, #lo do UPPER[ssub(lo, i, i)] = ssub(up, i, i) end
+    lo, up = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя', 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'
+    for i = 1, #lo, 2 do UPPER[ssub(lo, i, i + 1)] = ssub(up, i, i + 1) end      -- two bytes a letter
+end
 local function upper_first(s)
-    local b1, b2 = string.byte(s, 1, 2)
-    if not b1 then return s end
-    if b1 >= 97 and b1 <= 122 then return string.char(b1 - 32) .. string.sub(s, 2) end
-    if b1 == 0xD0 and b2 and b2 >= 0xB0 and b2 <= 0xBF then return string.char(0xD0, b2 - 0x20) .. string.sub(s, 3) end      -- а-п
-    if b1 == 0xD1 and b2 and b2 >= 0x80 and b2 <= 0x8F then return string.char(0xD0, b2 + 0x20) .. string.sub(s, 3) end      -- р-я
-    if b1 == 0xD1 and b2 == 0x91 then return string.char(0xD0, 0x81) .. string.sub(s, 3) end                                -- ё
+    local u = UPPER[ssub(s, 1, 1)]
+    if u then return u .. ssub(s, 2) end
+    u = UPPER[ssub(s, 1, 2)]
+    if u then return u .. ssub(s, 3) end
     return s
 end
 Ship.upper_first = upper_first
@@ -190,9 +234,9 @@ function Ship.make(config, game, crewModel)
     end
     function M.requires_text(keys)
         local names = map(keys, function(k)
-            if starts(k, 'tier:') then return 'корпус яруса ' .. string.sub(k, 6) end
+            if starts(k, 'tier:') then return 'корпус яруса ' .. ssub(k, 6) end
             local l = M.level(k)
-            return '«' .. (l and l.name or string.sub(k, #prefix + 1)) .. '»'
+            return '«' .. (l and l.name or ssub(k, #prefix + 1)) .. '»'
         end)
         return (#keys > 1 and M.REQUIRES_MANY or M.REQUIRES) .. join(names, ', ')
     end
@@ -582,7 +626,7 @@ function Ship.make(config, game, crewModel)
         local places = filter(groupOrder, function(g) return M.crew_place(g) end)
         return {parts = filter(partOrder, function(p) return M.stage(p) == 'ink' end), places = places, kinds = kindsNow(places)}
     end
-    local function groupOf(kind) return string.match(kind, '^([^:]*)') end
+    local function groupOf(kind) return smatch(kind, '^([^:]*)') end
     local shipWas, news, unseen = nil, nil, false
     function M.sync_ship() shipWas = shipNow() end
     function M.ship_news() if news and news.turn == game.turn() then return news end return nil end
@@ -633,7 +677,7 @@ function Ship.make(config, game, crewModel)
         if n and #(n.kinds or {}) > 0 then
             local by, byOrder = {}, {}
             for _, k in ipairs(n.kinds) do
-                local g, o = string.match(k, '^([^:]*):(.*)$')
+                local g, o = smatch(k, '^([^:]*):(.*)$')
                 if not by[g] then by[g] = {}; push(byOrder, g) end
                 push(by[g], groups[g].options[o].name)
             end
@@ -701,20 +745,44 @@ function Ship.make(config, game, crewModel)
 end
 
 -- ---- the saved state (docs/design/port-to-game.md, 4.3): every value a string, for cm:set_saved_value ----
--- A small JSON for the values that are tables (the game keeps strings and numbers; tables are not proven).
+-- A small JSON for the values that are tables (the game keeps strings and numbers; tables are not proven). Byte for byte the same in the game
+-- and in plain Lua: bytes cut and searched by the original string functions, the control bytes escaped through a table (gsub with a table:
+-- the census), the keys of an object sorted byte by byte (table.sort's own order is the locale's strcoll), numbers by whole() / digits(v, 9).
+-- The numbers saved: the hire paid for a waiting order, turn numbers, the panel's scroll (pixels; zoom 0.5 or 1): whole and far below 2^24.
+-- The treasury is never saved (the game keeps it). A fraction is saved to 9 significant digits: the game's float32 comes back bit for bit.
+-- Every byte as a one-byte string, cut out of a literal (the lexer's decimal escapes; no string.char)
+local BYTES = '\0\1\2\3\4\5\6\7\8\9\10\11\12\13\14\15\16\17\18\19\20\21\22\23\24\25\26\27\28\29\30\31' ..
+    ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\127' ..
+    '\128\129\130\131\132\133\134\135\136\137\138\139\140\141\142\143\144\145\146\147\148\149\150\151\152\153\154\155\156\157\158\159' ..
+    '\160\161\162\163\164\165\166\167\168\169\170\171\172\173\174\175\176\177\178\179\180\181\182\183\184\185\186\187\188\189\190\191' ..
+    '\192\193\194\195\196\197\198\199\200\201\202\203\204\205\206\207\208\209\210\211\212\213\214\215\216\217\218\219\220\221\222\223' ..
+    '\224\225\226\227\228\229\230\231\232\233\234\235\236\237\238\239\240\241\242\243\244\245\246\247\248\249\250\251\252\253\254\255'
+local function byteStr(n) return ssub(BYTES, n + 1, n + 1) end
+local ESC = {['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\t'] = '\\t'}
+for n = 0, 31 do
+    if not ESC[byteStr(n)] then ESC[byteStr(n)] = sformat('\\u%04x', n) end
+end
+ESC[byteStr(127)] = '\\u007f'
 local function esc(s)
-    return (string.gsub(s, '[%c"\\]', function(c)
-        if c == '"' then return '\\"' elseif c == '\\' then return '\\\\' elseif c == '\n' then return '\\n' elseif c == '\t' then return '\\t' end
-        return string.format('\\u%04x', string.byte(c))
-    end))
+    return (sgsub(s, '[%z\1-\31\127"\\]', ESC))
+end
+-- the byte order of two strings (string.byte: proven in the game by src/tww3_mtb_remote.lua)
+local function byteLess(a, b)
+    local n = #a < #b and #a or #b
+    for i = 1, n do
+        local x, y = sbyte(a, i), sbyte(b, i)
+        if x ~= y then return x < y end
+    end
+    return #a < #b
 end
 local function encode(v)
     local t = type(v)
     if v == nil then return 'null' end
     if t == 'boolean' then return v and 'true' or 'false' end
     if t == 'number' then
-        if v == floor(v) and v > -1e15 and v < 1e15 then return string.format('%d', v) end
-        return string.format('%.17g', v)
+        if v ~= v or v == 1 / 0 or v == -1 / 0 then error('cannot save the number ' .. tostring(v)) end
+        if v == floor(v) then return whole(v) end
+        return digits(v, 9)
     end
     if t == 'string' then return '"' .. esc(v) .. '"' end
     if t == 'table' then
@@ -725,7 +793,7 @@ local function encode(v)
         end
         local keys = {}
         for k in pairs(v) do keys[#keys + 1] = tostring(k) end
-        table.sort(keys)
+        table.sort(keys, byteLess)
         local out = {}
         for _, k in ipairs(keys) do out[#out + 1] = '"' .. esc(k) .. '":' .. encode(v[k]) end
         return '{' .. table.concat(out, ',') .. '}'
@@ -737,54 +805,54 @@ Ship.encode = encode
 local function decode(s)
     local pos = 1
     local value
-    local function ws() pos = string.find(s, '[^ \t\r\n]', pos) or (#s + 1) end
-    local function fail(what) error('saved value: ' .. what .. ' at ' .. pos .. ' of ' .. string.sub(s, 1, 60)) end
+    local function ws() pos = sfind(s, '[^ \t\r\n]', pos) or (#s + 1) end
+    local function fail(what) error('saved value: ' .. what .. ' at ' .. whole(pos) .. ' of ' .. ssub(s, 1, 60)) end
     local function str()
         local out = {}
         pos = pos + 1
         while true do
-            local c = string.sub(s, pos, pos)
+            local c = ssub(s, pos, pos)
             if c == '' then fail('unterminated string') end
             if c == '"' then pos = pos + 1; return table.concat(out) end
             if c == '\\' then
-                local e = string.sub(s, pos + 1, pos + 1)
+                local e = ssub(s, pos + 1, pos + 1)
                 if e == 'n' then out[#out + 1] = '\n'; pos = pos + 2
                 elseif e == 't' then out[#out + 1] = '\t'; pos = pos + 2
                 elseif e == 'r' then out[#out + 1] = '\r'; pos = pos + 2
                 elseif e == 'b' then out[#out + 1] = '\b'; pos = pos + 2
                 elseif e == 'f' then out[#out + 1] = '\f'; pos = pos + 2
                 elseif e == 'u' then
-                    local n = tonumber(string.sub(s, pos + 2, pos + 5), 16)
+                    local n = tonumber(ssub(s, pos + 2, pos + 5), 16)
                     if not n then fail('bad \\u') end
-                    if n < 0x80 then out[#out + 1] = string.char(n)
-                    elseif n < 0x800 then out[#out + 1] = string.char(0xC0 + floor(n / 64), 0x80 + n % 64)
-                    else out[#out + 1] = string.char(0xE0 + floor(n / 4096), 0x80 + floor(n / 64) % 64, 0x80 + n % 64) end
+                    if n < 0x80 then out[#out + 1] = byteStr(n)
+                    elseif n < 0x800 then out[#out + 1] = byteStr(0xC0 + floor(n / 64)) .. byteStr(0x80 + n % 64)
+                    else out[#out + 1] = byteStr(0xE0 + floor(n / 4096)) .. byteStr(0x80 + floor(n / 64) % 64) .. byteStr(0x80 + n % 64) end
                     pos = pos + 6
                 else out[#out + 1] = e; pos = pos + 2 end
             else
-                local j = string.find(s, '["\\]', pos) or (#s + 1)
-                out[#out + 1] = string.sub(s, pos, j - 1)
+                local j = sfind(s, '["\\]', pos) or (#s + 1)
+                out[#out + 1] = ssub(s, pos, j - 1)
                 pos = j
             end
         end
     end
     value = function()
         ws()
-        local c = string.sub(s, pos, pos)
+        local c = ssub(s, pos, pos)
         if c == '{' then
             local out = {}
             pos = pos + 1; ws()
-            if string.sub(s, pos, pos) == '}' then pos = pos + 1; return out end
+            if ssub(s, pos, pos) == '}' then pos = pos + 1; return out end
             while true do
                 ws()
-                if string.sub(s, pos, pos) ~= '"' then fail('a key') end
+                if ssub(s, pos, pos) ~= '"' then fail('a key') end
                 local k = str()
                 ws()
-                if string.sub(s, pos, pos) ~= ':' then fail('a colon') end
+                if ssub(s, pos, pos) ~= ':' then fail('a colon') end
                 pos = pos + 1
                 out[k] = value()
                 ws()
-                local d = string.sub(s, pos, pos)
+                local d = ssub(s, pos, pos)
                 pos = pos + 1
                 if d == '}' then return out end
                 if d ~= ',' then fail('a comma') end
@@ -792,22 +860,22 @@ local function decode(s)
         elseif c == '[' then
             local out = {}
             pos = pos + 1; ws()
-            if string.sub(s, pos, pos) == ']' then pos = pos + 1; return out end
+            if ssub(s, pos, pos) == ']' then pos = pos + 1; return out end
             while true do
                 out[#out + 1] = value()
                 ws()
-                local d = string.sub(s, pos, pos)
+                local d = ssub(s, pos, pos)
                 pos = pos + 1
                 if d == ']' then return out end
                 if d ~= ',' then fail('a comma') end
             end
         elseif c == '"' then return str()
-        elseif string.sub(s, pos, pos + 3) == 'true' then pos = pos + 4; return true
-        elseif string.sub(s, pos, pos + 4) == 'false' then pos = pos + 5; return false
-        elseif string.sub(s, pos, pos + 3) == 'null' then pos = pos + 4; return nil
+        elseif ssub(s, pos, pos + 3) == 'true' then pos = pos + 4; return true
+        elseif ssub(s, pos, pos + 4) == 'false' then pos = pos + 5; return false
+        elseif ssub(s, pos, pos + 3) == 'null' then pos = pos + 4; return nil
         else
-            local j = string.find(s, '[^%d%.eE+-]', pos) or (#s + 1)
-            local n = tonumber(string.sub(s, pos, j - 1))
+            local j = sfind(s, '[^%d%.eE+-]', pos) or (#s + 1)
+            local n = tonumber(ssub(s, pos, j - 1))
             if not n then fail('a value') end
             pos = j
             return n
@@ -859,7 +927,7 @@ function Ship.load_state(M, get)
     local order = {}
     local listed = s('mtb_crew_groups')
     if listed then
-        for g in string.gmatch(listed, '[^,]+') do order[#order + 1] = g end
+        for g in sgmatch(listed, '[^,]+') do order[#order + 1] = g end
     else
         for _, g in ipairs(M.group_order) do order[#order + 1] = g end
     end
@@ -868,7 +936,7 @@ function Ship.load_state(M, get)
         local v = s('mtb_crew_' .. g)
         if v and v ~= '' then
             local st
-            if string.sub(v, 1, 1) == '{' then st = decode(v) else st = {standing = v} end
+            if ssub(v, 1, 1) == '{' then st = decode(v) else st = {standing = v} end
             crew[#crew + 1] = {group = g, standing = st.standing, order = st.order}
         end
     end

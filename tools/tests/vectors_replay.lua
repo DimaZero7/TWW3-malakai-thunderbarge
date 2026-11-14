@@ -8,6 +8,8 @@ return function(Ship, CM, Fake)
     local R = {}
     local NULL = {}
     local num = Ship.num
+    -- the game's string.sub counts UTF-8 characters (tools/game_lua_env.py); the driver cuts bytes, as plain Lua does
+    local ssub = string.sub_lua or string.sub
 
     function R.world(config, sim)
         local w = {config = config, sim = sim, view = {}}
@@ -18,7 +20,7 @@ return function(Ship, CM, Fake)
 
     local function short(w, k)
         local p = w.config.prefix
-        if string.sub(k, 1, #p) == p then return string.sub(k, #p + 1) end
+        if ssub(k, 1, #p) == p then return ssub(k, #p + 1) end
         return k
     end
     local function join(list, sep, fn)
@@ -56,7 +58,7 @@ return function(Ship, CM, Fake)
             put(b, st.state .. (st.turns ~= nil and (':' .. num(st.turns)) or ''))
             put(b .. '.why', st.why or '')
             put(b .. '.poor', st.poor and true or false)
-            put(b .. '.missing', join(st.missing or {}, ',', function(x) if string.sub(x, 1, 5) == 'tier:' then return x end return sk(x) end))
+            put(b .. '.missing', join(st.missing or {}, ',', function(x) if ssub(x, 1, 5) == 'tier:' then return x end return sk(x) end))
             put(b .. '.reason', M.reason(k))
             local d = M.can_demolish(k)
             put(b .. '.demolish', d.ok and 'ok' or d.why)
@@ -160,6 +162,9 @@ return function(Ship, CM, Fake)
         end
         error('unknown action ' .. tostring(act))
     end
+
+    -- the strings the last reload saved ({key = string}), for the runner's checks
+    function R.saved_of(w) return w.saved end
 
     -- the pure functions of crew_model.lua
     local function ctxOf(c)
