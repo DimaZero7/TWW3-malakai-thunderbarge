@@ -8,6 +8,8 @@ import {inflateSync} from 'node:zlib';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 
+if (typeof WebSocket === 'undefined')
+    throw new Error(`tools/tests/cdp.mjs needs a global WebSocket: Node 22 or newer (here: C:/Users/dima/AppData/Local/nvm/v25.2.1/node.exe), or Node 20 with --experimental-websocket; this is Node ${process.version}`);
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 

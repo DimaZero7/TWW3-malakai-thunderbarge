@@ -32,6 +32,7 @@ import dbtable  # noqa: E402
 import gamepack  # noqa: E402
 import hull_parts  # noqa: E402
 import rmv2  # noqa: E402
+import tree_port  # noqa: E402
 
 OUT = REPO / "build" / "web"
 THREE = "0.170.0"
@@ -601,10 +602,21 @@ def units_allowed(stock_prefix):
 def export_overview():
     """build/web/overview.json: every chain of the barge (the hull and the side chains, the game's and this mod's) with each level as the mod's build makes it:
     name, icon, tier, price, turns, development points, what must stand first, every effect row with the game's text and value, the crew options it opens
-    (with hire and upkeep), the units it allows, the abilities it enables, the detail of the model it brings (web/data/blueprint.json)."""
+    (with hire and upkeep), the units it allows, the abilities it enables, the detail of the model it brings (web/data/blueprint.json).
+    The buildings are the author's tree (web/data/tree_design.json) as tools/build.py packs it since the port (build_campaign: tools/tree_port.py rows and
+    the crew config taken from them): its names, icons and lines, and the stock chains it leaves to the AI."""
     stock = build.game_tables()
     t = build.derive(stock, "rider")
-    t = build.derive_campaign(stock, {k: [dict(r) for r in v] for k, v in t.items()})
+    tree = tree_port.export(stock)
+    base = crew_options.CONFIG
+    crew_options.use_config(tree_port.crew_config(base, tree))      # crew_options.building_bindings reads the module's config; put back below
+    try:
+        return overview_of(stock, build.derive_campaign(stock, {k: [dict(r) for r in v] for k, v in t.items()}, tree, crew_options.CONFIG))
+    finally:
+        crew_options.CONFIG = base
+
+
+def overview_of(stock, t):
     loc = t.pop("__building_loc__")
     t.pop("__building_files__")
     config = crew_options.CONFIG
@@ -740,7 +752,7 @@ def export_overview():
         target = OUT / "game" / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob)
-    data = {"_about": "Made by tools/web_export.py, export_overview: the mod's build functions over data/crew_options.json and the game's tables. Do not edit.",
+    data = {"_about": "Made by tools/web_export.py, export_overview: the mod's build functions over the author's tree (build/tree/tree_rows.json), data/crew_options.json and the game's tables. Do not edit.",
             "units_from_schema": allowed is not None, "chains": out}
     (OUT / "overview.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     print("overview:", len(out), "chains,", sum(len(c["cards"]) for c in out), "levels; incomplete:", {c["title"]: c["missing"] for c in out if c["missing"]})
