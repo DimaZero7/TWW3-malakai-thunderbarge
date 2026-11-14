@@ -9,7 +9,7 @@
 // Scenarios: the paths of tools/tests/page_logic_test.mjs, panel_rules_test.mjs, crew_model_test.mjs, crew_groups_test.mjs, then 200 seeded random
 // walks of 60 steps. The author's tree in the mod's keys (tools/ship_config.mjs: the same data tools/build.py packs for the Lua); the tests' own small
 // trees carry their config in the vector. A step stores only the answers that changed (the replay keeps the whole state and compares all of it).
-// Deterministic: the same files on every run. Needs build/web/data.json (tools/web_export.py --data) and build/tree (py -3.14 tools/build.py).
+// Deterministic: the same files on every run. Needs build/tree (py -3.14 tools/build.py: tree_rows.json, crew_data.json).
 
 import fs from 'node:fs';
 import path from 'node:path';

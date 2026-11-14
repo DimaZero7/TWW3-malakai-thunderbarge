@@ -10,8 +10,10 @@
 //
 //   node tools/ship_config.mjs [--out build/tree/ship_config.json]      (tools/build.py runs it after tools/tree_export.mjs)
 //
-// Inputs: web/data/tree_design.json, build/web/data.json (tools/web_export.py --data: the crew groups, their hire and upkeep), web/data/blueprint.json,
-// web/art/layers.json, build/tree/tree_rows.json. Nothing here decides a rule: the levels are tree_model.gameData's, the rest is copied.
+// Inputs: web/data/tree_design.json, build/tree/crew_data.json (tools/build.py with tools/web_export.py crew_data, the function that writes the same
+// into the page's build/web/data.json: the crew groups, their hire and upkeep, the tier rule), web/data/blueprint.json, web/art/layers.json,
+// build/tree/tree_rows.json. Nothing here decides a rule: the levels are tree_model.gameData's, the rest is copied. authorConfig stops when the tier the
+// page locks a level by is not the tier_engine of tree_rows.json (the game's).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,7 +27,7 @@ const CREW_KINDS = ['ammo', 'accuracy', 'range', 'reload', 'damage'];
 
 // The page's inputs, read once
 export function inputs() {
-    return {data: readJson('build/web/data.json'), blueprint: readJson('web/data/blueprint.json'), art: readJson('web/art/layers.json'),
+    return {data: readJson('build/tree/crew_data.json'), blueprint: readJson('web/data/blueprint.json'), art: readJson('web/art/layers.json'),
             designText: fs.readFileSync(path.join(REPO, 'web/data/tree_design.json'), 'utf8'), treeRows: readJson('build/tree/tree_rows.json')};
 }
 
@@ -116,9 +118,18 @@ export function luaConfig({levels, parts, words, per}) {
     return JSON.parse(JSON.stringify(out));       // undefined fields go
 }
 
+// The levels whose tier the page locks by is not the game's (tree_rows.json tier_engine): [text], none when one rule made both
+export function tierMismatches(levels, treeRows) {
+    const engine = Object.fromEntries(treeRows.levels.map(r => [r.id, r.tier_engine]));
+    return levels.tree_rows.filter(r => r.tier !== engine[r.node]).map(r => `«${r.name}» (${r.node}): the page locks by tier ${r.tier}, the game by ${engine[r.node]}`);
+}
+
 // The author's tree in the mod's keys: {page (for the JS model), config (for the Lua)}
 export function authorConfig(inp = inputs()) {
-    const page = rekey(pageLevels(inp), inp.treeRows);
+    const built = pageLevels(inp);
+    const bad = tierMismatches(built.levels, inp.treeRows);
+    if (bad.length) throw new Error('tiers: ' + bad.join('; '));
+    const page = rekey(built, inp.treeRows);
     return {page, config: luaConfig(page)};
 }
 

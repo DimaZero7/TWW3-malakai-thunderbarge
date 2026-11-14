@@ -14,6 +14,7 @@ import {makeBuildings} from '../../web/js/barge_buildings.js';
 import * as T from '../../web/js/tree_model.mjs';
 import {gameText, infoTop} from '../../web/js/panel.js';
 import * as C from '../../web/js/crew_model.mjs';
+import {tierMismatches} from '../ship_config.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const json = p => JSON.parse(readFileSync(join(root, p), 'utf-8'));
@@ -40,14 +41,16 @@ const fresh = (gold = 1e6) => {
 
 // ---- 1. the reason of a locked building ----
 // the rule written again from the tree's file, not from the module: the requirements of a node are its links (requires), the level below it in its
-// line (prev), and the hull of its tier (the nodes airship_hull_N are tier N) when no hull of that tier or higher stands
+// line (prev), and the hull of its tier (the nodes airship_hull_N are tier N) when no hull of that tier or higher stands. Its tier: the one the game
+// checks, as the mod's tables have it (build/tree/tree_rows.json, tier_engine)
 const hullTier = Object.fromEntries(design.nodes.filter(n => /^airship_hull_\d+$/.test(n.mod_key || '')).map(n => [K(n.id), Number(n.mod_key.slice(13))]));
+const gameTier = Object.fromEntries(json('build/tree/tree_rows.json').levels.map(r => [r.id, r.tier_engine]));
 function expected(game, key) {
-    const n = node[key], want = new Set();
+    const n = node[key], want = new Set(), nt = gameTier[n.id];
     for (const id of [...(n.prev ? [n.prev] : []), ...n.requires]) if (!game.has_building(K(id))) want.add(K(id));
     const tier = Math.max(0, ...Object.entries(hullTier).filter(([k]) => game.has_building(k)).map(([, t]) => t));
-    if (!(key in hullTier) && (n.tier || 0) > tier) {
-        const h = Object.entries(hullTier).filter(([, t]) => t >= n.tier).sort((a, b) => a[1] - b[1])[0];
+    if (!(key in hullTier) && nt > tier) {
+        const h = Object.entries(hullTier).filter(([, t]) => t >= nt).sort((a, b) => a[1] - b[1])[0];
         if (h && !game.has_building(h[0])) want.add(h[0]);
     }
     return want;
@@ -301,6 +304,24 @@ check(`the reason of every locked building names exactly its direct requirements
     check('a building window: under the title row when it fits; a taller one over the title row, inside the screen; never cut',
         top(500, 300) === 500 && top(10, 300) === 66 && top(700, 300) === 900 - 4 - 15 - 300 && top(100, 850) === 900 - 4 - 15 - 850 && top(100, 850) < 66 && top(100, 850) + 15 >= 4, [top(500, 300), top(10, 300), top(700, 300), top(100, 850)]);
     check('percent close to the number and a decimal comma, as the game\'s Russian texts', gameText('Меткость стрелков барки: +5 %') === 'Меткость стрелков барки: +5%' && gameText('16.6') === '16,6' && gameText('Боезапас +100 % (13 → 26 залпов)') === 'Боезапас +100% (13 → 26 залпов)');
+}
+
+// ---- one tier for the page, the Lua and the game: the page locks every level by the tier the mod's tables give it (tree_rows.json tier_engine) ----
+{
+    const rows = json('build/tree/tree_rows.json');
+    const bad = tierMismatches(levels, rows);
+    check('the tier the page locks a level by is the game\'s (build/web/data.json tree_tiers over the tree = tree_rows.json tier_engine) for every building',
+        !!data.tree_tiers && bad.length === 0 && levels.tree_rows.length === rows.levels.length, data.tree_tiers ? bad.slice(0, 6) : 'build/web/data.json has no tree_tiers: py -3.14 tools/web_export.py --data');
+    // a level the author put lower than its links: the reason names the hull the game really asks for
+    const {game, M} = fresh();
+    const hulls = Object.entries(levels.hull_tiers).sort((a, b) => a[1] - b[1]).map(([k]) => k);
+    for (const k of hulls.slice(0, 4)) M.debug_build_to(k);
+    for (let again = true; again;) { again = false; for (const r of levels.tree_rows) if (!(r.key in levels.hull_tiers) && M.status(r.key).state === 'open') { M.debug_build_to(r.key); again = true; } }
+    const raised = rows.levels.filter(r => !r.hull && r.tier_engine === 5 && (r.tier_own || 0) < 5).map(r => K(r.id));
+    const hull5 = levels.tree_rows.find(r => levels.hull_tiers[r.key] === 5);
+    const offered = raised.filter(k => !game.has_building(hulls[4]) && ['open', 'built'].includes(M.status(k).state));
+    check('on the fourth hull with everything else it allows built, no level of tier V by its links is offered, and each names «' + hull5.name + '»',
+        raised.length > 0 && !offered.length && raised.every(k => M.missing(k).includes(hull5.key)), offered.map(k => levels.tree_rows.find(r => r.key === k).name));
 }
 
 console.log(failed ? `failed: ${failed}` : 'failed: 0');

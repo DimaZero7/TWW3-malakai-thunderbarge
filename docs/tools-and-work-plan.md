@@ -48,7 +48,7 @@
 
 ### Логика экрана на Lua (перенос, этапы 2–3, без игры)
 
-- Сборка кладёт в пак `src/tww3_mtb_ship.lua` (порт `barge_buildings.js`), `src/tww3_mtb_crew_model.lua` (порт `crew_model.mjs`) и `tww3_mtb_ship_config.lua` из `build/tree/ship_config.json` (`tools/ship_config.mjs`: дерево так, как его строит страница, в ключах мода). Папка `script/campaign/tww3_mtb/`: игра их сама не запускает. Нужен `build/web/data.json` (`py -3.14 tools/web_export.py --data`).
+- Сборка кладёт в пак `src/tww3_mtb_ship.lua` (порт `barge_buildings.js`), `src/tww3_mtb_crew_model.lua` (порт `crew_model.mjs`) и `tww3_mtb_ship_config.lua` из `build/tree/ship_config.json` (`tools/ship_config.mjs`: дерево так, как его строит страница, в ключах мода). Папка `script/campaign/tww3_mtb/`: игра их сама не запускает. Группы экипажа, их найм и содержание сборка берёт сама: `build/tree/crew_data.json` пишет та же функция, что и `build/web/data.json` страницы (`tools/web_export.py`, `crew_data`); выгрузка страницы для сборки не нужна. Тир, по которому страница, Lua и игра запирают постройку, один: `engineTiers` в `web/js/tree_model.mjs` по правилу `tiers` из `data/tree_port.json` (странице его отдаёт `data.json`, поле `tree_tiers`).
 - `node tools/tests/vectors_export.mjs` — сценарии тестов страницы и 200 случайных прогулок по 60 шагов над моделями страницы → `build/vectors/*.json`.
 - `py -3.10 tools/lua_vectors.py` — те же шаги на Lua 5.1 из пака с подделкой игры `tools/tests/fake_game.lua`, сверка каждого ответа побайтно; код выхода 1 при расхождении.
 - Всё сразу: `py -3.14 tools/build.py`, затем `py -3.14 tools/check_mod.py --vectors` (около 3–4 мин; без `--vectors` — прежняя быстрая проверка, синтаксис Lua теперь по Lua 5.1).
@@ -157,7 +157,7 @@ Lua считает набор групп (5 бит)
 ## Проба переноса в игру (этап 1 `docs/design/port-to-game.md`)
 
 - `py -3.14 tools/crew_cycle.py session port_probe --dry-run` — всё без игры: проверки `CLAUDE.md`, конфиг из собранного пака (`build/port_probe/config.json`), пак пробы (`build/port_probe/pack`), Lua 5.1 и прогон всех пунктов на подделке игры (`py -3.10`, `lupa`), план запуска.
-- Без `--dry-run` — один автоматический запуск, только с разрешения автора; около 30 минут, предел 45. Ответы: `<прогон>/port_probe.jsonl` (строка на пункт, последняя — чем кончилось), `port_probe_summary.txt`, снимки `pp*.png`; папку прогона называет `build/port_probe/last_run.txt`.
+- Без `--dry-run` — один автоматический запуск, только с разрешения автора; 30–45 минут, предел 60. Пункты 12–13 делают единственный в пробе конец хода (предел 8 минут; после него остальные пункты идут, если карта отвечает), пункт 14 только читает. Ответы: `<прогон>/port_probe.jsonl` (строка на пункт, последняя — чем кончилось), `port_probe_summary.txt`, снимки `pp*.png`; папку прогона называет `build/port_probe/last_run.txt`.
 - Пока в `data/` лежит игровой пак автора, запуск отказывается. `--stash-user-pack` на время прогона убирает его в `build/modular/test/stash` и возвращает со сверкой хэша — только с согласия автора.
 - Lua пробы — `tools/tests/port_probe.lua`, ход — `tools/tests/port_probe.py`.
 

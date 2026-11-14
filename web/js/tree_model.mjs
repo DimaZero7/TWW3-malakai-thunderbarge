@@ -395,6 +395,43 @@ export function hullTiers(d) {
     return out;
 }
 
+// The tier the game checks a level by (docs/design/port-to-game.md 2.6 №2, question В4): the one rule of the page, the Lua's config and the mod's
+// tables (tools/tree_export.mjs writes it as tier_engine). rule: data/tree_port.json, tiers (the page has it in build/web/data.json, tree_tiers).
+//   mode links: the highest of the node's own tier and of the tiers its links lead to (a required hull's tier, a required building's engine tier);
+//   mode own: its own tier. own_row: a level stands at least one tier over the level below it in its line, as long as the hull goes that high
+//   (over it the two share the top row: shares_row). No tier at all: tier I. A hull node: its hull's tier.
+// -> {tier: {id: N}, why: {id: text}, shares_row: {id: id of the level below}}
+export function engineTiers(d, rule) {
+    const node = Object.fromEntries(d.nodes.map(n => [n.id, n]));
+    const hull = hullTiers(d);
+    const maxHull = Math.max(...Object.values(hull), 1);
+    const tier = {}, why = {}, shares_row = {};
+    const of = (id, depth = 0) => {
+        if (id in tier) return tier[id];
+        if (id in hull) return (tier[id] = hull[id]);
+        const n = node[id];
+        if (!n) return 0;
+        let t = n.tier || 0, w = n.tier ? 'own' : 'none';
+        if (rule.mode === 'links' && depth < 60) {
+            for (const p of n.requires) {
+                const pt = p in hull ? hull[p] : of(p, depth + 1);
+                if (pt > t) { t = pt; w = `link ${p}`; }
+            }
+        }
+        if (rule.own_row && n.prev && !(n.prev in hull)) {
+            const below = of(n.prev, depth + 1) + 1;
+            if (below > t && below <= maxHull) { t = below; w = `own row over ${n.prev}`; }
+            else if (below > t) shares_row[id] = n.prev;
+        }
+        if (t < 1) { t = 1; w = 'none: tier I'; }
+        why[id] = w;
+        return (tier[id] = t);
+    };
+    for (const n of d.nodes) of(n.id);
+    for (const id of Object.keys(hull)) why[id] = 'hull';
+    return {tier, why, shares_row};
+}
+
 // ---- the lines, the same in the constructor and in the game's column ----
 // a, b: the top left corners of the slots (74 x 74) of the node built first and of the node that needs it. Square lines as the game's tree: out of
 // the parent's top, up to a junction 25 under the child (in the 32 between two rows, under the child's name or cost), across, up into the child.
@@ -686,13 +723,16 @@ export function gameData(design, data) {
         chainOf[n.id] = taken.has(k) ? {chain: keyOf[n.id], level: 0} : c;
         taken.add(k);
     }
+    // the tier a level is locked by: the game's (engineTiers over the mod's rule, data.tree_tiers), so the page never offers what the game refuses;
+    // data without the rule (a test's own): the author's tier as it is
+    const engine = data.tree_tiers ? engineTiers(design, data.tree_tiers).tier : null;
     const rows = design.nodes.map(n => {
         const f = resolve(design, n.id).full, effects = f.effects.map(x => x.e), fresh = newOnLevel(design, n.id);
         const cards = oneCardPerUnit(fresh.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]), fresh.units.map(x => x.u), crewUnitOf(data.groups));
         return {
             key: keyOf[n.id], short: keyOf[n.id].slice(prefix.length), chain: chainOf[n.id].chain, level: chainOf[n.id].level, line_level: levelOf(design, n.id),
             in_line: !!n.prev || design.nodes.some(m => m.prev === n.id), name: label(n), game_name: null, text: n.description,
-            cost: n.cost, turns: n.turns, dev: 0, tier: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
+            cost: n.cost, turns: n.turns, dev: 0, tier: engine ? engine[n.id] : n.tier || 0, tier_own: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
             icon: null, icon_path: n.icon, lines: effects.map(e => e.text), effects, unlocks: f.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]),
             units: f.units.map(x => x.u), parts: f.parts.map(x => x.p), own_effects: n.effects,
             // what the slot shows as its cards: only what this level brings new in its line (newOnLevel), one card a unit (oneCardPerUnit: a crew

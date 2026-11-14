@@ -58,7 +58,7 @@ for (const [g, spec] of Object.entries(crewOptions.groups)) {
 }
 const gameEffects = Object.fromEntries((catalog.game_effects || []).map(g => [g.key, g]));
 const ctx = {groups, gameEffects};
-const page = T.gameData(design, {prefix: P, groups, hull: [], chains: []});
+const page = T.gameData(design, {prefix: P, groups, hull: [], chains: [], tree_tiers: port.tiers});
 const pageRow = Object.fromEntries(page.tree_rows.map(r => [r.node, r]));
 const hullTier = T.hullTiers(design);      // node id -> N for airship_hull_N
 
@@ -97,30 +97,12 @@ for (const [id, k] of Object.entries(keyOf)) {
 }
 const short = id => keyOf[id].slice(P.length);
 
-// ---- В4: engine tiers ----
-const tierMemo = {}, tierWhy = {}, sharesRow = {};
+// ---- В4: engine tiers: the page's own rule (tree_model.mjs engineTiers), the same the page locks a level by ----
 const maxHull = Math.max(...Object.values(hullTier), 1);
-function engineTier(id, depth = 0) {
-    if (id in tierMemo) return tierMemo[id];
-    const n = node[id];
-    if (id in hullTier) return (tierMemo[id] = hullTier[id]);
-    let t = n.tier || 0, why = n.tier ? 'own' : 'none';
-    if (port.tiers.mode === 'links' && depth < 60) {
-        for (const p of n.requires) {
-            const pt = p in hullTier ? hullTier[p] : engineTier(p, depth + 1);
-            if (pt > t) { t = pt; why = `link ${p}`; }
-        }
-    }
-    // own row: only as high as the hull goes; over it the two levels share the top row (the stock tab shows the higher, a warning)
-    if (port.tiers.own_row && n.prev && !(n.prev in hullTier)) {
-        const below = engineTier(n.prev, depth + 1) + 1;
-        if (below > t && below <= maxHull) { t = below; why = `own row over ${n.prev}`; }
-        else if (below > t) sharesRow[id] = n.prev;
-    }
-    if (t < 1) { t = 1; why = 'none: tier I'; }
-    tierWhy[id] = why;
-    return (tierMemo[id] = t);
-}
+const {tier: tierOf, why: tierWhy, shares_row: sharesRow} = T.engineTiers(design, port.tiers);
+const engineTier = id => tierOf[id];
+// the page's game data was made with the same rule: the tier it locks by is the tier the game checks
+for (const r of page.tree_rows) if (r.tier !== tierOf[r.node]) errors.push(`${r.node}: the page locks by tier ${r.tier}, the game by ${tierOf[r.node]}`);
 
 // ---- В2: development points ----
 function devPoints(id) {
@@ -290,7 +272,7 @@ for (const l of lines) for (const [li, id] of l.ids.entries()) {
     out.push({
         id, key, short: short(id), chain: l.key, line: l.first, level: li, line_ids: l.ids, prev: n.prev, inherit: n.inherit, vanilla, hull: id in hullTier,
         name: T.label(n), description: n.description, cost: n.cost, turns: n.turns, dev: devPoints(id),
-        tier_own: n.tier, tier_engine: tier, tier_why: tierWhy[id] || (id in hullTier ? 'hull' : 'own'), requirement: id in hullTier ? (facts.levels[key] || {}).requirement ?? 0 : tier - 1,
+        tier_own: n.tier, tier_engine: tier, tier_why: tierWhy[id], requirement: id in hullTier ? (facts.levels[key] || {}).requirement ?? 0 : tier - 1,
         shares_row_with: sharesRow[id] && engineTier(sharesRow[id]) === tier ? keyOf[sharesRow[id]] : null,
         requires: n.requires, requires_rows: direct.map(p => keyOf[p]), hull_need: hullNeed,
         icon: m ? {path: n.icon, name: m[1], file: `data/ui/buildings/${m[2]}.png`} : null,

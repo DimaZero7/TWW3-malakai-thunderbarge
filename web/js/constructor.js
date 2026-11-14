@@ -900,6 +900,15 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
     }
 
     // ---- the properties ----
+    // the tier the game will check the node by when it is higher than the author's (tree_model.mjs engineTiers, the mod's rule from data.json): a note only
+    function engineNote(d, n) {
+        if (!data.tree_tiers || n.mod_key && /^airship_hull_/.test(n.mod_key)) return null;
+        const {tier, why} = T.engineTiers(d, data.tree_tiers), t = tier[n.id], w = why[n.id] || '';
+        if (t <= (n.tier || 1)) return null;
+        const other = T.byId(d, w.replace(/^(link|own row over) /, ''));
+        const name = `«${other ? T.label(other) : '?'}»`;
+        return `В игре — тир ${t}: ${w.startsWith('own row') ? `на ряд выше прошлого уровня ${name}` : `требует ${name} (тир ${tier[other && other.id] || t})`}`;
+    }
     function field(label, input, help) {
         return h('div', {class: 'cx-field'}, h('label', {}, label), input, help ? h('div', {class: 'help'}, help) : null);
     }
@@ -983,7 +992,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             field('Название', bind(n, 'name', h('input', {spellcheck: true}))),
             h('div', {class: 'cx-field'}, h('label', {}, 'Описание (атмосферный текст, курсивом в окне сведений)'), bind(n, 'description', h('textarea', {rows: 3, class: 'cx-desc'})), descHelp),
             h('div', {class: 'cx-row2'}, field('Цена, золото', cost), field(`Ходы (1–${T.TURNS_MAX})`, turns)),
-            field('Тир корпуса (какой корпус нужен)', tierSel),
+            field('Тир корпуса (какой корпус нужен)', tierSel, engineNote(d, n)),
             lineEditor(n),
             field('Значок', h('div', {class: 'cx-iconpick'}, h('span', {title: 'Выбрать значок', onclick: () => iconGallery(n.id)}, slotIcon(n.icon, 'big')),
                 h('div', {}, h('button', {onclick: () => iconGallery(n.id)}, 'Выбрать…'), ' ',

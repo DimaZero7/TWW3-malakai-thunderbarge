@@ -338,11 +338,22 @@ def derive_campaign(g, t, tree=None, config=None):
     return t
 
 
+def crew_data_of(stock):
+    """tools/web_export.py crew_data: one source of the crew groups for the page and the pack. That module imports this one: run as a script, this is
+    __main__, so it is named build first (no second copy of it)."""
+    sys.modules.setdefault("build", sys.modules[__name__])
+    import web_export
+    return web_export.crew_data(stock)
+
+
 def build_campaign(blob_files, tables, stock):
     """build/campaign/pack/tww3_mtb_campaign.pack from the v1 files (without the test battle and its probe)."""
     sep = chr(92)
     out = REPO / "build" / "campaign" / "pack"
     out.mkdir(parents=True, exist_ok=True)
+    # the crew groups, their hire, upkeep and numbers for the screen's logic (build/tree/crew_data.json, read by tools/ship_config.mjs): the function that
+    # writes them into the page's build/web/data.json, over data/crew_options.json as it is, so before the tree's sections go into it below
+    ship_lua.write_crew_data(crew_data_of(stock))
     # the author's tree: its rows (build/tree/tree_rows.json) and the crew config the current Lua reads by building, both from the tree
     tree = tree_port.export(stock)
     crew_options.use_config(tree_port.crew_config(crew_options.CONFIG, tree))

@@ -168,69 +168,29 @@ def unit_group_icons():
     return out
 
 
-def export_data():
-    """The barge's building levels as tools/build.py makes them: build.derive + build.derive_campaign (crew_buildings.add_rows), the green lines of crew_ui.building_lines,
-    the hire and upkeep of crew_ui. Nothing is copied by hand from data/crew_options.json, so a change there shows on the page after this export."""
-    stock = build.game_tables()
+def page_tables(stock):
+    """The mod's v1 and campaign rows as the page shows the mod: build.derive + build.derive_campaign over the old chains (crew_buildings.add_rows)."""
     t = build.derive(stock, "rider")
-    t = build.derive_campaign(stock, {k: [dict(r) for r in v] for k, v in t.items()})
-    loc = t.pop("__building_loc__")
-    t.pop("__building_files__")
+    return build.derive_campaign(stock, {k: [dict(r) for r in v] for k, v in t.items()})
+
+
+def crew_data(stock, t=None, unit_pictures=None):
+    """What the airship screen's logic reads besides the tree, one source for the page (build/web/data.json, export_data) and for the build
+    (tools/build.py: build/tree/crew_data.json, read by tools/ship_config.mjs): the crew groups with their kinds, hire, upkeep and numbers, the
+    ammunition multipliers, the art of the places, and the tier rule of data/tree_port.json (web/js/tree_model.mjs engineTiers locks a level by it).
+    t: page_tables(stock), made here when not given. The game's pictures the unit cards name are appended to unit_pictures.
+    data/crew_options.json as it is: crew_options.CONFIG before tools/build.py puts the tree's building sections in."""
+    if t is None:
+        t = page_tables(stock)
+    if unit_pictures is None:
+        unit_pictures = []
     config = crew_options.CONFIG
     prefix = config["buildings_prefix"]
-    bindings, levels, _ = crew_options.building_bindings(t, stock)
-    lines = crew_ui.building_lines(config, t, stock, bindings)
-    names = crew_ui.game_text("building_culture_variants_name_")
-    rows = {r["level_name"]: r for r in stock["building_levels"]} | {r["level_name"]: r for r in t["building_levels"]}
-    required = {}
-    for r in t["building_level_required_buildings"]:
-        required.setdefault(r["building_level"], []).append(r["required"])
-    drawn = crew_buildings.icon_files()
-
-    def name_of(key):
-        return loc.get(f"building_culture_variants_name_{key}") or lines.get(f"building_culture_variants_name_{key}") or names.get(f"building_culture_variants_name_{key}", key)
-
-    def green(short):
-        out, n = [], 0
-        while True:
-            text = lines.get(f"effects_description_mtb_effect_crew_{short}" + (f"_{n}" if n else ""))
-            if text is None:
-                return out
-            out.append(text)
-            n += 1
-
-    hull_chain = rows[prefix + "airship_hull_2"]["chain"]
-    hull = sorted((r for r in rows.values() if r["chain"] == hull_chain), key=lambda r: r["level"])
-
-    def level_of(row):
-        short = row["level_name"].removeprefix(prefix)
-        icon = crew_buildings.icon_of(short, drawn)
-        return {"key": row["level_name"], "short": short, "chain": row["chain"], "level": row["level"], "name": name_of(row["level_name"]),
-                "game_name": names.get(f"building_culture_variants_name_{row['level_name']}"),      # the game's own name, when the mod renames it
-                "text": loc.get(f"building_short_description_texts_short_description_{row['level_name']}") or campaign_text().get(f"building_short_description_texts_short_description_{row['level_name']}", ""),
-                "cost": row["create_cost"], "turns": row["create_time"], "dev": row["development_point_cost"],
-                "tier": row["primary_slot_building_building_level_requirement"] + 1,
-                "requires": required.get(row["level_name"], []),
-                # our own icon: data/ui/buildings/<file>.png, served by tools/web_serve.py at /mod/ui/buildings/
-                "icon": (icon.removeprefix("tww3_mtb_") + ".png") if icon else None,
-                "lines": green(short), "unlocks": [dict(b) for b in bindings.get(row["level_name"], [])]}
-
-    chains = []
-    for chain in config["new_chains"]:
-        chain_rows = sorted((r for r in rows.values() if r["chain"] == chain["key"]), key=lambda r: r["level"])
-        chains.append({"key": chain["key"], "levels": [level_of(r) for r in chain_rows]})
-    # the game's own side chains of the barge too (the beer hall, the crew training, ...), visible ones only, so the page's tree can hold them
-    ours = {c["key"] for c in config["new_chains"]}
-    for chain in sorted({r["chain"] for r in rows.values() if r["level_name"].startswith(prefix)} - ours - {hull_chain}):
-        chain_rows = sorted((r for r in rows.values() if r["chain"] == chain and r["level_name"].startswith(prefix)), key=lambda r: r["level"])
-        if any(r["visible_in_ui"] for r in chain_rows):
-            chains.append({"key": chain, "levels": [level_of(r) for r in chain_rows if r["visible_in_ui"]]})
     # The game's own unit card of a crew option, as the army panel shows the unit it is taken from (upkeep_from): the picture of unit_variants.unit_card,
     # the category icon of main_units.ui_unit_group_land, the number of men aboard. Copies of the game's pictures go to build/web/game only.
     variant_card = {r["unit"]: r["unit_card"] for r in stock["unit_variants"]}
     unit_group = {r["unit"]: r["ui_unit_group_land"] for r in stock["main_units"]}
     group_icons = unit_group_icons()
-    unit_pictures = []
 
     unit_of_card = {}
     for unit, picture in variant_card.items():
@@ -313,9 +273,73 @@ def export_data():
                                              # the crew's own weapon as the mod builds it (the numbers of the mod's panel, crew_ui.group_numbers)
                                              "numbers": crew_ui.group_numbers(crew_tables, group_key, k, o, group),
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}
+    return {"prefix": prefix, "ammo_mod": {prefix + k: v for k, v in config["ammo_mod"].items()}, "groups": groups,
+            "art": json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8")),
+            "tree_tiers": json.loads((REPO / "data" / "tree_port.json").read_text(encoding="utf-8"))["tiers"]}
+
+
+def export_data():
+    """The barge's building levels as tools/build.py makes them: build.derive + build.derive_campaign (crew_buildings.add_rows), the green lines of crew_ui.building_lines,
+    the hire and upkeep of crew_ui (crew_data, the same the build gives the Lua). Nothing is copied by hand from data/crew_options.json, so a change there
+    shows on the page after this export."""
+    stock = build.game_tables()
+    t = page_tables(stock)
+    unit_pictures = []
+    crew = crew_data(stock, t, unit_pictures)
+    loc = t.pop("__building_loc__")
+    t.pop("__building_files__")
+    config = crew_options.CONFIG
+    prefix = config["buildings_prefix"]
+    bindings, levels, _ = crew_options.building_bindings(t, stock)
+    lines = crew_ui.building_lines(config, t, stock, bindings)
+    names = crew_ui.game_text("building_culture_variants_name_")
+    rows = {r["level_name"]: r for r in stock["building_levels"]} | {r["level_name"]: r for r in t["building_levels"]}
+    required = {}
+    for r in t["building_level_required_buildings"]:
+        required.setdefault(r["building_level"], []).append(r["required"])
+    drawn = crew_buildings.icon_files()
+
+    def name_of(key):
+        return loc.get(f"building_culture_variants_name_{key}") or lines.get(f"building_culture_variants_name_{key}") or names.get(f"building_culture_variants_name_{key}", key)
+
+    def green(short):
+        out, n = [], 0
+        while True:
+            text = lines.get(f"effects_description_mtb_effect_crew_{short}" + (f"_{n}" if n else ""))
+            if text is None:
+                return out
+            out.append(text)
+            n += 1
+
+    hull_chain = rows[prefix + "airship_hull_2"]["chain"]
+    hull = sorted((r for r in rows.values() if r["chain"] == hull_chain), key=lambda r: r["level"])
+
+    def level_of(row):
+        short = row["level_name"].removeprefix(prefix)
+        icon = crew_buildings.icon_of(short, drawn)
+        return {"key": row["level_name"], "short": short, "chain": row["chain"], "level": row["level"], "name": name_of(row["level_name"]),
+                "game_name": names.get(f"building_culture_variants_name_{row['level_name']}"),      # the game's own name, when the mod renames it
+                "text": loc.get(f"building_short_description_texts_short_description_{row['level_name']}") or campaign_text().get(f"building_short_description_texts_short_description_{row['level_name']}", ""),
+                "cost": row["create_cost"], "turns": row["create_time"], "dev": row["development_point_cost"],
+                "tier": row["primary_slot_building_building_level_requirement"] + 1,
+                "requires": required.get(row["level_name"], []),
+                # our own icon: data/ui/buildings/<file>.png, served by tools/web_serve.py at /mod/ui/buildings/
+                "icon": (icon.removeprefix("tww3_mtb_") + ".png") if icon else None,
+                "lines": green(short), "unlocks": [dict(b) for b in bindings.get(row["level_name"], [])]}
+
+    chains = []
+    for chain in config["new_chains"]:
+        chain_rows = sorted((r for r in rows.values() if r["chain"] == chain["key"]), key=lambda r: r["level"])
+        chains.append({"key": chain["key"], "levels": [level_of(r) for r in chain_rows]})
+    # the game's own side chains of the barge too (the beer hall, the crew training, ...), visible ones only, so the page's tree can hold them
+    ours = {c["key"] for c in config["new_chains"]}
+    for chain in sorted({r["chain"] for r in rows.values() if r["level_name"].startswith(prefix)} - ours - {hull_chain}):
+        chain_rows = sorted((r for r in rows.values() if r["chain"] == chain and r["level_name"].startswith(prefix)), key=lambda r: r["level"])
+        if any(r["visible_in_ui"] for r in chain_rows):
+            chains.append({"key": chain, "levels": [level_of(r) for r in chain_rows if r["visible_in_ui"]]})
     data = {"_about": "Made by tools/web_export.py from data/crew_options.json and the game's tables through the mod's own build functions. Do not edit.",
-            "prefix": prefix, "ammo_mod": {prefix + k: v for k, v in config["ammo_mod"].items()}, "hull": [level_of(r) for r in hull], "chains": chains, "groups": groups, "auto_active": [prefix + s for s in config["auto_active"]],
-            "levels": levels, "art": json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8"))}
+            "prefix": prefix, "ammo_mod": crew["ammo_mod"], "hull": [level_of(r) for r in hull], "chains": chains, "groups": crew["groups"], "auto_active": [prefix + s for s in config["auto_active"]],
+            "levels": levels, "art": crew["art"], "tree_tiers": crew["tree_tiers"]}
     OUT.mkdir(parents=True, exist_ok=True)
     for path, blob in game_files(sorted(set(unit_pictures))).items():
         target = OUT / "game" / path
