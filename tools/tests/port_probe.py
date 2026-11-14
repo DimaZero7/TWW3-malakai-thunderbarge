@@ -17,6 +17,7 @@ container alone not counted as busy (tools/crew_session.py). The probe Lua is to
 """
 import argparse
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -46,7 +47,7 @@ SEP = chr(92)
 DEFAULT_LIMIT = 3600
 END_TURN_LIMIT = 480     # item 12: the turn end is the slowest and least sure step; after this the next items still run if the map answers
 # Per item: seconds before the item is cut off (its steps stop, the next item goes on).
-BUDGET = {"0": 60, "7": 120, "8": 150, "10": 60, "6a": 60, "5": 60, "11": 90, "setup": 60, "1": 240, "2": 240, "3": 90, "4": 900, "12": END_TURN_LIMIT + 240, "13": 120, "14": 60, "6b": 90, "9": 90}
+BUDGET = {"census": 60, "0": 60, "7": 120, "8": 150, "10": 60, "6a": 60, "5": 60, "11": 90, "setup": 60, "1": 240, "2": 240, "3": 90, "4": 900, "12": END_TURN_LIMIT + 240, "13": 120, "14": 60, "6b": 90, "9": 90}
 RISKY = {"6b": "a game template (ui/templates/listview) instantiated in our layout",
          "9": "a game template with the game's own bindings (ui/templates/building_frame) given a context by script"}
 UI_STRINGS = ["Дух Грунгни", "Постройки", "Корабль", "Экипаж", "Всё дерево", "Вблизи", "Казна: 12 345", "Закажите первую постройку — Заготовка под корабль",
@@ -81,6 +82,35 @@ def lua_literal(v):
 def lua_lib():
     text = LUA_FILE.read_text(encoding="utf-8")
     return text.rsplit("return 'ready'", 1)[0]
+
+
+CENSUS_BEGIN, CENSUS_END = "-- ==== CENSUS BEGIN ====", "-- ==== CENSUS END ===="
+CENSUS_FILE = "lua_env_census.txt"      # in the run folder; a real run's copy also goes to build/port_probe/ for the fake game
+
+
+def census_code():
+    """The census block of port_probe.lua alone (it needs nothing else of the file), or None when the file has none."""
+    text = LUA_FILE.read_text(encoding="utf-8")
+    if CENSUS_BEGIN not in text or CENSUS_END not in text:
+        return None
+    return text.split(CENSUS_BEGIN, 1)[1].split(CENSUS_END, 1)[0] + "\nreturn mtb_pp_census()"
+
+
+def parse_census(text):
+    """{"G": {name: type}, "M": {...}, "K": {...}, "B": {name: value}} from the census lines (kind TAB name TAB value)."""
+    out = {"G": {}, "M": {}, "K": {}, "B": {}}
+    for line in str(text).splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) == 3 and parts[0] in out:
+            out[parts[0]][parts[1]] = parts[2]
+    return out
+
+
+def error_key(answer):
+    """An item's error without what differs between calls (the chunk id of the remote, the helper's name), to see one error repeated."""
+    s = re.sub(r'\[string "[^"]*"\]', "[chunk]", str(answer))
+    s = re.sub(r"^\w+: [\w.]+: ", "", s)
+    return s.strip()
 
 
 # ---------------------------------------------------------------- config: what the built pack has ----------------------------------------------------------------
@@ -347,6 +377,14 @@ class ItemTimeout(Exception):
     pass
 
 
+class SessionAbort(Exception):
+    """The first ABORT_AFTER items failed with one and the same error: a shared fault (the encoder, the file's top level), not the items.
+    The session ends at once through the normal path (STOP flag -> run_game.py closes the game), before a battle and a turn end are spent."""
+
+
+ABORT_AFTER = 3
+
+
 class Probe:
     """Runs the items. transport(code, wait) -> {"ok", "result"}; session: the crew_cycle Session (log, shot, battle helpers) or a fake."""
 
@@ -358,6 +396,8 @@ class Probe:
         self.jsonl = self.dir / "port_probe.jsonl"
         self.api = {}
         self.healthy = True
+        self.last_fail = None
+        self.census = None
 
     # -- plumbing
     def sleep(self, seconds):
@@ -382,6 +422,7 @@ class Probe:
     def data(self, name, args=None, wait=20):
         r = self.z(name, args, wait)
         if not r.get("ok"):
+            self.last_fail = {k: (str(v)[:4000] if isinstance(v, str) else v) for k, v in r.items()}     # the raw dump of the encoder's fallback stays with the item
             raise RuntimeError(f"{name}: {r.get('err') or r}")
         return r.get("data") or {}
 
@@ -438,6 +479,7 @@ class Probe:
         record = {"item": no, "title": title, "risky": RISKY.get(no), "status": "error", "answer": None, "started": time.strftime("%H:%M:%S")}
         begin = time.time()
         self.item_end = begin + BUDGET.get(no, 120) * (1 if not self.fake else 100)
+        self.last_fail = None
         self.s.log("=== item", no, title)
         try:
             status, answer, data = fn()
@@ -458,6 +500,8 @@ class Probe:
             self.shot(f"pp_failed_{no}")
         finally:
             self.item_end = None
+        if record["status"] == "error" and self.last_fail:
+            record["failed_call"] = self.last_fail
         record["seconds"] = round(time.time() - begin, 1)
         try:
             h = self.z("health", wait=10)
@@ -478,6 +522,40 @@ class Probe:
         self.results[no] = record
         self.s.log("item", no, record["status"], str(record["answer"])[:300])
         return record
+
+    # -- census: what the game's Lua offers. Sent alone (not with the file, not through PP.run / the encoder); cannot fail as a whole.
+    def icensus(self):
+        path = self.dir / CENSUS_FILE
+        code = census_code()
+        if code is None:
+            path.write_text("no census block in " + str(LUA_FILE) + "\n", encoding="utf-8")
+            return "inconclusive", f"no census block in {LUA_FILE.name}", {}
+        try:
+            row = self.send(code, 30)
+        except TimeoutError:
+            raise
+        except Exception as e:      # the transport itself: still written
+            row = {"ok": False, "result": f"{type(e).__name__}: {e}"}
+        text = str(row.get("result"))
+        path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+        if not self.fake and row.get("ok"):
+            try:        # the newest census of the real game: tools/tests/port_probe.py's fake game is reduced to it
+                (OUT / CENSUS_FILE).write_text(f"-- {self.dir}\n" + text, encoding="utf-8")
+            except OSError as e:
+                self.s.log("census copy failed", e)
+        if not row.get("ok"):
+            return "inconclusive", f"the census chunk itself failed: {text[:400]}", {"raw": text[:4000]}
+        c = parse_census(text)
+        self.census = c
+        missing_g = sorted(k for k, v in c["G"].items() if v == "nil")
+        missing_m = sorted(k for k, v in c["M"].items() if v == "nil")
+        failing = sorted(k for k, v in c["B"].items() if v.startswith("ERR"))
+        version = c["B"].get("_VERSION")
+        answer = (f"{len(c['G'])} globals, {len(c['M'])} standard members, {len(c['K'])} found by pairs, {len(c['B'])} behaviours; "
+                  f"_VERSION {version}; missing globals {missing_g or 'none'}; missing standard members {missing_m or 'none'}; "
+                  f"behaviours that raise {failing or 'none'}; tostring(1/0) {c['B'].get('tostring 1/0')}; format %d 1.0 {c['B'].get('format %d 1.0')}; "
+                  f"file {path.name}")
+        return "answered", answer, c
 
     # -- 0. the API
     def i0(self):
@@ -1028,7 +1106,8 @@ class Probe:
 
     # -- all of them
     def run(self):
-        order = [("0", "API surface of UIComponent (no walk)", self.i0),
+        order = [("census", "Lua environment census (standalone, before everything)", self.icensus),
+                 ("0", "API surface of UIComponent (no walk)", self.i0),
                  ("7", "TextDimensions on our own text", self.i7),
                  ("8", "time to create and destroy 1500 components", self.i8),
                  ("10", "SetOpacity on a nested layer", self.i10),
@@ -1046,15 +1125,30 @@ class Probe:
                  ("6b", "the game's list template in our layout: clipping, slider, wheel", self.i6b),
                  ("9", "SetContextObject on ui/templates/building_frame", self.i9)]
         how = "completed"
+        first = []      # error keys of the first ABORT_AFTER items after the census (None: the item did not fail)
         try:
             for no, title, fn in order:
+                skip = None
                 if no in RISKY and not self.healthy:
-                    self.write({"item": no, "title": title, "status": "skipped", "answer": "the UI was not healthy after the previous item"})
+                    skip = "the UI was not healthy after the previous item"
+                elif no in ("12", "13", "6b", "9") and not self.fake and self.s.mode() != "campaign":
+                    skip = "not on the campaign map (after item 4)"
+                if skip:
+                    rec = {"item": no, "title": title, "status": "skipped", "answer": skip}
+                    self.write(rec)
+                    self.results[no] = rec
                     continue
-                if no in ("12", "13", "6b", "9") and not self.fake and self.s.mode() != "campaign":
-                    self.write({"item": no, "title": title, "status": "skipped", "answer": "not on the campaign map (after item 4)"})
+                rec = self.item(no, title, fn)
+                if no == "census":
                     continue
-                self.item(no, title, fn)
+                if len(first) < ABORT_AFTER:
+                    first.append(error_key(rec["answer"]) if rec["status"] == "error" else None)
+                    if len(first) == ABORT_AFTER and first[0] and all(k == first[0] for k in first):
+                        raise SessionAbort(f"the first {ABORT_AFTER} items failed with the same error: {first[0][:400]}")
+        except SessionAbort as e:
+            how = f"aborted early: {e}"
+            self.write({"item": "abort", "status": "aborted", "answer": str(e), "census": CENSUS_FILE})
+            self.s.log("ABORT", e)
         except TimeoutError as e:
             how = f"hard limit: {e}"
         except Exception as e:
@@ -1073,6 +1167,9 @@ class Probe:
 # ---------------------------------------------------------------- the fake game (dry run, Lua 5.1 through lupa under Python 3.10) ----------------------------------------------------------------
 
 FAKE_GAME = r"""
+-- the fake's own library functions, captured before the standard library is reduced to the game's (fake_main): the fake must keep working
+local string, table = {find = string.find, match = string.match}, {remove = table.remove}
+local pairs, ipairs, setmetatable, assert, error, tonumber, tostring, type = pairs, ipairs, setmetatable, assert, error, tonumber, tostring, type
 local reg, n_addr, listeners = {}, 0, {}
 local U = {}
 U.__index = U
@@ -1236,9 +1333,51 @@ class FakeSession:
         return "campaign"
 
 
-def fake_main(config_path):
-    """Python 3.10 with lupa 2.8: the probe's Lua compiled as Lua 5.1, then every item driven by the same Probe code against a fake game."""
+# What the game's Lua is KNOWN to lack (run 20261114-204941: `-math.huge` raised "arithmetic on field 'huge' (a nil value)").
+# The fake game removes these, and also every global / standard member that the newest real census (build/port_probe/lua_env_census.txt,
+# written by item "census" of a real run) reported as nil. Never add here what was not seen missing in the game.
+GAME_LACKS = ["math.huge"]
+
+
+def game_lacks():
+    """[(name, why)]: the names the fake game removes from desktop Lua 5.1."""
+    out = [(n, "known: run 20261114-204941") for n in GAME_LACKS]
+    path = OUT / CENSUS_FILE
+    if path.exists():
+        c = parse_census(path.read_text(encoding="utf-8"))
+        for kind in ("G", "M"):
+            for name, t in c[kind].items():
+                if t == "nil" and name not in GAME_LACKS:
+                    out.append((name, f"census {path.name}"))
+    return out
+
+
+REDUCE = r"""
+return function(names)
+  local ipairs, match, type, concat, G = ipairs, string.match, type, table.concat, _G
+  local done = {}
+  for _, name in ipairs(names) do
+    local lib, member = match(name, '^([%w_]+)%.([%w_]+)$')
+    if lib then
+      if type(G[lib]) == 'table' then G[lib][member] = nil; done[#done + 1] = name end
+    elseif name ~= '_G' then
+      G[name] = nil; done[#done + 1] = name
+    end
+  end
+  return concat(done, ' ')
+end
+"""
+
+
+def fake_main(config_path, lua_file=None):
+    """Python 3.10 with lupa 2.8: the probe's Lua compiled as Lua 5.1, the standard library reduced to the game's (GAME_LACKS + the newest
+    real census), then every item driven by the same Probe code against a fake game. lua_file: another port_probe.lua (an old one, to prove
+    that the fake now fails it)."""
+    global LUA_FILE
     from lupa import lua51
+    if lua_file:
+        LUA_FILE = Path(lua_file).resolve()
+        print(f"probe Lua: {LUA_FILE}")
     cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
     OUT.mkdir(parents=True, exist_ok=True)
     rt = lua51.LuaRuntime(unpack_returned_tuples=True)
@@ -1250,6 +1389,9 @@ def fake_main(config_path):
         if not ok:
             return 2
     rt.execute(FAKE_GAME)
+    lacks = game_lacks()
+    removed = rt.execute(REDUCE)(rt.table_from([n for n, _ in lacks]))
+    print(f"fake standard library reduced to the game's: removed {removed or 'nothing'} ({'; '.join(f'{n}: {w}' for n, w in lacks)})")
 
     def transport(code, wait):
         try:
@@ -1266,7 +1408,13 @@ def fake_main(config_path):
     bad = [no for no, r in probe.results.items() if r["status"] in ("error", "timeout")]
     for no, r in probe.results.items():
         print(f"  [{no}] {r['status']}: {str(r['answer'])[:220]}")
-    print("fake run:", how, "| items with Lua or Python errors:", bad or "none", "| log", probe.jsonl)
+    # the census must see the reduction (else the fake is not the game's library it claims to be)
+    seen = (probe.census or {}).get("M", {})
+    unseen = [n for n, _ in lacks if "." in n and n in seen and seen[n] != "nil"]
+    if unseen:
+        print("fake census still sees removed members:", unseen)
+        bad.append("census")
+    print("fake run:", how, "| items with Lua or Python errors:", bad or "none", "| log", probe.jsonl, "| census", run_dir / CENSUS_FILE)
     return 1 if bad or how != "completed" else 0
 
 
@@ -1292,7 +1440,8 @@ def plan_text(args, limit):
         f"        (used_mods.txt only read); low graphics, windowed {res}, Normal difficulty, RTX checked; SW_SHOWNOACTIVATE + KeepBehind (no focus, under other windows);",
         "        the user's save/settings folders copied and put back; autosave off.",
         "  2. main menu -> new campaign wh3_dlc25_dwf_malakai (frontend.start_campaign), wait for the end turn button, peace with everyone, events accepted.",
-        "  3. items 0, 7, 8, 10, 6a, 5, 11 (our own components only), 14 (reads), setup (gold, points, hull top), 1, 2, 3, 4 (one real battle),",
+        f"  3. census of the game's Lua (alone, -> <run>/{CENSUS_FILE}); the session ABORTS (game closed as in 4) if items 0, 7, 8 all fail with one error;",
+        "     items 0, 7, 8, 10, 6a, 5, 11 (our own components only), 14 (reads), setup (gold, points, hull top), 1, 2, 3, 4 (one real battle),",
         f"     12 (ONE turn end by script, hard limit {END_TURN_LIMIT} s; then a cancel and a dismantle), 13, then the risky 6b, 9.",
         f"  4. STOP flag -> run_game.py closes only the game it started (its PID), waits until tasklist has no Warhammer3.exe, then removes the lock;",
         "     the same on an error, a timeout or a crash. Item 12 is the only turn end of the probe.",
@@ -1325,7 +1474,9 @@ def run(args):
     other_blockers = [r for r in blockers if r not in stash_blocked]
     fake = subprocess.run(["py", "-3.10", str(Path(__file__).resolve()), "_fake", str(CONFIG)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     print("Lua 5.1 check and fake game (py -3.10, lupa):")
-    print("\n".join("  " + l for l in (fake.stdout + fake.stderr).strip().splitlines()[-40:]))
+    fake_lines = (fake.stdout + fake.stderr).strip().splitlines()
+    head = [l for l in fake_lines[:-40] if l.startswith(("syntax ", "fake standard library"))]
+    print("\n".join("  " + l for l in head + fake_lines[-40:]))
     print(plan_text(args, limit))
     if args.dry_run:
         print("\n".join(sg.describe()))
@@ -1426,7 +1577,7 @@ def main(argv=None):
     if argv and argv[0] == "_session":
         return session_main(argv[1:])
     if argv and argv[0] == "_fake":
-        return fake_main(argv[1] if len(argv) > 1 else CONFIG)
+        return fake_main(argv[1] if len(argv) > 1 else CONFIG, argv[2] if len(argv) > 2 else None)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--small", action="store_true")

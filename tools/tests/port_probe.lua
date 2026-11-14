@@ -2,6 +2,125 @@
 -- file before every call (tools/rc.py) and calls _G.mtb_pp.run(item, args). Every call returns one JSON line, written also to the events file.
 -- Nothing of the mod is changed. The game's own UI is only reached by find_uicomponent with a path or a name; there is no ChildCount / Find(i)
 -- walk anywhere here (run 20261104-191037: such a walk broke the game's bindings). Our own components are kept in _G.mtb_pp_state.
+--
+-- The game's Lua is NOT desktop Lua 5.1: run 20261114-204941 lost every item to `-math.huge` (math.huge is nil in the game). Use only what
+-- the game's own scripts use (data_script.pack) or what the census below has shown; everything else goes through pcall.
+
+-- ==== CENSUS BEGIN ====
+-- Item "census": what the game's Lua offers. Standalone (tools/tests/port_probe.py sends this block alone, so nothing below can break it);
+-- every probe in its own pcall; the text is built by plain concatenation, no shared helper, no encoder. Lines: kind TAB name TAB value.
+--   G name type        a global          M lib.name type     a standard member (fixed list)
+--   K lib.name type    a member found by pairs()              B name ok|ERR value    a behaviour
+local function mtb_pp_census()
+  local out = ''
+  local function put(kind, name, value) out = out .. kind .. '\t' .. name .. '\t' .. value .. '\n' end
+  local P = pcall
+  if type(P) ~= 'function' then return 'G\tpcall\t' .. type(P) .. '\n' end
+  local function str(v)
+    local ok, s = P(tostring, v)
+    if ok and type(s) == 'string' then return s end
+    return '<tostring failed on a ' .. type(v) .. '>'
+  end
+  local function try(name, fn)
+    local ok, a, b = P(fn)
+    if ok then
+      local text = type(a) .. ' ' .. str(a)
+      if b ~= nil then text = text .. ' | ' .. type(b) .. ' ' .. str(b) end
+      put('B', name, 'ok ' .. text)
+    else
+      put('B', name, 'ERR ' .. str(a))
+    end
+  end
+  local globals = {'_G', '_VERSION', 'assert', 'collectgarbage', 'dofile', 'error', 'gcinfo', 'getfenv', 'getmetatable', 'ipairs', 'load', 'loadfile',
+    'loadstring', 'module', 'newproxy', 'next', 'pairs', 'pcall', 'print', 'rawequal', 'rawget', 'rawlen', 'rawset', 'require', 'select', 'setfenv',
+    'setmetatable', 'tonumber', 'tostring', 'type', 'unpack', 'xpcall', 'math', 'string', 'table', 'os', 'io', 'debug', 'coroutine', 'package',
+    'bit', 'bit32', 'jit', 'utf8', 'cm', 'core', 'common', 'cco', 'find_uicomponent', 'UIComponent', 'CampaignUI', 'out', 'bm', 'get_cm', 'mtb'}
+  for i = 1, #globals do
+    local g = globals[i]
+    local ok, t = P(function() return type(_G[g]) end)
+    put('G', g, ok and t or ('ERR ' .. str(t)))
+  end
+  local libs = {
+    {'math', {'abs', 'acos', 'asin', 'atan', 'atan2', 'ceil', 'cos', 'cosh', 'deg', 'exp', 'floor', 'fmod', 'frexp', 'huge', 'ldexp', 'log', 'log10',
+      'max', 'min', 'modf', 'pi', 'pow', 'rad', 'random', 'randomseed', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'maxinteger', 'mininteger', 'round', 'clamp'}},
+    {'string', {'byte', 'char', 'dump', 'find', 'format', 'gmatch', 'gsub', 'len', 'lower', 'match', 'rep', 'reverse', 'sub', 'upper', 'gfind'}},
+    {'table', {'concat', 'insert', 'maxn', 'remove', 'sort', 'getn', 'setn', 'foreach', 'foreachi', 'unpack', 'pack'}},
+    {'os', {'clock', 'date', 'difftime', 'execute', 'exit', 'getenv', 'remove', 'rename', 'setlocale', 'time', 'tmpname'}},
+    {'io', {'close', 'flush', 'input', 'lines', 'open', 'output', 'popen', 'read', 'stderr', 'stdin', 'stdout', 'tmpfile', 'type', 'write'}},
+    {'debug', {'debug', 'getfenv', 'gethook', 'getinfo', 'getlocal', 'getmetatable', 'getregistry', 'getupvalue', 'setfenv', 'sethook', 'setlocal',
+      'setmetatable', 'setupvalue', 'traceback'}},
+    {'coroutine', {'create', 'resume', 'running', 'status', 'wrap', 'yield'}},
+    {'package', {'cpath', 'loaded', 'loaders', 'loadlib', 'path', 'preload', 'seeall'}}}
+  for i = 1, #libs do
+    local name, members = libs[i][1], libs[i][2]
+    local okl, lib = P(function() return _G[name] end)
+    if okl and type(lib) == 'table' then
+      for j = 1, #members do
+        local m = members[j]
+        local ok, t = P(function() return type(lib[m]) end)
+        put('M', name .. '.' .. m, ok and t or ('ERR ' .. str(t)))
+      end
+      local okp, err = P(function()
+        local n = 0
+        for k, v in next, lib do
+          n = n + 1
+          if n > 200 then break end
+          put('K', name .. '.' .. str(k), type(v))
+        end
+      end)
+      if not okp then put('K', name .. '.*', 'ERR ' .. str(err)) end
+    end
+  end
+  try('_VERSION', function() return _VERSION end)
+  try('pcall_error', function() local ok, e = pcall(error, 'x'); return ok, e end)
+  try('xpcall_handler', function() return xpcall(function() error('x') end, function(m) return 'handled' end) end)
+  try('loadstring', function() local f, e = loadstring('return 1 + 1'); if not f then return 'nil', e end; return f() end)
+  try('setfenv', function() local f = function() return marker end; setfenv(f, {marker = 'env'}); return f() end)
+  try('select_count', function() return select('#', 1, 2, 3) end)
+  try('unpack', function() local a, b = unpack({7, 8}); return a, b end)
+  try('string_metatable', function() return getmetatable('').__index == string, ('abc'):upper() end)
+  try('format %d 1.0', function() return string.format('%d', 1.0) end)
+  try('format %d 2.5', function() return string.format('%d', 2.5) end)
+  try('format %d 3e9', function() return string.format('%d', 3000000000) end)
+  try('format %i', function() return string.format('%i', 12) end)
+  try('format %5.1f', function() return string.format('%5.1f', 3.14159) end)
+  try('format %g', function() return string.format('%g', 0.1) end)
+  try('format %.14g', function() return string.format('%.14g', 1 / 3) end)
+  try('format %04x', function() return string.format('%04x', 10) end)
+  try('format %q', function() return string.format('%q', 'a"b') end)
+  try('format %s nil', function() return string.format('%s', nil) end)
+  try('tostring 1/0', function() return tostring(1 / 0) end)
+  try('tostring -1/0', function() return tostring(-1 / 0) end)
+  try('tostring 0/0', function() local z = 0; return tostring(z / z) end)
+  try('1/0 > 1.7e308', function() return 1 / 0 > 1.7e308 end)
+  try('tostring 0.1', function() return tostring(0.1) end)
+  try('tostring 0.1+0.2', function() return tostring(0.1 + 0.2) end)
+  try('tostring 16777217', function() return tostring(16777217) end)
+  try('tostring 2^53', function() return tostring(2 ^ 53) end)
+  try('tostring 1e15', function() return tostring(1e15) end)
+  try('modulo -7 % 3', function() return -7 % 3 end)
+  try('math.floor -2.5', function() return math.floor(-2.5) end)
+  try('string.byte A', function() return string.byte('A') end)
+  try('string.char 65', function() return string.char(65) end)
+  try('len of cyrillic', function() return #'\208\148\209\131\209\133' end)
+  try('gsub function', function() return string.gsub('a"b', '"', function(c) return 'Q' end) end)
+  try('gsub table', function() return string.gsub('a"b', '"', {['"'] = 'T'}) end)
+  try('pattern %z', function() return string.find('a\0b', '%z') end)
+  try('pattern %c', function() return string.find('a\nb', '%c') end)
+  try('collectgarbage count', function() return collectgarbage('count') end)
+  try('gcinfo', function() return gcinfo() end)
+  try('os.clock', function() return os.clock() end)
+  try('os.time', function() return os.time() end)
+  try('os.date', function() return os.date('%Y-%m-%d %H:%M') end)
+  try('table.concat', function() return table.concat({1, 'b'}, ',') end)
+  try('table.sort strings', function() local t = {'b', 'a'}; table.sort(t); return t[1] end)
+  try('coroutine.wrap', function() return coroutine.wrap(function() coroutine.yield('y') end)() end)
+  try('debug.traceback', function() return string.sub(debug.traceback('t'), 1, 60) end)
+  try('getfenv(0) == _G', function() return getfenv(0) == _G end)
+  return out
+end
+-- ==== CENSUS END ====
+
 local PP = {}
 _G.mtb_pp = PP
 local S = _G.mtb_pp_state or {}       -- survives the next send of this file, not a battle (Lua restarts with the mode)
@@ -9,6 +128,7 @@ _G.mtb_pp_state = S
 S.keep = S.keep or {}
 S.events = S.events or {}
 PP.S = S
+PP.census = mtb_pp_census
 
 local PREFIX = 'wh3_dlc25_dwarf_spirit_of_grungni_'
 local SUBTYPE = 'wh3_dlc25_dwf_malakai_makaisson'
@@ -18,6 +138,8 @@ local ROOT_ID = 'tww3_mtb_pp_root'
 local LISTENER = 'tww3_mtb_pp_'
 
 -- ---------------------------------------------------------------- JSON ----------------------------------------------------------------
+-- esc is the same code as src/tww3_mtb_remote.lua's quote, which the game has run (its results carry "): string.byte, '%04x',
+-- gsub with a function and the %z class are proven by it, though data_script.pack itself never uses them.
 local function esc(s)
   return (string.gsub(s, '[%z\1-\31\\"]', function(c)
     local map = {['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t'}
@@ -31,9 +153,11 @@ local function J(v, depth)
   if v == nil then return 'null' end
   if t == 'boolean' then return tostring(v) end
   if t == 'number' then
-    if v ~= v or v == math.huge or v == -math.huge then return '"' .. tostring(v) .. '"' end
-    if v == math.floor(v) and math.abs(v) < 1e15 then return string.format('%d', v) end
-    return string.format('%.6g', v)
+    -- NaN and the infinities by comparisons only (no math.huge, no arithmetic): a comparison of two numbers cannot raise
+    if v ~= v or v > 1.7e308 or v < -1.7e308 then return '"' .. tostring(v) .. '"' end
+    -- '%d' only in the int32 range: Lua 5.1 here formats 3e9 as -2147483648 (census 'format %d 3e9'); beyond it tostring is exact to 1e14
+    if v == math.floor(v) and v > -2147483648 and v < 2147483648 then return string.format('%d', v) end
+    return tostring(v)      -- Lua 5.1 writes %.14g: valid JSON for a finite number; '%g' has no precedent in the game's scripts
   end
   if t == 'string' then return '"' .. esc(v) .. '"' end
   if t ~= 'table' or depth > 12 then return '"' .. esc(tostring(v)) .. '"' end
@@ -386,8 +510,10 @@ function I.many(a)
   local n = a.n or 1500
   local r = new_root()
   local holder = box(r, 'pp_many', 'pp_zone', 0, 0, 10, 10)
-  collectgarbage('collect')
-  local kb = collectgarbage('count')
+  -- collectgarbage: no precedent in the game's scripts, so optional (nil when it fails)
+  local function gc(what) local ok, v = pcall(collectgarbage, what); return ok and v or nil end
+  gc('collect')
+  local kb = gc('count')
   local t0, w0 = os.clock(), os.time()
   local made = 0
   for i = 1, n do
@@ -399,7 +525,7 @@ function I.many(a)
     made = i
   end
   local t1, w1 = os.clock(), os.time()
-  local kb1 = collectgarbage('count')
+  local kb1 = gc('count')
   local ok = pcall(function() holder:Destroy() end)
   local t2, w2 = os.clock(), os.time()
   clear()
@@ -863,9 +989,49 @@ function I.effects(a)
 end
 
 -- ---------------------------------------------------------------- the call ----------------------------------------------------------------
+-- The fallback when J fails: no shared helper, concatenation, tostring and gsub with a string replacement only (all used by the game's scripts).
+local function plain_quote(s)
+  s = string.gsub(s, '\\', '\\\\')
+  s = string.gsub(s, '"', '\\"')
+  s = string.gsub(s, '%c', ' ')
+  return '"' .. s .. '"'
+end
+
+local function raw_dump(v, depth)
+  local function one(x)       -- a key or a leaf, never raising
+    local ok, s = pcall(tostring, x)
+    if ok and type(s) == 'string' then return s end
+    return '<' .. type(x) .. ' tostring failed>'
+  end
+  local ok, s = pcall(function()
+    if type(v) ~= 'table' then return type(v) .. ':' .. one(v) end
+    if depth > 4 then return '{...}' end
+    local text, n = '{', 0
+    for k, x in next, v do
+      n = n + 1
+      if n > 80 then text = text .. ' ...'; break end
+      text = text .. one(k) .. '=' .. raw_dump(x, depth + 1) .. ' '
+    end
+    return text .. '}'
+  end)
+  if ok then return s end
+  return '<raw dump failed: ' .. tostring(s) .. '>'
+end
+
+local function fallback(name, out, enc_err)
+  local ok, text = pcall(function()
+    local item_err = out.err and ('; the item itself: ' .. tostring(out.err)) or ''
+    return '{"ok":false,"item":' .. plain_quote(tostring(name)) .. ',"item_ok":' .. tostring(out.ok == true) ..
+      ',"err":' .. plain_quote('encoder failed: ' .. tostring(enc_err) .. item_err) ..
+      ',"raw":' .. plain_quote(string.sub(raw_dump(out.data, 0), 1, 6000)) .. '}'
+  end)
+  if ok then return text end
+  return '{"ok":false,"err":"encoder failed and the fallback too"}'
+end
+
 function PP.run(name, args)
   local fn = I[name]
-  local t0 = os.clock()
+  local okc, t0 = pcall(os.clock)
   local out
   if not fn then
     out = {ok = false, err = 'no item ' .. tostring(name)}
@@ -874,8 +1040,10 @@ function PP.run(name, args)
     out = {ok = ok, data = ok and res or nil, err = (not ok) and tostring(res) or nil}
   end
   out.item = name
-  out.cpu_ms = math.floor((os.clock() - t0) * 1000 + 0.5)
-  local text = J(out)
+  local okt, t1 = pcall(os.clock)
+  if okc and okt then out.cpu_ms = math.floor((t1 - t0) * 1000 + 0.5) end
+  local okj, text = pcall(J, out)
+  if not okj or type(text) ~= 'string' then text = fallback(name, out, text) end
   if mtb and mtb.log then pcall(mtb.log, 'port_probe', string.sub(text, 1, 6000)) end
   return text
 end
