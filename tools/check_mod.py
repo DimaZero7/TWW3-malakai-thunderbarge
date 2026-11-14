@@ -307,7 +307,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--pack", default=str(PACK))
     ap.add_argument("--rows", default=str(tree_port.ROWS))
-    ap.add_argument("--vectors", action="store_true", help="also the page's vectors on the pack's Lua (node tools/tests/vectors_export.mjs, py -3.10 tools/lua_vectors.py; about 3 min)")
+    ap.add_argument("--vectors", action="store_true", help="also the page's vectors on the pack's Lua (node tools/tests/vectors_export.mjs, py -3.10 tools/lua_vectors.py; about 3 min) and the "
+                    "screen's drawing (node tools/tests/ui_dump_export.mjs, py -3.10 tools/ui_layout_check.py; about 2 min more)")
     args = ap.parse_args(argv)
     files, _ = pfh5.read_pack(Path(args.pack).read_bytes())
     tree_rows = json.loads(Path(args.rows).read_text(encoding="utf-8"))
@@ -501,6 +502,17 @@ def main(argv=None):
         if Path(args.pack).resolve() != PACK.resolve():
             fail("--vectors replays the built pack only (tools/lua_vectors.py reads build/campaign/pack)")
         for cmd in ([shutil.which("node"), str(REPO / "tools" / "tests" / "vectors_export.mjs")], [shutil.which("py"), "-3.10", str(REPO / "tools" / "lua_vectors.py")]):
+            run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            print((run.stdout + run.stderr).strip()[-2500:])
+            if run.returncode != 0:
+                fail(f"{Path(cmd[-1]).name}: exit {run.returncode}")
+                break
+        # 9. the airship screen's drawing: the page's screen in its reference states (a headless Chrome, its own server on port 8775 or MTB_PORT)
+        # against the packed Lua drawing the same states (docs/design/port-to-game.md, 4.2 «Экран без игры»)
+        node = shutil.which("node")
+        major = int(subprocess.run([node, "--version"], capture_output=True, text=True).stdout.strip().lstrip("v").split(".")[0] or 0)
+        websocket = ["--experimental-websocket"] if major < 22 else []       # tools/tests/cdp.mjs needs a global WebSocket
+        for cmd in ([node, *websocket, str(REPO / "tools" / "tests" / "ui_dump_export.mjs")], [shutil.which("py"), "-3.10", str(REPO / "tools" / "ui_layout_check.py")]):
             run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
             print((run.stdout + run.stderr).strip()[-2500:])
             if run.returncode != 0:

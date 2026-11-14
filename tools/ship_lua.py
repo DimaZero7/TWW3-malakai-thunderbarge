@@ -3,7 +3,9 @@
   write_crew_data(d)   build/tree/crew_data.json: the crew groups, their hire, upkeep and numbers, the tier rule (tools/web_export.py crew_data, the same
                        function that puts them into the page's build/web/data.json; tools/build.py calls it)
   config()   node tools/ship_config.mjs -> build/tree/ship_config.json: the author's tree as the page builds it, in the mod's keys (read back)
-  files()    {pack path: bytes}: src/tww3_mtb_ship.lua, src/tww3_mtb_crew_model.lua and the generated tww3_mtb_ship_config.lua (`return {...}`)
+  files()    {pack path: bytes}: src/tww3_mtb_ship.lua, src/tww3_mtb_crew_model.lua and the generated tww3_mtb_ship_config.lua (`return {...}`);
+             the screen's drawing src/tww3_mtb_ship_ui.lua, its game binding src/tww3_mtb_ship_uic.lua, the game adapter src/tww3_mtb_game.lua, the
+             screen src/tww3_mtb_ship_screen.lua, tww3_mtb_ship_ui_config.lua (tools/ship_ui_config.mjs) and the layouts and pictures of tools/ship_ui.py
 
 They go to script/campaign/tww3_mtb/, not script/campaign/mod/: the game runs only the scripts of mod/ by itself, so these are packed and inert
 until the game adapter of a later stage loads them. Each returns its table and sets nothing global.
@@ -20,8 +22,13 @@ CONFIG = REPO / "build" / "tree" / "ship_config.json"
 CREW_DATA = REPO / "build" / "tree" / "crew_data.json"
 SEP = chr(92)
 FOLDER = f"script{SEP}campaign{SEP}tww3_mtb{SEP}"
-MODULES = {"tww3_mtb_ship.lua": REPO / "src" / "tww3_mtb_ship.lua", "tww3_mtb_crew_model.lua": REPO / "src" / "tww3_mtb_crew_model.lua"}
+UI_CONFIG = REPO / "build" / "tree" / "ship_ui_config.json"
+MODULES = {"tww3_mtb_ship.lua": REPO / "src" / "tww3_mtb_ship.lua", "tww3_mtb_crew_model.lua": REPO / "src" / "tww3_mtb_crew_model.lua",
+           # the screen's drawing (port stages 2 and 3), its binding to the game's UIComponent and the game adapter: inert (src/tww3_mtb_ship_ui.lua)
+           "tww3_mtb_ship_ui.lua": REPO / "src" / "tww3_mtb_ship_ui.lua", "tww3_mtb_ship_uic.lua": REPO / "src" / "tww3_mtb_ship_uic.lua",
+           "tww3_mtb_game.lua": REPO / "src" / "tww3_mtb_game.lua", "tww3_mtb_ship_screen.lua": REPO / "src" / "tww3_mtb_ship_screen.lua"}
 CONFIG_NAME = "tww3_mtb_ship_config.lua"
+UI_CONFIG_NAME = "tww3_mtb_ship_ui_config.lua"
 
 
 def write_crew_data(data):
@@ -43,8 +50,19 @@ def config():
     return json.loads(CONFIG.read_text(encoding="utf-8"))
 
 
+def ui_config():
+    """node tools/ship_ui_config.mjs -> build/tree/ship_ui_config.json: what the screen's drawing reads (read back)"""
+    node = shutil.which("node")
+    run = subprocess.run([node, str(REPO / "tools" / "ship_ui_config.mjs"), "--out", str(UI_CONFIG)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    sys.stdout.write(run.stdout)
+    if run.returncode != 0:
+        raise SystemExit("tools/ship_ui_config.mjs: " + (run.stderr or run.stdout)[-3000:])
+    return json.loads(UI_CONFIG.read_text(encoding="utf-8"))
+
+
 def lua(v):
-    """A Lua literal of a JSON value (no null: tools/ship_config.mjs leaves no null in the config)."""
+    """A Lua literal of a JSON value (no null: tools/ship_config.mjs and tools/ship_ui_config.mjs leave none). A text may hold a line break or a tab
+    (json.dumps writes them as Lua reads them); any other control character stops the build."""
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, int):
@@ -52,7 +70,7 @@ def lua(v):
     if isinstance(v, float):
         return str(int(v)) if v.is_integer() and abs(v) < 1e15 else repr(v)
     if isinstance(v, str):
-        if any(ord(c) < 32 for c in v):
+        if any(ord(c) < 32 and c not in (chr(10), chr(9)) for c in v):
             raise SystemExit(f"a control character in a text of the ship config: {v!r}")
         return json.dumps(v, ensure_ascii=False)
     if isinstance(v, list):
@@ -66,4 +84,10 @@ def files():
     cfg = config()
     out = {FOLDER + name: path.read_bytes() for name, path in MODULES.items()}
     out[FOLDER + CONFIG_NAME] = ("-- Made by tools/ship_lua.py from build/tree/ship_config.json (tools/ship_config.mjs). Do not edit.\nreturn " + lua(cfg) + "\n").encode("utf-8")
+    ui = ui_config()
+    out[FOLDER + UI_CONFIG_NAME] = ("-- Made by tools/ship_lua.py from build/tree/ship_ui_config.json (tools/ship_ui_config.mjs). Do not edit." + chr(10)
+                                   + "return " + lua(ui) + chr(10)).encode("utf-8")
+    # the screen's layouts, text layouts and pictures (tools/ship_ui.py)
+    import ship_ui
+    out.update(ship_ui.files(ui["text"]))
     return out

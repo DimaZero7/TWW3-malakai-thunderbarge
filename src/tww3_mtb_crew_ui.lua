@@ -18,6 +18,10 @@ local MAX_ROWS = 6
 local M = {selected = 'rifles'}
 _G.tww3_mtb_crew_ui = M
 
+-- THE SWITCH of the new airship screen (docs/design/port-to-game.md, stages 2 and 3): true makes the HUD's button open the two tabs «Корабль» /
+-- «Постройки» of src/tww3_mtb_ship_screen.lua instead of this crew panel. Off: the mod runs as before, the new modules are packed but never loaded.
+M.NEW_SHIP_PANEL = false
+
 local ui = nil      -- the panel's components while it is open
 
 local function log(text)
@@ -40,8 +44,33 @@ local function building_name(key)
     return key
 end
 
+-- The new screen's modules (script/campaign/tww3_mtb/, packed by tools/ship_lua.py; the game runs only script/campaign/mod/ by itself).
+-- ASSUMED until the in-game stage 2 shows it: the game's require finds a script of the pack by its path; loadfile is the second way.
+local function ship_module(name)
+    local path = 'script/campaign/tww3_mtb/' .. name
+    local ok, mod = pcall(require, path)
+    if ok and type(mod) == 'table' then return mod end
+    local okf, f = pcall(function() return loadfile(path .. '.lua') end)
+    if okf and f then
+        local ok2, m2 = pcall(f)
+        if ok2 and type(m2) == 'table' then return m2 end
+    end
+    log('cannot load ' .. path .. ': ' .. tostring(mod))
+    return nil
+end
+local screen = nil
+local function ship_screen()
+    if not M.NEW_SHIP_PANEL then return nil end
+    screen = screen or ship_module('tww3_mtb_ship_screen')
+    if screen and screen.start(ship_module) then return screen end
+    return nil
+end
+M.ship_screen = ship_screen
+
 -- Why the panel cannot be opened; nil when it can.
 function M.blocked()
+    -- the new screen needs no barge: «Постройки» is where the barge is built (port-to-game.md 1.2, the button without has_barge)
+    if M.NEW_SHIP_PANEL then return nil end
     local c = crew()
     if not c then return 'Модуль экипажа не загружен.' end
     if string.sub(tostring(c.status), 1, 5) == 'stock' then
@@ -458,6 +487,11 @@ function M.open()
 end
 
 local function on_click(id)
+    if id == BUTTON and M.NEW_SHIP_PANEL then
+        local s = ship_screen()
+        if s then s.toggle() else log('the new screen did not start') end
+        return
+    end
     if id == BUTTON then
         if ui then M.close() else
             local ok, why = M.open()
@@ -604,6 +638,7 @@ M.start = guarded(function()
         M.refresh_button()
     end)
     M.refresh_button()
+    if M.NEW_SHIP_PANEL then ship_screen() end      -- the screen's logic for the whole session: the turn's news while the panel is closed
     -- The HUD's button group sets its children's states itself while it starts up (a new campaign: as late as after the intro), so a button
     -- that must stay shut is looked at again. Only while it is shut: then nothing else changes the button.
     core:get_tm():repeat_real_callback(guarded(function()

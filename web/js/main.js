@@ -350,6 +350,8 @@ async function main() {
 
     // for checks from the browser's console: the state as text
     window.mtb = {get game() { return G.game; }, get M() { return G.M; }, get panel() { return G.panel; }, get root() { return G.root; }, ig, viewer, get editor() { return editor; }, setMode,
+        // the exporter of the screen's dumps (tools/tests/ui_dump_export.mjs): the state written as the page writes it, the screen redrawn or built anew
+        save: () => save(), update: () => update(), rebuild: () => { makeScreen(); update(); },
         describe: () => ({turn: G.game.turn, gold: G.game.treasury(), hull: viewer.current, mode: document.body.dataset.mode,
             levels: G.panel.view.tree.map(v => ({key: v.node.key, name: v.node.name, ...G.M.status(v.node.key)})),
             stage: stageName, port: blueprint.parts.port ? G.M.stage('port') : null, message: G.M.message(),

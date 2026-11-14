@@ -14,54 +14,9 @@ export function url(path) {
     return '/build/game/' + path;                                                                         // the game's own pictures, tools/web_export.py
 }
 
-// The text layouts of tools/crew_ui.py: font category, size in units of the game's interface (the game's points x 4/3), colour. The game's fonts
-// are not on this page: a serif stands in.
-const TEXT = {
-    text_title: {size: 32, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true, font: 'header'},
-    text_head: {size: 24, colour: '#EBBD7C', bold: true, nowrap: true, font: 'header'},
-    text_name: {size: 18.67, colour: '#FFF8D7', nowrap: true, font: 'header'},
-    // a button's label, centred: a layout the mod does not have yet (tools/crew_ui.py: text_layout(..., "Center", "Never split"))
-    // the number of men on a unit card (land_unit_card, unit_strength_number): small, centred
-    // the numbers on a unit card (land_unit_card.twui.xml): the men and the cost body_10, the turns of a recruitment body_12; on the screen 13 and 16 px
-    text_card_number: {size: 13, colour: '#FFF8D7', align: 'center', nowrap: true},
-    text_card_cost: {size: 13, colour: '#FFF8D7', nowrap: true},
-    text_card_turns: {size: 16, colour: '#FFF8D7', nowrap: true},
-    // the game's building information window (ui/campaign ui/building_information.twui.xml): the title header_14 centred, the chain's name and the
-    // description body_12 centred (the description italic), the entries body_12. Colours as the game draws them (docs/feedback/01-building-tooltip.png):
-    // the title #FFF8D7, the chain's name and the description dimmer, effects green, a reason red.
-    // Sizes: the game's font sizes are points, 12 is 16 px and 14 is 19 px on the screen, lines 22 px apart (measured on that screenshot, which is 1:1:
-    // its window is 400 wide as the template's). Every layout here is at the game's own size on the screen: a point of the game's font is 4/3 of a
-    // unit (body_12 = 16, header_14 = 19, header_18 = 24, header_24 = 32); nothing is drawn smaller than the game draws it.
-    text_info_title: {size: 19, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
-    text_info_centre: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top'},
-    text_info_italic: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top', italic: true},
-    text_info: {size: 16, line: 22, colour: '#FFF8D7', valign: 'top'},
-    // a short caption under a card, centred, two lines at most
-    // (16 px, the game's body size on the screen: at the scale the page has on a screen, about 0.6, it is still 10 px)
-    text_caption: {size: 16, line: 20, colour: '#FFF8D7', align: 'center', valign: 'top'},
-    text_caption_grey: {size: 16, line: 20, colour: '#8E8A80', align: 'center', valign: 'top'},
-    text_caption_left: {size: 16, colour: '#FFF8D7', nowrap: true},
-    text_caption_copper: {size: 16, colour: '#EBBD7C', align: 'right', nowrap: true},
-    // the game's unit information panel (ui/common ui/unit_information.twui.xml): the name header_14 centred, the rest body_12, the notes body_10;
-    // on the screen 19, 16 and 13 px, as the building information window
-    text_unit_title: {size: 19, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
-    text_unit: {size: 16, colour: '#FFF8D7', nowrap: true},
-    text_unit_right: {size: 16, colour: '#FFF8D7', nowrap: true, align: 'right'},
-    text_unit_centre: {size: 16, colour: '#FFF8D7', nowrap: true, align: 'center'},
-    text_unit_note: {size: 13, line: 17, colour: '#D8CDB0', valign: 'top'},
-    text_button: {size: 18.67, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
-    text_name_grey: {size: 18.67, colour: '#8E8A80', nowrap: true, font: 'header'},
-    text_body: {size: 16, line: 20, colour: '#FFF8D7', valign: 'top'},
-    text_line: {size: 16, colour: '#FFF8D7', nowrap: true},
-    text_line_grey: {size: 16, colour: '#8E8A80', nowrap: true},
-    text_copper: {size: 16, colour: '#EBBD7C', nowrap: true},
-    text_note: {size: 16, line: 20, colour: '#8E8A80', valign: 'top'},
-    // ink on the parchment, for the turns written on the drawing: a layout the mod does not have yet (tools/crew_ui.py would get it)
-    text_ink: {size: 20, colour: '#3B2110', bold: true, nowrap: true, font: 'header', align: 'center'},
-    // the count of the units folded into the plate «+N» over a slot of the tree (the card's number, larger)
-    text_card_more: {size: 16, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true},
-    text_green: {size: 16, line: 20, colour: '#9BD36A', valign: 'top'},
-};
+// The text layouts (web/js/ui_text.mjs, the one table the mod's layouts are written from: tools/ship_ui.py). The game's fonts are not on this page:
+// a serif stands in.
+import {TEXT} from './ui_text.mjs';
 
 // Button skins: the picture of each state, as button_layout() of tools/crew_ui.py; margins of the 9-slice in the layout's units.
 const SKIN = {
@@ -146,7 +101,7 @@ export class Component {
         if (!this.textEl) return [0, 0, 0];
         const hidden = [];      // a component not shown has no layout: shown for the measure, in the same frame
         for (let c = this; c; c = c.parent) if (c.el.style.display === 'none') { hidden.push(c); c.el.style.display = ''; }
-        try { return this.measureText(); } finally { for (const c of hidden) c.el.style.display = 'none'; }
+        try { const d = this.measureText(); MEASURES[measureKey(this)] = d; return d; } finally { for (const c of hidden) c.el.style.display = 'none'; }
     }
     measureText() {
         const r = document.createRange();
@@ -160,7 +115,7 @@ export class Component {
     // of a smaller header font), and its ink as drawn, in units at that size: the advance width, the ink's left / right from the start of the line
     // and its ascent / descent from the baseline, and the font's own ascent / descent (what places the baseline in a line: CSS centres the line, not
     // the ink, so a word with descenders sits low in its box).
-    SetTextSize(px) { if (this.textEl) this.textEl.style.fontSize = px + 'px'; }
+    SetTextSize(px) { if (this.textEl) { this.textEl.style.fontSize = px + 'px'; this.textSize = px; } }
     TextSize() { return this.textEl ? parseFloat(this.textEl.style.fontSize) || 0 : 0; }
     InkDimensions() {
         if (!this.textEl || !this.text) return null;
@@ -168,14 +123,15 @@ export class Component {
         c.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
         c.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
         const m = c.measureText(this.textEl.textContent);
-        return {w: m.width, left: -m.actualBoundingBoxLeft, right: m.actualBoundingBoxRight, ascent: m.actualBoundingBoxAscent, descent: m.actualBoundingBoxDescent,
+        return MEASURES['ink|' + this.layout + '|' + this.TextSize() + '|' + this.text] = {w: m.width, left: -m.actualBoundingBoxLeft, right: m.actualBoundingBoxRight, ascent: m.actualBoundingBoxAscent, descent: m.actualBoundingBoxDescent,
                 fontAscent: m.fontBoundingBoxAscent, fontDescent: m.fontBoundingBoxDescent};
     }
     SetTooltipText(text) { this.tooltip = text; if (tooltipOwner === this) { tooltipBox.innerHTML = colourText(text); if (!text) { tooltipOwner = null; hideTooltip(); } } }
-    SetOpacity(a) { this.el.style.opacity = String(a / 255); }      // 0..255 as the game's
+    SetOpacity(a) { this.el.style.opacity = String(a / 255); this.opacity = a; }      // 0..255 as the game's
     SetState(state) { this.state = state; this.paintSkin(); }
     CurrentState() { return this.state; }
     ShaderTechniqueSet(name) {      // the game's greyscale shader
+        this.shader = name;
         this.greyFilter = name === 'set_greyscale_t0' ? 'grayscale(1)' : '';
         this.paintFilter();
     }
@@ -183,6 +139,7 @@ export class Component {
     // The glow of something new (a detail the turn added to the ship): GAME: a state of the component with the picture again under it, additive
     // kind 'soft': a narrower halo for a control in a tight row (a tab under the title's edge), 6 units at most round its shape
     SetGlow(on, kind) {
+        this.glow = on ? kind || 'glow' : '';
         const g = !on ? '' : kind === 'soft' ? 'drop-shadow(0 0 2px rgba(255, 220, 120, 1)) drop-shadow(0 0 4px rgba(255, 170, 60, 1)) drop-shadow(0 0 6px rgba(255, 140, 30, 0.8))'
             : 'drop-shadow(0 0 3px rgba(255, 214, 110, 0.95)) drop-shadow(0 0 9px rgba(255, 150, 40, 0.85))';
         if (g === (this.glowFilter || '')) return;
@@ -193,6 +150,7 @@ export class Component {
     // The colour of a state's image (the twui's image colour, RGBA): the RGB darkens it as the game's multiply does, the alpha is its opacity.
     // A real colour (not a grey) tints: the picture's shape filled with the colour, as the game's multiply does to a white picture (a bar).
     SetImageColour(r, g, b, a) {
+        this.colour = [r, g, b, a];
         this.el.style.opacity = String(a / 255);
         if (this.img && (r !== g || g !== b)) {
             this.maskColour = [r, g, b, a];
@@ -207,6 +165,7 @@ export class Component {
     }
     // An image or text that takes the mouse, as an interactive state of the game: a click goes where a button's would (ComponentLClickUp)
     SetInteractive(on) {
+        this.interactive = !!on;
         if (on && !this.clickable) {
             this.clickable = true;
             // the click belongs to the innermost component that takes it: what lies under it does not get it too
@@ -214,7 +173,7 @@ export class Component {
         }
     }
     // An image that does not take the mouse (a state without interactive="true"): the mouse goes to what lies under it
-    SetPassive() { this.el.style.pointerEvents = 'none'; }
+    SetPassive() { this.el.style.pointerEvents = 'none'; this.passive = true; }
     // A child shown while the mouse is over this component (the hover state's extra picture)
     SetHoverChild(child) {
         if (this.hoverChild && this.hoverChild !== child) this.hoverChild.SetVisible(false);
@@ -242,7 +201,7 @@ export class Component {
     }
     // The layer of a window (web/css/page.css, the one scale of z-index): 'click' a window opened by a click, 'hover' a window shown under the mouse.
     // A window under the mouse is always over a window opened by a click, and both over the drawing and the panel.
-    SetLayer(name) { this.el.classList.add('layer_' + name); return this; }
+    SetLayer(name) { this.el.classList.add('layer_' + name); this.layerName = name; return this; }
     // More children shown while the mouse is over this component, beside the one of SetHoverChild (a tooltip window of the component's own)
     AddHoverChild(child) { (this.hoverChildren ||= []).push(child); child.SetVisible(!!this.hovered); }
     // the hover state's brighten_t0 shader (0.40 on the slot): brightness raised while the mouse is over
@@ -343,3 +302,49 @@ function moveTooltip(e) { if (tooltipBox.style.display !== 'none') place(e); }
 function hideTooltip() { if (tooltipBox) tooltipBox.style.display = 'none'; }
 // a tooltip whose component went away under a still mouse (a tab changed): no leave comes, so it is taken away here
 export function clearTooltip() { tooltipOwner = null; hideTooltip(); }
+
+// ---------------- the screen as data, for the game's port (docs/design/port-to-game.md, 4.2 «Экран без игры») ----------------
+// Every text measured (uic:TextDimensions, and the ink of the title plate), by what decides its size: the layout, the box's width, the text. The mod's
+// offline check (tools/ui_layout_check.py, tools/tests/fake_uic.lua) takes these numbers for its own measures, so the Lua lays out the same texts the
+// same way the page did; in the game the game's TextDimensions answers instead.
+const MEASURES = {};
+const measureKey = c => c.layout + '|' + c.w + '|' + (c.text || '');
+export function measures() { return {...MEASURES}; }
+export function clearMeasures() { for (const k of Object.keys(MEASURES)) delete MEASURES[k]; }
+
+const r2 = v => Math.round(v * 100) / 100;
+// The component tree under c as the game would hold it: one row a component, parents before children, each with its path of ids (a second sibling of
+// the same id gets #2), its layout, the offset from its parent's corner and the size, its own visibility (SetVisible), the text, the button's state,
+// the picture, and what the game sets on it besides (SetImageColour, ShaderTechniqueSet, SetOpacity, SetTooltipText, the glow state, the layer, the
+// interactive flag, a text size; blank and image_opacity below). The tree's holder is moved by a transform on the page (its pan and zoom): its offset is the pan, as SetDockOffset
+// would give it in the game, and scale the zoom.
+export function dump(c, path = null, out = []) {
+    const row = {path: path || c.id, id: c.id, layout: c.layout, x: c.x, y: c.y, w: c.w, h: c.h, visible: c.el.style.display !== 'none'};
+    const t = c.el.style.transform;
+    if (t) {
+        const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)(?: scale\(([-\d.e]+)\))?/.exec(t);
+        if (m) { row.x = r2(c.x + Number(m[1])); row.y = r2(c.y + Number(m[2])); if (m[3] && Number(m[3]) !== 1) row.scale = r2(Number(m[3])); }
+    }
+    if (c.textEl) row.text = c.text || '';
+    if (c.state !== null && c.state !== undefined) row.state = c.state;
+    if (c.path) row.image = c.path;
+    if (c.colour) row.colour = c.colour;
+    if (c.shader) row.shader = c.shader;
+    if (c.opacity !== undefined) row.opacity = c.opacity;
+    if (c.tooltip) row.tooltip = c.tooltip;
+    if (c.glow) row.glow = c.glow;
+    if (c.layerName) row.layer = c.layerName;
+    if (c.interactive || c.skin) row.interactive = true;
+    if (c.textSize !== undefined) row.text_size = c.textSize;
+    // the page's own ways of showing nothing although shown (a window with nothing to say, a hover picture of a button that does nothing), and of
+    // a picture fainter than its component (a card being recruited): in the game a state of the component, here kept apart
+    if (c.el.style.visibility === 'hidden') row.blank = true;
+    if (c.img && c.img.style.opacity) row.image_opacity = Math.round(parseFloat(c.img.style.opacity) * 255);
+    out.push(row);
+    const seen = {};
+    for (const k of c.children) {
+        seen[k.id] = (seen[k.id] || 0) + 1;
+        dump(k, row.path + '/' + k.id + (seen[k.id] > 1 ? '#' + seen[k.id] : ''), out);
+    }
+    return out;
+}
