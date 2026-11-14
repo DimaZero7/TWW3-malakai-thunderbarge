@@ -19,7 +19,6 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -70,7 +69,7 @@ def clean():
         raise SystemExit("the game is running: close it first")
     kept = rb.remove_installed()
     report = rg.restore_user(None) if rg.BACKUP.exists() else {"restored": [], "new_moved": [], "saves_identical": None}
-    rb.LOCK.unlink(missing_ok=True)
+    rb.shared_game.release_lock()       # only a line of ours («mtb, начало HH:MM»), never the neighbour's lock
     print("removed; kept because changed:", kept)
     print("your saves the same as before:", report.get("saves_identical"), "| given back:", report.get("restored"), "| moved to the store:", report.get("new_moved"))
     return report
@@ -103,8 +102,7 @@ def main():
         if not name or not (STORE / name).exists():
             raise SystemExit("nothing to go on with yet: play a campaign through this script and save it first")
         resume = name
-    rb.LOCK.parent.mkdir(parents=True, exist_ok=True)
-    rb.LOCK.write_text("TWW3-malakai-thunderbarge: the user plays " + datetime.now().isoformat() + "\n", encoding="utf-8")
+    rb.shared_game.take_lock()
     process = None
     try:
         rg.backup_user()

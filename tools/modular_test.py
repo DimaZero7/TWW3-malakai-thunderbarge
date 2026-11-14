@@ -1008,12 +1008,7 @@ def session_main(argv):
         argv = [a for a in argv if a != "--ignore-docker"]
         busy = rb.busy_reasons
         rb.busy_reasons = lambda: [r for r in busy() if r != "docker containers are running"]
-    rg.PACK_DIR = TEST
-
-    class Lock(type(rb.LOCK)):
-        def write_text(self, data, encoding=None, errors=None, newline=None):
-            return super().write_text(f"mtb, начало {datetime.now():%H:%M}\n", encoding="utf-8")
-    rb.LOCK = Lock(rb.LOCK)
+    rg.PACK_DIR = TEST     # the lock line «mtb, начало HH:MM» is written by tools/shared_game.py
     return rg.main(argv)
 
 

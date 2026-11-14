@@ -29,7 +29,8 @@ REPO = Path(__file__).resolve().parent.parent.parent
 TOOLS = REPO / "tools"
 TESTS = TOOLS / "tests"
 sys.path.insert(0, str(TOOLS))
-OUT = REPO / "build" / "port_probe"
+import shared_game as sg  # noqa: E402  (the shared game's paths: one place)
+OUT =REPO / "build" / "port_probe"
 PACK = OUT / "pack"
 CONFIG = OUT / "config.json"
 LUA_FILE = TESTS / "port_probe.lua"
@@ -259,8 +260,9 @@ def checks():
     import hashlib
     out = []
     out.append(("no Warhammer3.exe in tasklist", not rb.game_running(), True, "tasklist /FI IMAGENAME eq Warhammer3.exe"))
-    for path, what in ((rb.LOCK, "probe_game.lock"), (rb.HUMAN, "HUMAN_PLAYING"), (rb.GPU_LOCK, "gpu-train.lock"), (rb.NEIGHBOUR_PREFS_BACKUP, "the neighbour's settings copy")):
+    for what, path in sg.marks():
         out.append((f"no {what}", not path.exists(), True, str(path)))
+    out.append(("the neighbour's state folder exists (our lock goes there; not created by us)", sg.NEIGHBOUR_STATE.is_dir(), True, str(sg.NEIGHBOUR_STATE)))
     try:
         busy = subprocess.run(["docker", "ps", "-q"], capture_output=True, text=True, timeout=30).stdout.strip()
         out.append(("docker ps empty (not blocking: crew_session.py rule, 02.11.2026; this probe needs no GPU training)", not busy, False, busy[:80] or "empty"))
@@ -1027,12 +1029,7 @@ def session_main(argv):
     rb = rg.rb
     busy = rb.busy_reasons
     rb.busy_reasons = lambda: [r for r in busy() if r != "docker containers are running"]
-    rg.PACK_DIR = PACK
-
-    class Lock(type(rb.LOCK)):
-        def write_text(self, data, encoding=None, errors=None, newline=None):
-            return super().write_text(f"mtb, начало {datetime.now():%H:%M}\n", encoding="utf-8")
-    rb.LOCK = Lock(rb.LOCK)
+    rg.PACK_DIR = PACK     # the lock line «mtb, начало HH:MM» is written by tools/shared_game.py
     return rg.main(argv)
 
 
@@ -1042,7 +1039,7 @@ def plan_text(args, limit):
         "launch plan:",
         f"  1. {sys.executable} {Path(__file__).name} _session --label port_probe --timeout {limit + 120} --packs harness campaign --user-mods memreader_plus.pack"
         + ("" if args.small else " --set x_res=1920 y_res=1080"),
-        f"     -> tools/run_game.py: lock {Path(r'TWW3-batle-ai/build/steps/probe_game.lock')} = «mtb, начало HH:MM»; packs from {PACK}; our mod list tww3_mtb_mods.txt",
+        f"     -> tools/run_game.py: lock {sg.LOCK} = «mtb, начало HH:MM»; packs from {PACK}; our mod list tww3_mtb_mods.txt",
         f"        (used_mods.txt only read); low graphics, windowed {res}, Normal difficulty, RTX checked; SW_SHOWNOACTIVATE + KeepBehind (no focus, under other windows);",
         "        the user's save/settings folders copied and put back; autosave off.",
         "  2. main menu -> new campaign wh3_dlc25_dwf_malakai (frontend.start_campaign), wait for the end turn button, peace with everyone, events accepted.",
@@ -1081,7 +1078,8 @@ def run(args):
     print("\n".join("  " + l for l in (fake.stdout + fake.stderr).strip().splitlines()[-40:]))
     print(plan_text(args, limit))
     if args.dry_run:
-        state = "would launch" if not blockers else ("would STOP: " + "; ".join(r[0] for r in blockers))
+        print("\n".join(sg.describe()))
+        state ="would launch" if not blockers else ("would STOP: " + "; ".join(r[0] for r in blockers))
         if stash_blocked and not other_blockers:
             state += " (with --stash-user-pack and the author's yes it would launch)"
         print("dry run:", state, "| fake game:", "ok" if fake.returncode == 0 else f"FAILED ({fake.returncode})")
@@ -1162,7 +1160,7 @@ def launch(args, cfg, limit):
             status = json.loads((session.dir / "status.json").read_text(encoding="utf-8"))
         restored = mt.restore_user_pack(print) if stashed else None
         final = {"item": "end", "finished": True, "how": how, "seconds": round(time.time() - started), "game_gone": gone,
-                 "lock_removed": not cc.rg.rb.LOCK.exists(), "run_game": status, "user_pack_restored": restored}
+                 "lock_removed": not sg.OUR_LOCK.match(sg.read_lock() or ""), "run_game": status, "user_pack_restored": restored}
         if probe:
             probe.write(final)
             print(probe.summary(how))

@@ -154,8 +154,7 @@ def main(argv=None):
     rb.MARKER.parent.mkdir(exist_ok=True)
     rb.MARKER.write_text(json.dumps(entries), encoding="utf-8")
 
-    rb.LOCK.parent.mkdir(parents=True, exist_ok=True)
-    rb.LOCK.write_text("TWW3-malakai-thunderbarge campaign test " + datetime.now().isoformat() + "\n", encoding="utf-8")
+    lock = rb.shared_game.take_lock()
     process = None
     status = "setup_failed"
     started = time.time()
@@ -222,7 +221,7 @@ def main(argv=None):
             if placed_save is not None:
                 placed_save.unlink(missing_ok=True)
             cleanup["user_files"] = restore_user(run)
-            rb.LOCK.unlink(missing_ok=True)
+            cleanup["lock_removed"] = rb.shared_game.release_lock(lock)
         else:
             cleanup["lock"] = "kept: a game is still in tasklist"
         STATE.unlink(missing_ok=True)

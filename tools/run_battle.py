@@ -22,13 +22,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import capture  # noqa: E402
+import shared_game  # noqa: E402
+from shared_game import GPU_LOCK, HUMAN, LOCK, NEIGHBOUR_PREFS_BACKUP  # noqa: E402,F401  (the paths live in shared_game.py)
 
 GAME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III")
-NEIGHBOUR = REPO.parent / "TWW3-batle-ai" / "build"
-LOCK = NEIGHBOUR / "steps" / "probe_game.lock"
-HUMAN = NEIGHBOUR / "steps" / "HUMAN_PLAYING"
-GPU_LOCK = NEIGHBOUR / "gpu-train.lock"
-NEIGHBOUR_PREFS_BACKUP = NEIGHBOUR / "preferences.script.backup.txt"
 PREFS = Path.home() / "AppData" / "Roaming" / "The Creative Assembly" / "Warhammer3" / "scripts" / "preferences.script.txt"
 CRASH_DIR = PREFS.parent.parent / "crash_report"
 BUILD = REPO / "build" / "v1"
@@ -59,9 +56,7 @@ def busy_reasons():
     reasons = []
     if game_running():
         reasons.append("Warhammer3.exe is running")
-    for path in (LOCK, HUMAN, GPU_LOCK, NEIGHBOUR_PREFS_BACKUP):
-        if path.exists():
-            reasons.append(f"{path} exists")
+    reasons += shared_game.busy_reasons()
     try:
         containers = subprocess.run(["docker", "ps", "-q"], capture_output=True, text=True, timeout=30).stdout.strip()
         if containers:
@@ -159,6 +154,7 @@ def main(argv=None):
     if sha(source) != manifest["pack_sha256"]:
         raise SystemExit("pack differs from its manifest: build again")
     if args.dry_run:
+        print("\n".join(shared_game.describe()))
         print("free; would launch", manifest["scenario"])
         return 0
 
@@ -183,8 +179,7 @@ def main(argv=None):
         {"path": str(modlist), "sha256": hashlib.sha256(mod_text.encode()).hexdigest()},
     ]), encoding="utf-8")
 
-    LOCK.parent.mkdir(parents=True, exist_ok=True)
-    LOCK.write_text("TWW3-malakai-thunderbarge battle " + datetime.now().isoformat() + "\n", encoding="utf-8")
+    lock = shared_game.take_lock()
     process = None
     status = "setup_failed"
     started = time.time()
@@ -279,7 +274,7 @@ def main(argv=None):
         else:
             cleanup["kept"] = "game still running: nothing removed"
         if game_gone:
-            LOCK.unlink(missing_ok=True)
+            cleanup["lock_removed"] = shared_game.release_lock(lock)
         else:
             cleanup["lock"] = "kept: a game is still in tasklist"
         (run / "status.json").write_text(json.dumps(cleanup, indent=1), encoding="utf-8")
