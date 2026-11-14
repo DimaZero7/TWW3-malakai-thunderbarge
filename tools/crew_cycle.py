@@ -5,6 +5,8 @@
   py -3.14 tools/crew_cycle.py report            the table of results from build/crew/cycle/results.jsonl
   py -3.14 tools/crew_cycle.py session port_probe [--dry-run] [--small] [--limit N] [--stash-user-pack]
                      the engine probe of docs/design/port-to-game.md, stage 1 (tools/tests/port_probe.py): refuses unless every check of CLAUDE.md passes
+  py -3.14 tools/crew_cycle.py session ship_panel [--dry-run] [--small] [--limit N] [--stash-user-pack] [--option NAME=VALUE ...]
+                     the new airship panel opened and exercised in the game (tools/tests/ship_session.py), the same checks and machinery
   --igpu             the lowest settings instead of what the session asks: the RTX is out of the machine
   --scale N          all time limits of the session times N, for a slow GPU
   --limit-scale N    only the hard limit of the session times N; fights stay as long as in earlier runs, so kills compare
@@ -850,6 +852,7 @@ def main():
     ap.add_argument("--small", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--stash-user-pack", action="store_true")
+    ap.add_argument("--option", action="append", default=[], metavar="NAME=VALUE")       # session ship_panel only: a probe answer as an option
     args = ap.parse_args()
     SCALE, LIMIT_SCALE, IGPU, MINIMIZED, EXTRA_SETTINGS = args.scale, args.limit_scale, args.igpu, args.minimized, args.set
     if args.what == "session" and args.name == "port_probe":
@@ -859,6 +862,16 @@ def main():
         if args.limit:
             extra += ["--limit", str(args.limit)]
         return port_probe.main(extra)
+    if args.what == "session" and args.name == "ship_panel":
+        # the new airship panel in the game (tools/tests/ship_session.py): the probe's machinery, its own steps, the same options
+        sys.path.insert(0, str(TESTS))
+        import ship_session
+        extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
+        if args.limit:
+            extra += ["--limit", str(args.limit)]
+        for o in args.option:
+            extra += ["--option", o]
+        return ship_session.main(extra)
     if args.what == "report":
         report()
     elif args.what == "session":

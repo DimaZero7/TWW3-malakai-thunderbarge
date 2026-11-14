@@ -35,6 +35,9 @@ function S.start(load)
     return true
 end
 
+-- the modules this screen runs on (for the tests: tools/tests/ship_session.lua sets ENGINE / ASSUMED options on them before the first open)
+function S.modules() return mods end
+
 function S.save()
     if not mods then return end
     local view = S.panel and S.panel.view
@@ -53,10 +56,28 @@ local function host()
     }
 end
 
+-- The game's events on our components, as the listeners of S.open run them (exported for the tests, tools/tests/ship_session.lua: a click
+-- there is this same function)
+function S.click(id)
+    if not S.ui then return end
+    if id == 'mtb_ship_close' then S.close(); return end
+    local c = S.ui.by_id(id)
+    if c then S.panel.click(c, S.ui.ENGINE.mouse_along()) end
+end
+function S.hover(id) if S.ui then S.ui.mouse_on(id) end end
+
+-- the error of a failed build with its stack, when the game's Lua has debug.traceback (the census: it has)
+local function traced(e)
+    local ok, t = pcall(function() return debug.traceback(tostring(e), 2) end)
+    return ok and t or tostring(e)
+end
+
 function S.open()
     if S.panel then return true end
     if not mods then return false, 'not started' end
-    local ok, err = pcall(function()
+    S.failed_ui = nil
+    local t0 = os.clock()
+    local ok, err = xpcall(function()
         S.ui = mods.Uic.new(LAYOUTS, mods.cfg.text)
         S.root = S.ui.root(ROOT)
         S.panel = mods.UI.make_panel{root = S.root, M = S.M, cfg = mods.cfg, CM = mods.CM, Ship = mods.Ship, flags = {}, keep = {tab = S.keep.tab, pan = S.keep.scroll}, host = host()}
@@ -67,26 +88,26 @@ function S.open()
         S.panel.view.onTab = function() S.save() end
         S.panel.view.onSeen = function() S.save() end
         S.panel.refresh()
-    end)
+    end, traced)
+    S.build_seconds = os.clock() - t0
     if not ok then
         log('build failed: ' .. tostring(err))
+        S.failed_ui = S.ui      -- the components made before the failure, for the tests' diagnosis
         S.close()
         return false, err
     end
     log('opened: ' .. tostring(S.ui.count) .. ' components')
     core:add_listener('tww3_mtb_ship_click', 'ComponentLClickUp', function(context) return S.ui and S.ui.by_id(context.string) ~= nil end, guarded(function(context)
-        local id = context.string
-        if id == 'mtb_ship_close' then S.close(); return end
-        local c = S.ui.by_id(id)
-        if c then S.panel.click(c, S.ui.ENGINE.mouse_along()) end
+        S.click(context.string)
     end), true)
-    core:add_listener('tww3_mtb_ship_hover', 'ComponentMouseOn', function() return S.ui ~= nil end, guarded(function(context) S.ui.mouse_on(context.string) end), true)
+    core:add_listener('tww3_mtb_ship_hover', 'ComponentMouseOn', function() return S.ui ~= nil end, guarded(function(context) S.hover(context.string) end), true)
     core:add_listener('tww3_mtb_ship_turn_end', 'FactionTurnEnd', function(context) return context:faction():name() == 'wh3_dlc25_dwf_malakai' end, guarded(S.close), true)
     core:add_listener('tww3_mtb_ship_panel', 'PanelOpenedCampaign', function() return S.panel ~= nil end, guarded(S.close), true)
     local function onEscape()
         if not S.panel then return end
         if S.panel.escape() then cm:steal_escape_key_with_callback(ESCAPE, onEscape) else S.close() end
     end
+    S.on_escape = onEscape      -- the key's callback, for the tests (no key can be pressed for them)
     cm:steal_escape_key_with_callback(ESCAPE, onEscape)
     return true
 end

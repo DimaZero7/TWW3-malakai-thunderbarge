@@ -18,7 +18,7 @@
 local Game = {}
 
 local FACTION = 'wh3_dlc25_dwf_malakai'
-local SUBTYPE = 'wh3_dlc25_dwf_malakai'
+local SUBTYPE = 'wh3_dlc25_dwf_malakai_makaisson'     -- his agent subtype (src/tww3_mtb_campaign.lua; the faction key is the shorter one)
 local SLOTS = 'MilitaryForceContext.HordeContext.BuildingSlotList'
 
 local function log(text) pcall(function() _G.tww3_mtb_campaign.file_log('[ship game] ' .. tostring(text)) end) end

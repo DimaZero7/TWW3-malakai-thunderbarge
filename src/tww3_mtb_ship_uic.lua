@@ -24,9 +24,19 @@ local function log(text) pcall(function() _G.tww3_mtb_campaign.file_log('[ship u
 local ENGINE = {}
 -- probe 7: uic:TextDimensions() on our text component -> width, height, lines. Meanwhile (or if it fails): a measure by the characters at the
 -- layout's size, one line per box's width. The one place where the game's measure of a text enters the panel.
+-- ENGINE.measured counts which way each measure went (for the tests: did the panel's layout use the game's measures)
+ENGINE.measured = {game = 0, chars = 0, empty = 0}
 function ENGINE.measure_text(uic, text, layoutSize, boxW)
+    -- the game answers at once with the width, the height wrapped to the component's width and a BOOLEAN third value (probe 14.11, item 7):
+    -- the lines are counted from the height then
     local ok, w, h, n = pcall(function() return uic:TextDimensions() end)
-    if ok and type(w) == 'number' and w > 0 then return w, h, n end
+    if ok and type(w) == 'number' and w > 0 then
+        ENGINE.measured.game = ENGINE.measured.game + 1
+        if type(n) ~= 'number' then n = math.max(1, floor((h or 0) / ((layoutSize or 16) * 1.35) + 0.5)) end
+        return w, h, n
+    end
+    local m = ENGINE.measured
+    if (text or '') == '' then m.empty = m.empty + 1 else m.chars = m.chars + 1 end
     local chars = 0
     for _ in string.gmatch(text or '', '[%z\1-\127\194-\244][\128-\191]*') do chars = chars + 1 end
     local width = chars * (layoutSize or 16) * 0.52
@@ -61,16 +71,18 @@ end
 function ENGINE.image_opacity(uic, a) pcall(function() uic:SetCurrentStateImageOpacity(0, a) end) end
 -- A window over everything (a building's window, a unit's panel, the crew's choice): the game's RegisterTopMost [файлы: in the game's scripts].
 function ENGINE.top_most(uic) pcall(function() uic:RegisterTopMost() end) end
--- probe 6: the tree's window cuts its children (clipchildren="true" in our layout tree_window, tools/ship_ui.py). Until it is proven: false, and
--- the window hides what lies outside it itself (cull below): the spec's fallback (b), the content moved by SetDockOffset under the window.
-ENGINE.clips = false
+-- probe 6: the tree's window cuts its children (clipchildren="true" in our layout tree_window, tools/ship_ui.py). Proven by the probe of 14.11
+-- (item 6a: the holder cuts its children, also after SetDockOffset). false would make the binding hide what lies outside the window itself
+-- (cull below), kept only should the open be measured faster with it.
+ENGINE.clips = true
 -- probe 6: the mouse wheel over the tree. The game gives a script no wheel event (none in the game's scripts): the arrows, the track and the
 -- handle's place move the tree (question V5: no drag). If the probe finds the game's list template scrolling our content, the tree goes into it.
 ENGINE.wheel = false
 -- The mouse's place along the scroll bar's track (a click there pages toward it): the game's event has no place. Meanwhile nil: a click on the
 -- track pages down the tree.
 function ENGINE.mouse_along() return nil end
--- probe 9 (only an experiment, the plan does not rest on it): ui/templates/building_frame with SetContextObject for our level.
+-- probe 9 (only an experiment, the plan does not rest on it): ui/templates/building_frame with SetContextObject for our level. The probe of
+-- 14.11: the template does not fill itself. false for good.
 ENGINE.building_frame = false
 -- A glow (a new detail, the tab of something new): the page draws a halo. The game's way is a state of the component with the picture again
 -- under it, additive: our image layout has one state yet. Meanwhile none (the tab's «!» mark says it).
@@ -104,6 +116,7 @@ function Uic.new(layouts, textLayouts)
     end
     function C:CreateComponent(id, layout)
         local path = sfind(layout, '/', 1, true) and layout or (layouts .. layout)
+        env.last_made = {id = id, layout = layout, path = path, parent = self.id, count = env.count}     -- for the tests: what was being made when a build fails
         return new(self, id, layout, UIComponent(self.uic:CreateComponent(id, path)))
     end
     function C:Id() return self.id end
@@ -200,6 +213,7 @@ function Uic.new(layouts, textLayouts)
 
     function env.root(id)
         local ui = core:get_ui_root()
+        env.last_made = {id = id, layout = 'layer_holder', path = layouts .. 'layer_holder', parent = 'ui root', count = env.count}
         local holder = new(nil, id, 'layer_holder', UIComponent(ui:CreateComponent(id, layouts .. 'layer_holder')))
         local W, H = ui:Width(), ui:Height()
         holder:Resize(W, H)
@@ -229,6 +243,62 @@ function Uic.new(layouts, textLayouts)
         if env.hovered then leave(env.hovered) end
         env.hovered = c
         if c then enter(c) end
+    end
+    -- For the tests (tools/tests/ship_session.lua), changes nothing: the components made under `top`, from this wrapper's own references (no walk
+    -- of the game's components), in the rows of tools/tests/fake_uic.lua dump() (the same fields, the same paths; `top` written as 'root', as
+    -- the fake's root is). Besides: culled, k (the scale a child was laid out at). live = true adds what the game's UIComponent itself answers
+    -- for the row: ax, ay (Position), lw, lh (Bounds), lvis (Visible), lstate (CurrentState), ltext (GetStateText), td (TextDimensions, texts
+    -- only), each read under pcall ({err} when it raises). lw, lh are the component's own Width() / Height(); bw, bh its Bounds(), which
+    -- include its children (probe 14.11, item 6a).
+    function env.dump(top, live)
+        local out = {}
+        local function ask(u, name, ...)
+            local args = {...}
+            local r = {pcall(function() return u[name](u, unpack(args)) end)}
+            if not r[1] then return {err = tostring(r[2])} end
+            return r
+        end
+        local function walk(c, path)
+            local row = {path = path, id = c.id, layout = c.layout, x = c.x, y = c.y, w = c.w, h = c.h, visible = c.visible}
+            if c == top then row.id, row.layout = 'root', 'root' end
+            if c.text ~= nil then row.text = c.text end
+            if c.state ~= nil then row.state = c.state end
+            if c.image then row.image = c.image end
+            if c.colour then row.colour = c.colour end
+            if c.shader then row.shader = c.shader end
+            if c.opacity ~= nil then row.opacity = c.opacity end
+            if c.tooltip and c.tooltip ~= '' then row.tooltip = c.tooltip end
+            if c.glow and c.glow ~= '' then row.glow = c.glow end
+            if c.layer then row.layer = c.layer end
+            if c.interactive or SKIN[c.layout] then row.interactive = true end
+            if c.text_size ~= nil then row.text_size = c.text_size end
+            if c.blank then row.blank = true end
+            if c.image_opacity then row.image_opacity = c.image_opacity end
+            if c.scale and c.scale ~= 1 then row.scale = c.scale end
+            if c.culled then row.culled = true end
+            if c.k and c.k ~= 1 then row.k = c.k end
+            if live and c.uic then
+                local u = c.uic
+                local p = ask(u, 'Position'); if p.err then row.ax = p else row.ax, row.ay = p[2], p[3] end
+                local w = ask(u, 'Width'); row.lw = w.err and w or w[2]
+                local h = ask(u, 'Height'); row.lh = h.err and h or h[2]
+                local b = ask(u, 'Bounds'); if b.err then row.bw = b else row.bw, row.bh = b[2], b[3] end
+                local v = ask(u, 'Visible'); row.lvis = v.err and v or v[2]
+                local s = ask(u, 'CurrentState'); row.lstate = s.err and s or s[2]
+                if c.text ~= nil then
+                    local t = ask(u, 'GetStateText'); row.ltext = t.err and t or t[2]
+                    local d = ask(u, 'TextDimensions'); row.td = d.err and d or {d[2], d[3], d[4]}
+                end
+            end
+            out[#out + 1] = row
+            local seen = {}
+            for _, k in ipairs(c.children) do
+                seen[k.id] = (seen[k.id] or 0) + 1
+                walk(k, path .. '/' .. k.id .. (seen[k.id] > 1 and ('#' .. seen[k.id]) or ''))
+            end
+        end
+        walk(top, 'root')
+        return out
     end
     env.ENGINE = ENGINE
     return env
