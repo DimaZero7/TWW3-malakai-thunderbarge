@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep, debugRect} from './cdp.mjs';
+import {launch, startServer, sleep, debugRect} from './cdp.mjs';
 import * as T from '../../web/js/tree_model.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -24,9 +24,9 @@ mkdirSync(DATA, {recursive: true});
 const FILE = join(DATA, 'tree_design.json');
 writeFileSync(FILE, readFileSync(SRC, 'utf-8'));
 const design = T.normalize(JSON.parse(readFileSync(FILE, 'utf-8'))).design;
-const PORT = 8766, URL0 = `http://127.0.0.1:${PORT}/`;
-const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', String(PORT), '--tree', FILE], {stdio: 'ignore'});
-for (let i = 0; i < 50; i++) { if (await fetch(URL0 + 'data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
+// the page's own server: the port checked free first, stopped with its process tree in the finally below (cdp.mjs startServer)
+const server = await startServer({root: ROOT, port: 8766, tree: FILE});
+const URL0 = server.url, PORT = server.port;
 const SHOTS = join(ROOT, 'build/web/shots/audit');
 mkdirSync(SHOTS, {recursive: true});
 let failed = 0, n = 0, warnsNow = [];
@@ -35,7 +35,7 @@ const check = (name, ok, extra = '') => { n++; if (!ok) failed++; if (!ok || pro
 const INFO_SHOTS = ['n1', 'n2', 'n3', 'n4', 'n5', 'infantry_workshop_1', 'infantry_workshop_2', 'mtb_nest_1', 'mtb_nest_2', 'mtb_guns_3', 'airship_hull_3',
     'beer_hall_3', 'crew_weapons_3', 'cargo_hold_3', 'engineering_workshop_3', 'airship_hull_5', 'beer_hall_1'];
 
-const b = await launch({width: 1600, height: 900});
+const b = await launch({width: 1600, height: 900}).catch(async e => { await server.stop(); throw e; });
 const E = 'mtb.editor.api';
 const at = sel => b.eval(`(() => { const e = ${sel}; if (!e) return null; e.scrollIntoView({block: 'nearest'}); const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height}; })()`);
 const clickText = async (sel, t) => { const r = await at(`[...document.querySelectorAll(${JSON.stringify(sel)})].find(x => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(t)}))`); if (!r) throw new Error('no ' + t); await b.click(r.x, r.y); };
@@ -148,9 +148,9 @@ try {
 } catch (e) {
     failed++; console.log('FAIL walk stopped: ' + e.stack);
     try { await b.shot(join(SHOTS, 'audit_walk_error.png')); } catch (x) { /* no picture */ }
+} finally {
+    try { await b.close(); } finally { await server.stop(); }
 }
-await b.close();
-server.kill();
 check('the author\'s working file web/data/tree_design.json untouched, byte for byte', hash(WORK) === workBefore);
 console.log(`checks: ${n}, failed: ${failed}`);
 process.exit(failed ? 1 : 0);

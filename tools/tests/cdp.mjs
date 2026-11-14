@@ -1,7 +1,8 @@
 // A small driver of a headless Chrome over the DevTools protocol, for walking the page as a user does: real mouse and key events, pictures,
 // the console. node --experimental-websocket (node 20; node 22 has WebSocket without the flag). No package needed.
 //   const b = await launch({width, height}); await b.open(url); await b.click(x, y); await b.shot(path); await b.close();
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
+import {connect} from 'node:net';
 import {mkdirSync, writeFileSync, rmSync} from 'node:fs';
 import {inflateSync} from 'node:zlib';
 import {join} from 'node:path';
@@ -35,16 +36,42 @@ export function decodePng(buf) {
     return {width, height, data: out};
 }
 
-export async function launch({width = 1200, height = 800, port = 9333, profile = join(tmpdir(), 'mtb_cdp_profile')} = {}) {
+// the browser's process tree ended by its own PID (never by the image name: other Chromes on this machine are not ours)
+const killTree = proc => new Promise(res => {
+    if (!proc || proc.exitCode !== null) { res(); return; }
+    if (process.platform !== 'win32') { proc.kill(); res(); return; }
+    const k = spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {stdio: 'ignore'});
+    k.on('exit', res); k.on('error', res);
+});
+const killTreeSync = proc => {
+    if (!proc || proc.exitCode !== null) return;
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {stdio: 'ignore'});
+    else proc.kill();
+};
+
+export async function launch({width = 1200, height = 800, port = Number(process.env.MTB_CDP_PORT || 9333), profile = join(tmpdir(), 'mtb_cdp_profile')} = {}) {
     rmSync(profile, {recursive: true, force: true});
     mkdirSync(profile, {recursive: true});
+    if (await portTaken(port)) throw new Error(`the browser's debugging port ${port} is already taken: a browser left by an earlier run, or a port Windows keeps (set MTB_CDP_PORT)`);
     const proc = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${width},${height}`, '--hide-scrollbars',
         '--force-device-scale-factor=1', '--no-first-run', '--no-default-browser-check', '--disable-extensions', 'about:blank'], {stdio: 'ignore'});
-    let targets = null;
-    for (let i = 0; i < 50 && !targets; i++) { await sleep(200); targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => null); }
-    const page = targets.find(t => t.type === 'page');
-    const ws = new WebSocket(page.webSocketDebuggerUrl);
-    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+    const onExit = () => killTreeSync(proc);      // the browser goes with the walk however it ends
+    process.once('exit', onExit);
+    let ws = null;
+    try {
+        let targets = null;
+        for (let i = 0; i < 50 && !targets; i++) { await sleep(200); targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => null); }
+        const page = targets && targets.find(t => t.type === 'page');
+        if (!page) throw new Error(`the browser did not open its debugging port ${port}`);
+        ws = new WebSocket(page.webSocketDebuggerUrl);
+        await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+    } catch (e) {
+        // a launch that fails leaves no browser behind
+        try { if (ws) ws.close(); } catch (x) { /* closed */ }
+        process.removeListener('exit', onExit);
+        await killTree(proc);
+        throw e;
+    }
     let id = 0;
     const waiting = new Map(), listeners = [];
     ws.onmessage = m => {
@@ -139,9 +166,53 @@ export async function launch({width = 1200, height = 800, port = 9333, profile =
             for (let i = 0; i < px.data.length; i += 4) s += 0.3 * px.data[i] + 0.59 * px.data[i + 1] + 0.11 * px.data[i + 2];
             return s / (px.data.length / 4);
         },
-        async close() { try { await send('Browser.close'); } catch (e) { /* gone */ } ws.close(); setTimeout(() => proc.kill(), 500); },
+        async close() {
+            if (b.closed) return;
+            b.closed = true;
+            try { await Promise.race([send('Browser.close'), sleep(2000)]); } catch (e) { /* gone */ }
+            try { ws.close(); } catch (e) { /* closed */ }
+            for (let i = 0; i < 10 && proc.exitCode === null; i++) await sleep(100);
+            await killTree(proc);
+            process.removeListener('exit', onExit);
+        },
     };
     return b;
+}
+
+// The page's own server for a walk (tools/web_serve.py --port --tree): the port is checked free first (a server left by an earlier run would answer
+// instead and the walk would talk to its stale files), then the server is spawned and waited for. stop() ends it with its whole process tree by its
+// own PID (py.exe starts python.exe under it: killing the launcher alone leaves the server running); safe to call twice.
+//   const srv = await startServer({root, port, tree}); try { ... } finally { await srv.stop(); }
+// MTB_PORT in the environment overrides the walk's port, MTB_CDP_PORT the browser's debugging port (launch).
+export const portTaken = port => new Promise(res => {
+    const s = connect({port, host: '127.0.0.1'});
+    s.setTimeout(1500);
+    s.once('connect', () => { s.destroy(); res(true); });
+    s.once('timeout', () => { s.destroy(); res(true); });
+    s.once('error', () => res(false));
+});
+export async function startServer({root, port, tree, python = ['-3.14']}) {
+    port = Number(process.env.MTB_PORT || port);
+    const url = `http://127.0.0.1:${port}/`;
+    if (await portTaken(port)) throw new Error(`port ${port} is already taken (a server left by an earlier run?): stop that process first, or set MTB_PORT to a free port`);
+    const proc = spawn('py', [...python, join(root, 'tools/web_serve.py'), '--port', String(port), '--tree', tree], {stdio: 'ignore'});
+    let stopped = false;
+    // the last net: whatever way the walk ends (a throw outside its try, process.exit), its server goes with it
+    const onExit = () => { if (!stopped && proc.exitCode === null) killTreeSync(proc); };
+    process.once('exit', onExit);
+    const stop = async () => {
+        if (stopped) return;
+        stopped = true;
+        process.removeListener('exit', onExit);
+        await killTree(proc);
+    };
+    for (let i = 0; i < 75; i++) {
+        if (await fetch(url + 'data/tree_design.json').then(r => r.ok).catch(() => false)) return {proc, url, port, stop};
+        if (proc.exitCode !== null) break;
+        await sleep(200);
+    }
+    await stop();
+    throw new Error(`the server on port ${port} did not start`);
 }
 
 // A debug button of the page's bar (web/index.html, #debug): in a narrow window they fold into «Отладка ▾», opened first when the button is hidden.

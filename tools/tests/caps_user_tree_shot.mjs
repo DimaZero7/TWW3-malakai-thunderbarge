@@ -5,19 +5,18 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep} from './cdp.mjs';
+import {launch, startServer, sleep} from './cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(tmpdir(), 'mtb_user_tree_shot');
 mkdirSync(DATA, {recursive: true});
 const FILE = join(DATA, 'tree_design.json');
 copyFileSync(join(ROOT, 'web/data/tree_design.json'), FILE);
-const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', '8769', '--tree', FILE], {stdio: 'ignore'});
-for (let i = 0; i < 50; i++) { if (await fetch('http://127.0.0.1:8769/data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
-const b = await launch({width: 1280, height: 800, port: 9334, profile: join(tmpdir(), 'mtb_cdp_shot')});
+const server = await startServer({root: ROOT, port: 8769, tree: FILE});
+const b = await launch({width: 1280, height: 800, port: 9334, profile: join(tmpdir(), 'mtb_cdp_shot')}).catch(async e => { await server.stop(); throw e; });
 try {
     await b.size(1280, 800);
-    await b.open('http://127.0.0.1:8769/?mode=constructor');
+    await b.open(server.url + '?mode=constructor');
     await b.until('!!(window.mtb && mtb.editor && mtb.editor.design().nodes.length === 22)', 15000);
     await sleep(800);
     const item = await b.eval(`(() => { const e = [...document.querySelectorAll('.cx-pal-item')].find(x => (x.title.split(String.fromCharCode(10))[1] || '') === 'mtb_nest_1'); e.scrollIntoView({block: 'nearest'}); const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; })()`);
@@ -29,6 +28,5 @@ try {
     const errs = b.errors;
     console.log(errs.length ? 'errors: ' + errs.join(' | ') : 'clean');
 } finally {
-    await b.close();
-    server.kill();
+    try { await b.close(); } finally { await server.stop(); }
 }

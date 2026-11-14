@@ -14,11 +14,12 @@ export function url(path) {
     return '/build/game/' + path;                                                                         // the game's own pictures, tools/web_export.py
 }
 
-// The text layouts of tools/crew_ui.py: font category, size, colour. The game's fonts are not on this page: a serif stands in.
+// The text layouts of tools/crew_ui.py: font category, size in units of the game's interface (the game's points x 4/3), colour. The game's fonts
+// are not on this page: a serif stands in.
 const TEXT = {
-    text_title: {size: 24, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true, font: 'header'},
-    text_head: {size: 18, colour: '#EBBD7C', bold: true, nowrap: true, font: 'header'},
-    text_name: {size: 14, colour: '#FFF8D7', nowrap: true, font: 'header'},
+    text_title: {size: 32, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true, font: 'header'},
+    text_head: {size: 24, colour: '#EBBD7C', bold: true, nowrap: true, font: 'header'},
+    text_name: {size: 18.67, colour: '#FFF8D7', nowrap: true, font: 'header'},
     // a button's label, centred: a layout the mod does not have yet (tools/crew_ui.py: text_layout(..., "Center", "Never split"))
     // the number of men on a unit card (land_unit_card, unit_strength_number): small, centred
     // the numbers on a unit card (land_unit_card.twui.xml): the men and the cost body_10, the turns of a recruitment body_12; on the screen 13 and 16 px
@@ -29,7 +30,8 @@ const TEXT = {
     // description body_12 centred (the description italic), the entries body_12. Colours as the game draws them (docs/feedback/01-building-tooltip.png):
     // the title #FFF8D7, the chain's name and the description dimmer, effects green, a reason red.
     // Sizes: the game's font sizes are points, 12 is 16 px and 14 is 19 px on the screen, lines 22 px apart (measured on that screenshot, which is 1:1:
-    // its window is 400 wide as the template's). The page's older layouts above use the number as px and are smaller than the game's.
+    // its window is 400 wide as the template's). Every layout here is at the game's own size on the screen: a point of the game's font is 4/3 of a
+    // unit (body_12 = 16, header_14 = 19, header_18 = 24, header_24 = 32); nothing is drawn smaller than the game draws it.
     text_info_title: {size: 19, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
     text_info_centre: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top'},
     text_info_italic: {size: 16, line: 22, colour: '#A19883', align: 'center', valign: 'top', italic: true},
@@ -47,17 +49,18 @@ const TEXT = {
     text_unit_right: {size: 16, colour: '#FFF8D7', nowrap: true, align: 'right'},
     text_unit_centre: {size: 16, colour: '#FFF8D7', nowrap: true, align: 'center'},
     text_unit_note: {size: 13, line: 17, colour: '#D8CDB0', valign: 'top'},
-    text_button: {size: 14, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
-    text_name_grey: {size: 14, colour: '#8E8A80', nowrap: true, font: 'header'},
-    text_body: {size: 12, colour: '#FFF8D7', valign: 'top'},
-    text_line: {size: 12, colour: '#FFF8D7', nowrap: true},
-    text_line_grey: {size: 12, colour: '#8E8A80', nowrap: true},
-    text_copper: {size: 12, colour: '#EBBD7C', nowrap: true},
-    text_note: {size: 12, colour: '#8E8A80', valign: 'top'},
-    // the green of a building's effect lines in the game's list of effects (EffectList); the shade is a guess, the game's own is not read
+    text_button: {size: 18.67, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header'},
+    text_name_grey: {size: 18.67, colour: '#8E8A80', nowrap: true, font: 'header'},
+    text_body: {size: 16, line: 20, colour: '#FFF8D7', valign: 'top'},
+    text_line: {size: 16, colour: '#FFF8D7', nowrap: true},
+    text_line_grey: {size: 16, colour: '#8E8A80', nowrap: true},
+    text_copper: {size: 16, colour: '#EBBD7C', nowrap: true},
+    text_note: {size: 16, line: 20, colour: '#8E8A80', valign: 'top'},
     // ink on the parchment, for the turns written on the drawing: a layout the mod does not have yet (tools/crew_ui.py would get it)
-    text_ink: {size: 15, colour: '#3B2110', bold: true, nowrap: true, font: 'header'},
-    text_green: {size: 12, colour: '#9BD36A', valign: 'top'},
+    text_ink: {size: 20, colour: '#3B2110', bold: true, nowrap: true, font: 'header', align: 'center'},
+    // the count of the units folded into the plate «+N» over a slot of the tree (the card's number, larger)
+    text_card_more: {size: 16, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true},
+    text_green: {size: 16, line: 20, colour: '#9BD36A', valign: 'top'},
 };
 
 // Button skins: the picture of each state, as button_layout() of tools/crew_ui.py; margins of the 9-slice in the layout's units.
@@ -122,7 +125,19 @@ export class Component {
     Height() { return this.h; }
     SetDockOffset(x, y) { this.x = Math.round(x); this.y = Math.round(y); this.el.style.left = this.x + 'px'; this.el.style.top = this.y + 'px'; }
     MoveTo(x, y) { this.SetDockOffset(x, y); }
-    SetImagePath(path) { this.path = path; if (this.img) this.img.src = url(path); }
+    // A picture changed on a component already shown (the drawing's sheet when the barge is built) keeps the old one until the new one is loaded and
+    // decoded, so the screen never shows a hole where it was; the first picture of a component goes in at once (whenPictures holds the first frame).
+    SetImagePath(path) {
+        this.path = path;
+        if (!this.img) return;
+        const u = url(path);
+        if (this.img.getAttribute('src') === u) return;
+        if (!(this.img.getAttribute('src') && this.img.complete && this.img.naturalWidth)) { this.img.src = u; return; }
+        const pre = new Image();
+        pre.src = u;
+        const swap = () => { if (this.path === path) { this.img.src = u; if (this.maskColour) this.SetImageColour(...this.maskColour); } };
+        if (pre.complete && pre.naturalWidth) swap(); else pre.decode().then(swap, swap);
+    }
     SetStateText(text) { this.text = text; if (this.textEl) this.textEl.innerHTML = colourText(text); }
     GetStateText() { return this.text || ''; }
     // the game's uic:TextDimensions(): width, height and lines of the text as laid out in the component's width
@@ -148,13 +163,23 @@ export class Component {
         this.greyFilter = name === 'set_greyscale_t0' ? 'grayscale(1)' : '';
         this.paintFilter();
     }
-    paintFilter() { this.el.style.filter = [this.colourFilter, this.greyFilter, this.hoverFilter].filter(Boolean).join(' '); }
+    paintFilter() { this.el.style.filter = [this.colourFilter, this.greyFilter, this.hoverFilter, this.glowFilter].filter(Boolean).join(' '); }
+    // The glow of something new (a detail the turn added to the ship): GAME: a state of the component with the picture again under it, additive
+    // kind 'soft': a narrower halo for a control in a tight row (a tab under the title's edge), 6 units at most round its shape
+    SetGlow(on, kind) {
+        const g = !on ? '' : kind === 'soft' ? 'drop-shadow(0 0 2px rgba(255, 220, 120, 1)) drop-shadow(0 0 4px rgba(255, 170, 60, 1)) drop-shadow(0 0 6px rgba(255, 140, 30, 0.8))'
+            : 'drop-shadow(0 0 3px rgba(255, 214, 110, 0.95)) drop-shadow(0 0 9px rgba(255, 150, 40, 0.85))';
+        if (g === (this.glowFilter || '')) return;
+        this.glowFilter = g;
+        this.paintFilter();
+    }
     SetDisabled(on) { this.SetState(on ? 'inactive' : 'active'); }
     // The colour of a state's image (the twui's image colour, RGBA): the RGB darkens it as the game's multiply does, the alpha is its opacity.
     // A real colour (not a grey) tints: the picture's shape filled with the colour, as the game's multiply does to a white picture (a bar).
     SetImageColour(r, g, b, a) {
         this.el.style.opacity = String(a / 255);
         if (this.img && (r !== g || g !== b)) {
+            this.maskColour = [r, g, b, a];
             const mask = `url("${this.img.src}")`;
             Object.assign(this.el.style, {backgroundColor: `rgb(${r},${g},${b})`, maskImage: mask, webkitMaskImage: mask, maskSize: '100% 100%', webkitMaskSize: '100% 100%'});
             this.img.style.visibility = 'hidden';
@@ -276,6 +301,17 @@ export function makeRoot(host, w = 1600, h = 900) {
 let rootOf = null;
 export function setTooltipRoot(root) { rootOf = root; }
 
+// The screen shown whole, never half drawn: the root is kept hidden until every picture in it has loaded (or failed, or `ms` passed), then shown in
+// one frame. The game itself loads a panel's pictures before it draws it. -> a promise, resolved when shown
+export function whenPictures(root, ms = 5000) {
+    root.el.style.visibility = 'hidden';
+    const imgs = [...root.el.querySelectorAll('img')].filter(i => i.getAttribute('src'));
+    const one = i => (i.complete ? Promise.resolve() : new Promise(res => { i.addEventListener('load', res, {once: true}); i.addEventListener('error', res, {once: true}); }))
+        .then(() => (i.complete && i.naturalWidth && i.decode ? i.decode().catch(() => {}) : null));
+    return Promise.race([Promise.all(imgs.map(one)), new Promise(res => setTimeout(res, ms))])
+        .then(() => new Promise(res => requestAnimationFrame(() => { root.el.style.visibility = ''; root.pictures = true; res(); })));
+}
+
 function place(e) {
     const r = rootOf.el.getBoundingClientRect();
     const k = r.width / rootOf.w;
@@ -288,4 +324,6 @@ function place(e) {
 }
 function showTooltip(text, e) { tooltipBox.innerHTML = colourText(text); tooltipBox.style.display = ''; place(e); }
 function moveTooltip(e) { if (tooltipBox.style.display !== 'none') place(e); }
-function hideTooltip() { tooltipBox.style.display = 'none'; }
+function hideTooltip() { if (tooltipBox) tooltipBox.style.display = 'none'; }
+// a tooltip whose component went away under a still mouse (a tab changed): no leave comes, so it is taken away here
+export function clearTooltip() { tooltipOwner = null; hideTooltip(); }

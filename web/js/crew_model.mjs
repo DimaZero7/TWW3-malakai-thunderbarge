@@ -87,6 +87,38 @@ export function crewSources(data, has, standing = has) {
     return out;
 }
 
+// ---- The ammunition of a crew as the player reads it ----
+// The mod gives a group one whole for a battle (src/tww3_mtb_ammo.lua: the group's ammo times the cargo hold's bonus, rounded floor(x + 0.5)); its
+// places share it. So the group's whole is the true number and the main one; a place's share is told beside it, as «по N» only when it is whole,
+// else «около N». The places are the men who shoot: the riflemen are 11 (Malakai takes the twelfth seat of the deck,
+// docs/design/barge-upgrades-ideas.md, «Место Малакая»), so their whole is 11 places' worth (data/crew_options.json still counts 12 seats: the
+// page follows the men). n: an option's numbers (build/web/data.json: ammo, seats), men: the number of men of its card.
+// -> {places, base: the whole without a bonus, total: with it, each: total / places, whole: each is a whole number, per: each rounded}
+export function crewPlaces(n, men) {
+    if (!n || !n.seats) return 0;
+    return men && men < n.seats ? men : n.seats;
+}
+export function crewAmmo(n, pct = 0, men = 0) {
+    const places = crewPlaces(n, men);
+    const base = places && places !== n.seats ? Math.round(n.ammo * places / n.seats) : n.ammo;
+    const total = Math.floor(base * (1 + (pct || 0) / 100) + 0.5);
+    const each = places ? total / places : total;
+    return {places, base, total, each, whole: Number.isInteger(each), per: Math.round(each)};
+}
+// the places of a group in words (the number's form: 1 люк, 2 люка, 5 люков)
+export const PLACE_NOUNS = {rifles: ['стрелок', 'стрелка', 'стрелков'], cannons: ['ствол', 'ствола', 'стволов'], bombs: ['люк', 'люка', 'люков'],
+                            cupolas: ['гнездо', 'гнезда', 'гнёзд'], harpoon: ['гарпун', 'гарпуна', 'гарпунов']};
+export function plural(v, forms) {
+    const m10 = v % 10, m100 = v % 100;
+    return m10 === 1 && m100 !== 11 ? forms[0] : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? forms[1] : forms[2];
+}
+// The line under the number: «4 люка по 28», or «4 люка, около 65 на люк» when the share is not whole. per: the place's words («на люк»).
+export function ammoShare(a, group, per) {
+    if (!a.places) return '';
+    const noun = plural(a.places, PLACE_NOUNS[group] || ['место', 'места', 'мест']);
+    return a.whole ? `${a.places} ${noun} по ${a.each}` : `${a.places} ${noun}, около ${a.per} ${per || 'на место'}`;
+}
+
 // What is taken from the treasury for this state: the hire of the order that waits.
 export function held(state) {
     return state.order ? state.order.paid : 0;

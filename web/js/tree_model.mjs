@@ -365,19 +365,19 @@ export function warnings(d, ctx = {}) {
     const forks = {};
     for (const n of d.nodes) if (n.prev) (forks[n.prev] ||= []).push(n.id);
     for (const [p, ids] of Object.entries(forks)) if (ids.length > 1) out.push({kind: 'line_fork', text: `Линейка «${label(byId(d, p))}» ветвится: её продолжают ${ids.map(id => '«' + label(byId(d, id)) + '»').join(', ')}`, nodes: [p, ...ids]});
-    // what the game's building window would have to shorten (INFO, measured on the real window): the full set with the line
+    // a building window taller than the game's screen (INFO, measured on the real window): the full set with the line
     for (const n0 of d.nodes) {
         const f = resolve(d, n0.id).full;
-        const n = {...n0, effects: f.effects.map(x => x.e), crew: f.crew.map(x => x.c), units: f.units.map(x => x.u), parts: f.parts.map(x => x.p)};
-        const units = (ctx.units ? ctx.units(n) : n.crew.length) + (n.units || []).length;
+        const n = {...n0, effects: f.effects.map(x => x.e), crew: f.crew.map(x => x.c), units: f.units.map(x => x.u), parts: newOnLevel(d, n0.id).parts.map(x => x.p)};
+        const units = ctx.units ? ctx.units(n) : n.crew.length, army = (n.units || []).length;
         const bare = infoHeight({...n, description: ''}, units), max = infoDescMax(n, units);
         if (bare > INFO.SCREEN_H) {
-            const fit = Math.floor((INFO.SCREEN_H - INFO.HEAD - INFO.FOOT - INFO.REASON - (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0)) / INFO.EFFECT) - (n.parts || []).length;
-            out.push({kind: 'info_lines', text: `«${label(n)}»: строк ${n.effects.length}${units ? ` и отрядов ${units}` : ''} — в окне игры поместится строк не больше ${Math.max(0, fit)}`, nodes: [n.id]});
+            const fit = Math.floor((INFO.SCREEN_H - INFO.HEAD - INFO.FOOT - INFO.REASON - (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0) - (army ? INFO.OPENS_HEAD + army * INFO.ARMY : 0)) / INFO.EFFECT) - (n.parts || []).length;
+            out.push({kind: 'info_lines', text: `«${label(n)}»: строк ${n.effects.length}${units + army ? ` и отрядов ${units + army}` : ''} — в окне игры поместится строк не больше ${Math.max(0, fit)}`, nodes: [n.id]});
         } else if (n.description && max < INFO.DESC_CHARS_LINE) {
             out.push({kind: 'info_desc', text: `«${label(n)}»: при стольких строках и отрядах описанию нет места в окне игры`, nodes: [n.id]});
         } else if (n.description.length > max) {
-            out.push({kind: 'info_desc', text: `«${label(n)}»: описание длиннее ${max} знаков — в окне игры обрежется`, nodes: [n.id]});
+            out.push({kind: 'info_desc', text: `«${label(n)}»: описание длиннее ${max} знаков — окно постройки не поместится на экране игры`, nodes: [n.id]});
         }
     }
     const hulls = hullTiers(d);
@@ -424,6 +424,42 @@ export function linkSegments(a, b, blocked = null) {
 // blocked() for linkSegments over the slots at these corners: a vertical at x between y0 and y1 crosses one of them
 export function slotsBlock(corners) {
     return (x, y0, y1) => corners.some(c => x > c.x && x < c.x + NODE && c.y < y1 - 1 && c.y + NODE > y0 + 1);
+}
+
+// The small unit cards over a slot of the game's tree: the game's template has room for a few (they stand over the slot's upper right corner, and
+// a fourth would cover the slot's middle, where its line leaves it). At most MAX in the row: when there are more, MAX - 1 cards and a plate «+N»
+// in the card's place for the rest. The crew of the barge first (in the building's order), then the army's units by tier.
+// items: [{crew: bool, tier}] -> {shown: [item], folded: [item]}
+export const SLOT_CARDS_MAX = 3;
+export function slotCards(items, max = SLOT_CARDS_MAX) {
+    const order = items.map((it, i) => ({it, i})).sort((a, b) => (a.it.crew ? 0 : 1) - (b.it.crew ? 0 : 1) || (a.it.crew ? 0 : (a.it.tier || 0) - (b.it.tier || 0)) || a.i - b.i).map(x => x.it);
+    if (order.length <= max) return {shown: order, folded: []};
+    return {shown: order.slice(0, max - 1), folded: order.slice(max - 1)};
+}
+
+// What tells a crossing of two lines from a join, over the links' segments as linkSegments gives them (links: [{from, to, segs: [[x0, y0, x1, y1]]}]):
+//   junction  a point where two links that belong together meet (the same building above: the links into it join under it; the same building
+//             below: the links out of it part over it): drawn as a dot, so the join reads as one;
+//   crossing  a vertical of one link through a horizontal of a link it has nothing to do with: the horizontal is broken there (a small gap), so it
+//             does not read as a join.
+// -> {junctions: [[x, y]], crossings: [{x, y, h, v}]} (h, v: the segments themselves, as given)
+export function lineMarks(links) {
+    const segs = [];
+    links.forEach((l, li) => (l.segs || []).forEach(s => {
+        const [x0, y0, x1, y1] = s;
+        if (x0 === x1 && y0 === y1) return;
+        segs.push({li, l, s, v: Math.abs(x0 - x1) < 0.5, x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1)});
+    }));
+    const vs = segs.filter(s => s.v), hs = segs.filter(s => !s.v);
+    const junctions = new Map(), crossings = [];
+    for (const v of vs) for (const h of hs) {
+        if (v.li === h.li) continue;
+        const x = v.x0, y = h.y0;
+        if (x < h.x0 - 0.5 || x > h.x1 + 0.5 || y < v.y0 - 0.5 || y > v.y1 + 0.5) continue;
+        if (v.l.from === h.l.from || v.l.to === h.l.to) { junctions.set(`${x}:${y}`, [x, y]); continue; }
+        if (x > h.x0 + 0.5 && x < h.x1 - 0.5 && y > v.y0 + 0.5 && y < v.y1 - 0.5) crossings.push({x, y, h: h.s, v: v.s});
+    }
+    return {junctions: [...junctions.values()], crossings};
 }
 
 // ---- the constructor's own grid and its lines ----
@@ -580,16 +616,19 @@ export function roundedPath(pts, r = 6) {
 }
 
 // ---- what the game's building window can hold (web/js/panel.js, fillInfoTip), measured on the real window on the page's root of 1600 x 900:
-// the title and the chain's name 69, an effect line 36, the title of the crew block 24, a crew line 59 (its name and money take two lines), the
-// foot 17, the red reason up to three lines 81; the description 372 wide, italic 16 px, about 44 letters a line, 22 a line, 36 round it. The
-// window must fit in 892. The constructor warns before the game has to shorten a description or has no room left for it.
-export const INFO = {SCREEN_H: 892, DESC_CHARS_LINE: 44, DESC_LINE: 22, DESC_PAD: 36, EFFECT: 36, UNIT: 59, HEAD: 69, FOOT: 17, REASON: 81, OPENS_HEAD: 24};
+// the title 39 (no chain's line under it any more), an effect line 36, the title of the crew block 24, a crew line 59 (its name and money take two
+// lines), the foot 17, the red reason up to three lines 81; the description 372 wide, italic 16 px, about 44 letters a line, 22 a line, 36 round
+// it. The window is never shortened: it shows whole under the title row, or over it when it must (panel.js placeInfo), so the one limit left is
+// the screen itself, 892 of the root's 900. The constructor warns of a window that would be taller than that (it would leave the screen).
+// Measured again on every window of the author's tree (14.11.2026, 41 windows at 2560 x 1440, UI 1.6): an entry is 32 for one line and 54 for two;
+// a crew line (its name and money) 54, an army unit's line 32, each block's title 32; the reason up to four lines 88.
+export const INFO = {SCREEN_H: 892, DESC_CHARS_LINE: 44, DESC_LINE: 22, DESC_PAD: 36, EFFECT: 36, UNIT: 54, ARMY: 32, HEAD: 39, FOOT: 17, REASON: 88, OPENS_HEAD: 32};
 export function infoHeight(n, units = n.crew.length) {
     const desc = n.description ? Math.max(52, INFO.DESC_PAD + Math.ceil(n.description.length / INFO.DESC_CHARS_LINE) * INFO.DESC_LINE) : 0;
-    // the lines: the effects, and one a detail of the ship (web/js/panel.js, fileInfo); a block of army units has its own title
+    // the lines: the effects, and one a detail of the ship (web/js/panel.js, fileInfo); the crew's block and the army's, each with its title
     const lines = n.effects.length + (n.parts || []).length;
     const army = (n.units || []).length;
-    return INFO.HEAD + desc + lines * INFO.EFFECT + (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0) + (army ? INFO.OPENS_HEAD : 0) + INFO.FOOT + INFO.REASON;
+    return INFO.HEAD + desc + lines * INFO.EFFECT + (units ? INFO.OPENS_HEAD + units * INFO.UNIT : 0) + (army ? INFO.OPENS_HEAD + army * INFO.ARMY : 0) + INFO.FOOT + INFO.REASON;
 }
 // the longest description that still fits with the node's lines and crew (0: no room for one line)
 export function infoDescMax(n, units = n.crew.length) {
@@ -648,13 +687,17 @@ export function gameData(design, data) {
         taken.add(k);
     }
     const rows = design.nodes.map(n => {
-        const f = resolve(design, n.id).full, effects = f.effects.map(x => x.e);
+        const f = resolve(design, n.id).full, effects = f.effects.map(x => x.e), fresh = newOnLevel(design, n.id);
+        const cards = oneCardPerUnit(fresh.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]), fresh.units.map(x => x.u), crewUnitOf(data.groups));
         return {
             key: keyOf[n.id], short: keyOf[n.id].slice(prefix.length), chain: chainOf[n.id].chain, level: chainOf[n.id].level, line_level: levelOf(design, n.id),
             in_line: !!n.prev || design.nodes.some(m => m.prev === n.id), name: label(n), game_name: null, text: n.description,
             cost: n.cost, turns: n.turns, dev: 0, tier: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
             icon: null, icon_path: n.icon, lines: effects.map(e => e.text), effects, unlocks: f.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]),
             units: f.units.map(x => x.u), parts: f.parts.map(x => x.p), own_effects: n.effects,
+            // what the slot shows as its cards: only what this level brings new in its line (newOnLevel), one card a unit (oneCardPerUnit: a crew
+            // kind that is also opened for the army carries army: its unit key); the details of the ship told only where they first come
+            unlocks_new: cards.crew, units_new: cards.units, parts_new: fresh.parts.map(x => x.p),
             branch: n.branch, node: n.id, col: n.col, row: n.row,
         };
     });
@@ -735,6 +778,34 @@ export function resolve(d, id, depth = 0) {
     return {full, inherited, from: parent ? n.prev : null, below: below ? n.prev : null};
 }
 export const thingKey = {crew: crewKey, units: unitKey, parts: partKey};
+// What a level's slot shows as small unit cards in the game's tree: only what the level brings new against the level below it in its line. The game's
+// tables list a level's units whole (building_units_allowed: a higher level repeats every unit of the lower ones), and its tree shows on a slot only
+// the units first allowed there (docs/reference/building-levels-in-game.md). One rule for every place that draws cards on a node (the game's
+// column, the constructor). -> {crew: [{c, key, from}], units: [{u, key, from}]}
+// The details of the ship (parts) follow the same rule: «Вид на корабле» is the page's own note of what appears on the ship, not an effect of the
+// game, so it is told on the level that first brings the detail in its line, not again on every level above that keeps it.
+// -> {crew: [{c, key, from}], units: [{u, key, from}], parts: [{p, key, from}]}
+export function newOnLevel(d, id) {
+    const n = byId(d, id);
+    if (!n) return {crew: [], units: [], parts: []};
+    const full = resolve(d, id).full, below = n.prev && byId(d, n.prev) ? resolve(d, n.prev).full : null;
+    const had = list => new Set(below ? below[list].map(x => x.key) : []);
+    const crew = had('crew'), units = had('units'), parts = had('parts');
+    return {crew: full.crew.filter(x => !crew.has(x.key)), units: full.units.filter(x => !units.has(x.key)), parts: full.parts.filter(x => !parts.has(x.key))};
+}
+// One unit, one card on a slot (the author: «в игре постройки … не дублируют войска»). A crew kind of the barge is taken from a unit of the game
+// (data/crew_options.json, upkeep_from: build/web/data.json, option.unit); a level that opens that kind aboard and the same unit for the army's
+// recruitment shows the crew's card once, and its panel tells both. The building's window keeps both lists as they are.
+// crew: [{group, option}], units: [unit key], unitOf({group, option}) -> the unit key of the kind or null.
+// -> {crew: [{group, option, army: unit key | null}], units: [unit key not shown by a crew card]}
+export function oneCardPerUnit(crew, units, unitOf) {
+    const opened = new Set(units);
+    const out = crew.map(c => { const u = unitOf(c) || null; return {...c, army: u && opened.has(u) ? u : null}; });
+    const covered = new Set(out.map(c => c.army).filter(Boolean));
+    return {crew: out, units: [...new Set(units)].filter(u => !covered.has(u))};
+}
+// the unit key of a crew kind in the exported data (build/web/data.json groups)
+export const crewUnitOf = groups => c => { const g = groups && groups[c.group], o = g && g.options[c.option]; return (o && o.unit) || null; };
 // Turning inheritance on for a node that already has its own lines (a building of the mod comes with its whole set): what of its own would stand for
 // the inherited (an effect of the catalogue of the same kind and target: a replacement by itself), what is the same word for word (a double), what is
 // the same kind with another number (a free line the catalogue reads as the inherited one's kind: offered as a replacement); the crew, units and

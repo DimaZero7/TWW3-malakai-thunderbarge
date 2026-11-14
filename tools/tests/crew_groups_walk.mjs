@@ -10,7 +10,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep, debugRect} from './cdp.mjs';
+import {launch, startServer, sleep, debugRect} from './cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(tmpdir(), 'mtb_groups_tree');
@@ -18,9 +18,9 @@ rmSync(DATA, {recursive: true, force: true});
 mkdirSync(DATA, {recursive: true});
 const FILE = join(DATA, 'tree_design.json');
 writeFileSync(FILE, readFileSync(join(ROOT, 'web/data/tree_design.json')));
-const PORT = 8767, URL0 = `http://127.0.0.1:${PORT}/`;
-const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', String(PORT), '--tree', FILE], {stdio: 'ignore'});
-for (let i = 0; i < 50; i++) { if (await fetch(URL0 + 'data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
+// the page's own server: the port checked free first, stopped with its process tree in the finally below (cdp.mjs startServer)
+const server = await startServer({root: ROOT, port: 8767, tree: FILE});
+const URL0 = server.url, PORT = server.port;
 const SHOTS = join(ROOT, 'build/web/shots/groups');
 mkdirSync(SHOTS, {recursive: true});
 let failed = 0;
@@ -43,17 +43,20 @@ async function walk(scale) {
         const k = await b.eval(`document.querySelector('#screen .root').getBoundingClientRect().width / 1600`);
         check(`${tag} the page's scale is ${scale}`, Math.abs(k - scale) < 0.02, k);
         const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height}; })()`);
-        const shown = id => comp(id).then(r => !!r);
-        const clickId = async id => { const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); return r; };
+        const shown = async id => { await toTab(tabFor(id) || 'ship'); return !!(await comp(id)); };
+        // the panel's two tabs (web/js/panel.js): the tree's slots on «Постройки», the drawing and its crew on «Корабль»; a check of the drawing looks at it shown
+        const tabFor = id => /^(mtb_tree_node_|mtb_ship_demolish|mtb_tree_fit|tree_window|mtb_army_card_|mtb_crew_card_(?!pick_))/.test(id) ? 'tree' : /^(mtb_crew_|mtb_side_|scheme|plan_ship)/.test(id) ? 'ship' : null;
+        const toTab = async t => { if (t && await b.eval('mtb.panel.view.tab') !== t) { const r = await comp('mtb_tab_' + t); await b.click(r.x, r.y); await sleep(150); } };
+        const clickId = async id => { await toTab(tabFor(id)); const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); return r; };
         const button = async sel => { const r = /gold_quick|build_|reset_all/.test(sel) ? await debugRect(b, sel) : await b.rect(sel); await b.click(r.x, r.y); await sleep(250); };
         const gold = () => b.eval('mtb.game.treasury()');
         const hire = (g, o) => b.eval(`mtb.M.crew_options('${g}').find(x => x.key === '${o}').hire`);
         const upkeep = (g, o) => b.eval(`mtb.M.crew_options('${g}').find(x => x.key === '${o}').upkeep`);
-        const layerShown = name => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${name}"]')][0]; return !!e && e.offsetParent !== null; })()`);
+        const layerShown = async name => (await toTab('ship'), b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${name}"]')][0]; return !!e && e.offsetParent !== null; })()`));
         const pickOpen = () => b.eval(`[...document.querySelectorAll('#screen [data-id^="mtb_crew_pick_"]')].filter(e => e.offsetParent !== null).map(e => e.dataset.id)`);
         const images = () => b.eval(`(() => { const bad = [...document.querySelectorAll('#screen img')].filter(i => i.offsetParent !== null && (!i.complete || !i.naturalWidth)).map(i => i.src.split('/').pop()); return bad; })()`);
         const screen = async () => { const r = await b.rect('#screen .root'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
-        const drawing = async () => { const r = await comp('scheme'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
+        const drawing = async () => { await toTab('ship'); const r = await comp('scheme'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
         const settle = async () => { await sleep(300); await b.until(`[...document.querySelectorAll('#screen img')].filter(i => i.offsetParent !== null).every(i => i.complete)`, 15000).catch(() => {}); await sleep(250); };
 
         await button('#build_all');
@@ -88,7 +91,7 @@ async function walk(scale) {
             check(`${tag} ${g}: the unit's panel shows beside the choice, not over the card`, !!info && (info.l > card.x + 30 || info.l + info.w < card.x - 30 || info.t + info.h < card.t || info.t > card.t + card.h), info);
             const infoText = await b.eval(`document.querySelector('#screen [data-id="crew_pick_info_${g}_${last}"]').textContent`);
             check(`${tag} ${g}: the unit's panel has no broken number`, !/NaN|undefined|null/.test(infoText), infoText.slice(0, 200));
-            check(`${tag} ${g}: the ammunition in volleys a seat (or the harpoon's shots)`, g === 'harpoon' ? /Выстрелов за бой/.test(infoText) : /залп/.test(infoText), infoText.slice(0, 300));
+            check(`${tag} ${g}: the ammunition: the group's whole and its places (or the harpoon's shots)`, g === 'harpoon' ? /Выстрелов за бой/.test(infoText) : /Боезапас\d+/.test(infoText.replace(/\s+/g, '')) && /\d+ [а-яё]+(?: по \d+|, около \d+)/.test(infoText), infoText.slice(0, 300));
             const pk = await comp('mtb_crew_pick_' + g);
             const z = await b.eval(`[getComputedStyle(document.querySelector('#screen [data-id="crew_pick_info_${g}_${last}"]')).zIndex, getComputedStyle(document.querySelector('#screen [data-id="mtb_crew_pick_${g}"]')).zIndex]`);
             check(`${tag} ${g}: the panel under the mouse is over the window of the click`, Number(z[0]) > Number(z[1]), z);
@@ -194,7 +197,7 @@ async function walk(scale) {
 try {
     for (const s of [0.6, 1]) await walk(s);
 } finally {
-    server.kill();
+    await server.stop();
 }
 console.log(`failed: ${failed}`);
 process.exit(failed ? 1 : 0);

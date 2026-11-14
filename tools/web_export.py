@@ -70,6 +70,18 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/modifier_icon_armour_piercing.png",
            "ui/skins/default/frame_text.png"]      # the plate of a recruitment card's cost
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
+# The airship screen's tabs, the tree's scroll bars and the demolish button over a built slot, as the game's panels have them:
+# tab_square_medium_text (204 x 46, the tabs of full screen panels), parchment_slider_* (building_browser.twui.xml: hslider; the info docker's vslider),
+# round_small_button with icon_raze (building_browser.twui.xml, options_list > button_raze: "Demolish", shown over the selected built slot)
+GAME_UI += [f"ui/skins/default/tab_square_medium_text_{s}.png" for s in ("active", "hover", "pressed", "selected", "selected_hover", "selected_pressed")]
+GAME_UI += [f"ui/skins/default/slider_vertical_{s}.png" for s in ("mid", "handle", "handle_underlay", "top", "top_active", "top_hover", "top_pressed",
+                                                                      "bottom", "bottom_active", "bottom_hover", "bottom_pressed")]
+GAME_UI += [f"ui/skins/default/slider_horizontal_{s}.png" for s in ("mid", "handle", "handle_underlay", "left", "left_active", "left_hover", "left_pressed",
+                                                                        "right", "right_active", "right_hover", "right_pressed")]
+GAME_UI += [f"ui/skins/default/button_round_small_{s}.png" for s in ("active", "hover", "pressed", "inactive", "underlay")] + ["ui/skins/default/icon_raze.png"]
+# The mark of something new behind a tab (the game's "new content" pip and the glow of a tab that asks to be looked at), the glow of a building just built
+GAME_UI += ["ui/skins/default/icon_new_content_small.png", "ui/skins/default/icon_new_content.png", "ui/skins/default/fe_flat_button_tab_selected_glow.png",
+            "ui/skins/default/icon_alert_message.png", "ui/skins/default/icon_build_glow.png", "ui/skins/default/dlc25_college_of_magic/button_tab_notificaion_bg.png"]
 # The base barge: the hull of build/solid_hull_hatches with the bomb hatches open in its geometry (parts/..._01_open) and their covers as a model of their own,
 # so that the covers can go when the hatches are built. The other removed details are models of their own in build/solid_hull_*/<name>_part, in the hull's frame.
 BASE = REPO / "build" / "solid_hull_hatches"
@@ -292,6 +304,8 @@ def export_data():
                              "options": {k: {"name": (o.get("ui") or {}).get("name", k), "about": (o.get("ui") or {}).get("about", ""),
                                              "hidden": bool((o.get("ui") or {}).get("hidden") or (o.get("ui") or {}).get("none")),
                                              "card": crew_ui.own_card_name(config, group_key, k), "unit_card": unit_card_of(o),
+                                             # the game's unit the kind is taken from (upkeep_from): the same unit a building may open for the army
+                                             "unit": (o.get("upkeep_from") or {}).get("unit"),
                                              "drawn_card": drawn_card_of(group_key, k),
                                              # what the mod's panel writes instead of a number (a bomb falls under the barge) and a burst's pieces
                                              "range_text": (o.get("ui") or {}).get("range_text"), "fragments": fragments_of(o), "ability": ability_of(o),

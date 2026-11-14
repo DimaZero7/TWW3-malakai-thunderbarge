@@ -21,6 +21,10 @@ export function makeBuildings(data, game, parts) {
     const hullByTier = {};
     for (const [key, tier] of Object.entries(hullTier)) hullByTier[tier] ||= levels[key];
 
+    // the game's own words for a building whose requirement is not met (local_ru: campaign_localised_strings_string_building_required, and the
+    // building tooltip's label of a list of them, wh3_dlc26_building_info_tooltip_required_buildings_label_tx: «Требуется постройка:»)
+    M.REQUIRES = 'Требуется постройка: ';
+    M.REQUIRES_MANY = 'Требуются постройки: ';      // several: the plural of the same line
     let message = null;     // the last thing that happened, for the panel's line of news
     const changed = [];
     M.on_change = fn => changed.push(fn);
@@ -36,28 +40,42 @@ export function makeBuildings(data, game, parts) {
         return tier;
     };
 
-    // {state: built | building | open | locked, turns, why}. why: the reason as the panel prints it.
+    // The hull a tier asks for: the hull level of that tier, else the lowest hull above it (a tree may skip a tier); null when the tree has none
+    const hullFor = tier => hullByTier[tier] || Object.entries(hullTier).filter(([, t]) => t >= tier).sort((a, b) => a[1] - b[1]).map(([k]) => levels[k])[0] || null;
+    // The direct requirements of a level that do not stand yet, nearest first. Direct: the level below it in its line, every building it requires
+    // (a node of the tree may have several parents, and the page's extra ones), and the hull of its tier when the hull's tier is short and that hull
+    // is not named already. Nearest: the fewest buildings still to build to get it (itself counted), then the order above. One rule for every case,
+    // so the reason never hides a missing parent behind the hull and never names the hull twice. -> [key]
+    M.missing = key => {
+        const row = M.level(key);
+        if (!row) return [];
+        const out = [];
+        const add = k => { if (k && k !== row.key && !out.includes(k) && !game.has_building(k)) out.push(k); };
+        const chain = M.chain(row.chain);
+        const below = chain && chain.levels.find(l => l.level === row.level - 1);
+        if (below) add(below.key);
+        for (const k of needsOf(row)) add(k);
+        if (!(row.key in hullTier) && row.tier > M.hull_tier()) { const h = hullFor(row.tier); if (h) add(h.key); else out.push('tier:' + row.tier); }
+        const left = k => (k.startsWith('tier:') ? 1e6 : M.needs_all(k).filter(x => !game.has_building(x)).length);
+        return out.map((k, i) => ({k, i, d: left(k)})).sort((a, b) => a.d - b.d || a.i - b.i).map(x => x.k);
+    };
+    // the reason of a locked level in the game's words (the game's own line for a building whose requirements are not met, local_ru: see
+    // M.REQUIRES): the buildings in quotes, nearest first
+    M.requires_text = keys => (keys.length > 1 ? M.REQUIRES_MANY : M.REQUIRES) + keys.map(k => (k.startsWith('tier:') ? `корпус яруса ${k.slice(5)}` : `«${M.level(k) ? M.level(k).name : k.slice(prefix.length)}»`)).join(', ');
+
+    // {state: built | building | open | locked, turns, why, missing}. why: the reason as the panel prints it (without the full stop).
     M.status = key => {
         const row = M.level(key);
         if (!row) return {state: 'unknown', why: `Нет в выгрузке: ${key}`};     // a building of a chain the page does not export yet
         if (game.has_building(row.key)) return {state: 'built'};
         const turns = game.under_construction(row.key);
         if (turns !== null) return {state: 'building', turns};
-        // the hull's own levels need only the level below them (checked next); a side chain needs the hull's tier
-        if (!(row.key in hullTier) && row.tier > M.hull_tier()) return {state: 'locked', why: hullByTier[row.tier] ? `Нужен корпус «${hullByTier[row.tier].name}»` : `Нужен корпус яруса ${row.tier}`};
+        const missing = M.missing(row.key);
+        if (missing.length) return {state: 'locked', why: M.requires_text(missing), missing};
+        // a line of levels builds one level at a time (the game's slot holds one construction)
         const chain = M.chain(row.chain);
-        if (chain) {
-            const below = chain.levels.find(l => l.level === row.level - 1);
-            if (below && !game.has_building(below.key)) return {state: 'locked', why: `Сначала «${below.name}»`};
-            const busy = chain.levels.find(l => game.under_construction(l.key) !== null);
-            if (busy) return {state: 'locked', why: `Уже строится «${busy.name}»`};
-        }
-        // every building it requires (a node of the tree may have several parents): all that are missing are named
-        const missing = row.requires.filter(need => !game.has_building(need)).map(need => `«${M.level(need) ? M.level(need).name : need.slice(prefix.length)}»`);
-        if (missing.length) return {state: 'locked', why: missing.length === 1 ? `Нужна постройка ${missing[0]}` : `Нужны постройки ${missing.join(', ')}`, missing: row.requires.filter(need => !game.has_building(need))};
-        for (const need of M.extra_requires[row.key] || []) {
-            if (!game.has_building(need)) return {state: 'locked', why: `Нужен: ${M.level(need) ? M.level(need).name : need.slice(prefix.length)}`};
-        }
+        const busy = chain && chain.levels.find(l => game.under_construction(l.key) !== null);
+        if (busy) return {state: 'locked', why: `Уже строится «${busy.name}»`};
         if (M.not_connected.has(row.key)) return {state: 'locked', why: 'Пока не подключено на странице'};
         if (game.treasury() < row.cost) return {state: 'locked', why: `Не хватает золота: нужно ${row.cost}`, poor: true};
         return {state: 'open'};
@@ -79,6 +97,22 @@ export function makeBuildings(data, game, parts) {
         message = `Заказано: «${row.name}», ${row.cost} золота, готово через ${turnsText(row.turns)}.`;
         fire();
         return {ok: true};
+    };
+
+    // Why a level cannot be ordered now, as a sentence: the building window's red line and the foot row after a refused click say the same.
+    // '' when it can be ordered (or stands, or is being built).
+    M.reason = key => {
+        const st = M.status(key), row = M.level(key);
+        if (st.state !== 'locked' && st.state !== 'unknown') return '';
+        return st.poor ? `Не хватает золота: нужно ${row.cost}, в казне ${game.treasury()}.` : `${st.why || 'Недоступно'}.`;
+    };
+    // a click on a slot that cannot be ordered: the foot row says why (the message before it goes)
+    M.refuse = key => {
+        const why = M.reason(key);
+        if (!why) return false;
+        message = why;
+        fire();
+        return true;
     };
 
     M.cancel = key => {
@@ -143,6 +177,12 @@ export function makeBuildings(data, game, parts) {
     };
 
     M.message = () => message;
+    // the foot line through a reload, as the rest of the state (main.js saves it with the game): what happened stays said until something else happens
+    M.message_snapshot = () => ({text: message, turn_line: turnLine});
+    M.set_message_silently = s => {
+        message = s && typeof s.text === 'string' && s.text ? s.text : null;
+        turnLine = s && s.turn_line && typeof s.turn_line.text === 'string' ? {turn: Number(s.turn_line.turn), text: s.turn_line.text} : null;
+    };
 
     // Every level a building needs, all the way down (the level below in its chain, the buildings it requires), the deepest first. For the debug button.
     M.needs_all = key => {
@@ -162,7 +202,7 @@ export function makeBuildings(data, game, parts) {
     };
     M.debug_build_to = key => {
         for (const k of M.needs_all(key)) if (!M.not_connected.has(k)) game.debug_complete(k);
-        message = `Отладка: построено до «${M.level(key).name}» без ходов и золота.`;
+        message = null;         // a debug action of the page, not the game's: told in the page's bar (main.js), never in the panel
         fire();
     };
     M.set_side_silently = s => { side = s; };
@@ -214,6 +254,14 @@ export function makeBuildings(data, game, parts) {
         if (!group || !M.carried()) return false;          // no barge, no place for a crew on it
         if (group.mount) return opens(g, group.mount);
         return Object.keys(group.options).some(o => o !== group.start && opens(g, o));
+    };
+    // the building that opens a group's place: its mount's (the ports, the hatches, the rings), or the earliest of those that open a kind of it
+    M.place_opener = g => {
+        const group = data.groups[g];
+        if (!group) return null;
+        if (group.mount) return opener(g, group.mount);
+        const list = Object.keys(group.options).filter(o => o !== group.start).map(o => opener(g, o)).filter(Boolean);
+        return list.find(r => stands(r)) || list.sort((a, b) => cheap(a) - cheap(b))[0] || null;
     };
     const stateOf = g => crew[g] || {standing: emptyOf(g), order: null};
     const ctxOf = g => ({start: emptyOf(g), gold: game.treasury(), hire: o => (data.groups[g].options[o] || {}).hire || 0,
@@ -295,14 +343,74 @@ export function makeBuildings(data, game, parts) {
         if (said.length) { message = 'Постройки больше нет: ' + said.join('; ') + '.'; fire(); }
     });
 
+    // ---- What the buildings of a turn brought to the ship: the details now on the drawing, the crew places now open ----
+    // news: the turn's completions {turn, built: [key], parts: [part], places: [group]}, read by the panel (the new detail glows on the small drawing
+    // that turn); unseen: something new on the ship since the player last looked at «Корабль» (the tab's mark). Both kept through a reload.
+    // GAME: cm:set_saved_value('mtb_ship_news', ...) at MilitaryForceBuildingCompleteEvent; the tab's mark cleared by the panel's tab click.
+    // kinds: 'group:option' of every kind a place that is open can take now (a new kind in a place already open is news too: «Топоры» in the nests)
+    const kindsNow = places => places.flatMap(g => M.crew_options(g).filter(o => !o.empty && o.unlocked).map(o => g + ':' + o.key));
+    const shipNow = () => { const places = Object.keys(data.groups).filter(g => M.crew_place(g)); return {parts: Object.keys(parts || {}).filter(p => M.stage(p) === 'ink'), places, kinds: kindsNow(places)}; };
+    let shipWas = null, news = null, unseen = false, turnLine = null;
+    M.sync_ship = () => { shipWas = shipNow(); };
+    M.ship_news = () => (news && news.turn === game.turn ? news : null);
+    M.ship_unseen = () => unseen;
+    M.ship_seen = () => { unseen = false; };
+    M.news_snapshot = () => ({news, unseen});
+    M.set_news_silently = s => { news = s && s.news && Array.isArray(s.news.built) ? {kinds: [], ...s.news} : null; unseen = !!(s && s.unseen); };
+    // the places whose crew the turn's buildings changed: opened, or a new kind in a place that was open (the glow of the row and of the tag)
+    M.news_places = () => { const n = M.ship_news(); return n ? [...new Set([...n.places, ...(n.kinds || []).map(k => k.split(':')[0])])] : []; };
+    // The name of a crew place as its tag on the drawing writes it (tools/web_art.py, the tags' text)
+    const TAG = {rifles: 'Стрелки', cannons: 'Орудия', bombs: 'Бомбы', cupolas: 'Гнёзда', harpoon: 'Гарпун'};
+    M.place_name = g => TAG[g] || (data.groups[g] && data.groups[g].name) || g;
+    const quoted = list => list.map(s => `«${s}»`).join(', ');
+    // a new kind in a place already open, said as the place is spoken of (one kind or several: the same words fit both)
+    const NEW_KINDS = {rifles: (l, one) => `Для стрелков теперь ${one ? 'открыт отряд' : 'открыты отряды'} ${l}.`, cannons: l => `В порты теперь можно поставить ${l}.`,
+                       bombs: l => `На стеллажи над люками теперь можно положить ${l}.`, cupolas: l => `В гнёздах теперь доступны ${l}.`, harpoon: l => `На нос шара теперь можно поставить ${l}.`};
+    M.new_kinds_text = (g, names) => (NEW_KINDS[g] ? NEW_KINDS[g](quoted(names), names.length === 1) : `Новое для места «${M.place_name(g)}»: ${quoted(names)}.`);
+    // the foot line of the turn's news: what was built, the crew places it opened, then what the turn did to the crew (arrivals, upkeep)
+    const newsText = (lost = []) => {
+        const n = M.ship_news(), out = [];
+        if (n && n.built.length) out.push(`Построено: ${quoted(n.built.map(k => M.level(k).name))}.`);
+        if (n && n.places.length) out.push(n.places.length === 1 ? `Открыто место экипажа ${quoted(n.places.map(M.place_name))}.` : `Открыты места экипажа ${quoted(n.places.map(M.place_name))}.`);
+        if (n && (n.kinds || []).length) {
+            const by = {};
+            for (const k of n.kinds) { const [g, o] = k.split(':'); (by[g] ||= []).push(data.groups[g].options[o].name); }
+            for (const [g, names] of Object.entries(by)) out.push(M.new_kinds_text(g, names));
+        }
+        if (lost.length) out.push('Новый уровень этого не даёт: ' + lost.join('; ') + '.');
+        if (turnLine && turnLine.turn === game.turn) out.push(turnLine.text);
+        return out.join(' ') || null;
+    };
+
     // The game's events, as the mod listens to them (core:add_listener)
     game.on('MilitaryForceBuildingCompleteEvent', ctx => {
         // GAME: here the mod's own on_building also runs (src/tww3_mtb_crew.lua): the bay appears, the hull's mount row changes
-        message = `Постройка завершена: «${M.level(ctx.building).name}».`;
+        if (!news || news.turn !== game.turn) news = {turn: game.turn, built: [], parts: [], places: [], kinds: []};
+        news.kinds ||= [];
+        news.built.push(ctx.building);
         // a tree's next level that does not carry on what the level below opened: that crew is no longer open
-        if (data.tree_rows) { const said = dropLocked(); if (said.length) message += ' Новый уровень этого не даёт: ' + said.join('; ') + '.'; }
+        const lost = data.tree_rows ? dropLocked() : [];
+        const now = shipNow(), was = shipWas || now;
+        const parts_ = now.parts.filter(p => !was.parts.includes(p)), places = now.places.filter(g => !was.places.includes(g));
+        // a new kind only in a place that was open before (a place opened now is told as opened, its kinds with it)
+        const kinds = now.kinds.filter(k => !(was.kinds || []).includes(k) && (was.places || []).includes(k.split(':')[0]));
+        news.parts.push(...parts_.filter(p => !news.parts.includes(p)));
+        news.places.push(...places.filter(g => !news.places.includes(g)));
+        news.kinds.push(...kinds.filter(k => !news.kinds.includes(k) && !news.places.includes(k.split(':')[0])));
+        if (parts_.length || places.length || kinds.length) unseen = true;
+        shipWas = now;
+        message = newsText(lost);
         fire();
     });
+    game.on('BuildingDemolished', () => { shipWas = shipNow(); });
+    // The one obvious first step of a fresh campaign, in the game's voice: nothing built, nothing ordered, nothing said yet
+    M.first_step = () => {
+        if (message) return null;
+        const all = Object.values(levels);
+        if (all.some(r => game.has_building(r.key) || game.under_construction(r.key) !== null)) return null;
+        const first = all.find(r => !M.missing(r.key).length);
+        return first ? `Закажите первую постройку — «${first.name}».` : null;
+    };
     game.on('FactionTurnStart', () => {
         // the orders go in (M.carry_out), then the upkeep of what stands now is taken (M.pay_upkeep)
         const came = [];
@@ -316,8 +424,10 @@ export function makeBuildings(data, game, parts) {
         game.gold -= upkeep;        // GAME: cm:treasury_mod; the page lets the treasury go below zero
         message = [came.length ? came.join('; ') : '', upkeep ? `содержание экипажа: ${upkeep} золота` : ''].filter(Boolean).join(', ');
         message = message ? message[0].toUpperCase() + message.slice(1) + '.' : null;
+        turnLine = message ? {turn: game.turn, text: message} : null;
         fire();
     });
+    M.sync_ship();
     return M;
 }
 

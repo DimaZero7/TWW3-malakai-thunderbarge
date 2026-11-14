@@ -10,7 +10,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep, debugRect} from './cdp.mjs';
+import {launch, startServer, sleep, debugRect} from './cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(tmpdir(), 'mtb_any_tree');
@@ -20,9 +20,9 @@ const FILE = join(DATA, 'tree_design.json');
 const user = JSON.parse(readFileSync(join(ROOT, 'web/data/tree_design.json'), 'utf-8'));
 const start = JSON.parse(readFileSync(join(ROOT, 'tools/tests/tree_design_start.json'), 'utf-8'));
 writeFileSync(FILE, JSON.stringify(user));
-const PORT = 8767, URL0 = `http://127.0.0.1:${PORT}/`;
-const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', String(PORT), '--tree', FILE], {stdio: 'ignore'});
-for (let i = 0; i < 50; i++) { if (await fetch(URL0 + 'data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
+// the page's own server: the port checked free first, stopped with its process tree in the finally below (cdp.mjs startServer)
+const server = await startServer({root: ROOT, port: 8767, tree: FILE});
+const URL0 = server.url, PORT = server.port;
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? 'ok   ' : 'FAIL ') + name + (ok || !extra ? '' : '  ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)))); return ok; };
 
@@ -49,7 +49,7 @@ const noKey = clone(user);
 for (const n of noKey.nodes) if (n.mod_key === 'mtb_guns_1' || n.mod_key === 'mtb_nest_1') n.mod_key = null;
 cases.push(['nodes without their mod key (ports, nests)', noKey]);
 
-const b = await launch({width: 1600, height: 950, port: 9391, profile: join(tmpdir(), 'mtb_any_tree_profile')});
+const b = await launch({width: 1600, height: 950, port: 9391, profile: join(tmpdir(), 'mtb_any_tree_profile')}).catch(async e => { await server.stop(); throw e; });
 await b.size(1600, 950);
 try {
     for (const [label, tree] of cases) {
@@ -76,8 +76,7 @@ try {
         }
     }
 } finally {
-    await b.close();
-    server.kill();
+    try { await b.close(); } finally { await server.stop(); }
 }
 console.log(`failed: ${failed}`);
 process.exit(failed ? 1 : 0);

@@ -9,7 +9,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep, decodePng, debugRect} from './cdp.mjs';
+import {launch, startServer, sleep, decodePng, debugRect} from './cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(tmpdir(), 'mtb_groups3d_tree');
@@ -17,9 +17,9 @@ rmSync(DATA, {recursive: true, force: true});
 mkdirSync(DATA, {recursive: true});
 const FILE = join(DATA, 'tree_design.json');
 writeFileSync(FILE, readFileSync(join(ROOT, 'web/data/tree_design.json')));
-const PORT = 8767, URL0 = `http://127.0.0.1:${PORT}/`;
-const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', String(PORT), '--tree', FILE], {stdio: 'ignore'});
-for (let i = 0; i < 50; i++) { if (await fetch(URL0 + 'data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
+// the page's own server: the port checked free first, stopped with its process tree in the finally below (cdp.mjs startServer)
+const server = await startServer({root: ROOT, port: 8767, tree: FILE});
+const URL0 = server.url, PORT = server.port;
 const SHOTS = join(ROOT, 'build/web/shots/groups3d'), PARTS = join(SHOTS, 'parts');
 mkdirSync(PARTS, {recursive: true});
 let failed = 0;
@@ -42,11 +42,14 @@ async function walk(scale) {
         if (big) weight.start = start;
         check(`${tag} the page's start loads no crew model`, start.crew === 0, start);
         const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height}; })()`);
-        const clickId = async id => { const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); };
+        // the panel's two tabs (web/js/panel.js): the tree's slots on «Постройки», the drawing and its crew on «Корабль»; a check of the drawing looks at it shown
+        const tabFor = id => /^(mtb_tree_node_|mtb_ship_demolish|mtb_tree_fit|tree_window|mtb_army_card_|mtb_crew_card_(?!pick_))/.test(id) ? 'tree' : /^(mtb_crew_|mtb_side_|scheme|plan_ship)/.test(id) ? 'ship' : null;
+        const toTab = async t => { if (t && await b.eval('mtb.panel.view.tab') !== t) { const r = await comp('mtb_tab_' + t); await b.click(r.x, r.y); await sleep(150); } };
+        const clickId = async id => { await toTab(tabFor(id)); const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); };
         const button = async sel => { const r = /gold_quick|build_|reset_all/.test(sel) ? await debugRect(b, sel) : await b.rect(sel); await b.click(r.x, r.y); await sleep(250); };
         const crew3d = () => b.eval('mtb.viewer.crewState()');
         const view3d = async () => { const r = await b.rect('#view3d canvas'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
-        const drawing = async () => { const r = await comp('scheme'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
+        const drawing = async () => { await toTab('ship'); const r = await comp('scheme'); return {x: r.l, y: r.t, width: r.w, height: r.h}; };
         const loaded = name => b.until(`mtb.viewer.crewModels && mtb.viewer.crewModels['${name}'] !== undefined`, 20000).then(() => sleep(400));
         // the 3D picture is not empty: its pixels differ when the model is hidden (the crew's own pixels)
         const pixels = async () => { const r = await b.send('Page.captureScreenshot', {format: 'png', clip: {...await view3d(), scale: 1}}); return decodePng(Buffer.from(r.data, 'base64')); };
@@ -257,23 +260,27 @@ async function stages() {
         await sleep(1500);
         await b.eval('mtb.game.gold = 200000; mtb.panel.refresh(); 1');
         const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height}; })()`);
-        const clickId = async id => { const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); };
+        // the panel's two tabs (web/js/panel.js): the tree's slots on «Постройки», the drawing and its crew on «Корабль»; a check of the drawing looks at it shown
+        const tabFor = id => /^(mtb_tree_node_|mtb_ship_demolish|mtb_tree_fit|tree_window|mtb_army_card_|mtb_crew_card_(?!pick_))/.test(id) ? 'tree' : /^(mtb_crew_|mtb_side_|scheme|plan_ship)/.test(id) ? 'ship' : null;
+        const toTab = async t => { if (t && await b.eval('mtb.panel.view.tab') !== t) { const r = await comp('mtb_tab_' + t); await b.click(r.x, r.y); await sleep(150); } };
+        const clickId = async id => { await toTab(tabFor(id)); const r = await comp(id); if (!r) throw new Error('not on the screen: ' + id); await b.click(r.x, r.y); await sleep(150); };
         const button = async sel => { const r = await debugRect(b, sel); await b.click(r.x, r.y); await sleep(300); };
         const select = async key => {
             const i = await b.eval(`mtb.panel.view.tree.findIndex(v => v.node.key === '${key}')`);
             await b.eval(`(() => { const p = mtb.panel.view.pan, v = mtb.panel.view.tree[${i}]; p.x = p.w / 2 - v.button.x - 37; p.y = p.h / 2 - v.button.y - 37; p.clamp(); })()`);
             await clickId('mtb_tree_node_' + i);
         };
-        const order = async key => { await select(key); await clickId('mtb_ship_order'); };
+        // a click on a slot that can be built orders it (the game's horde slot); a built one shows the demolish button over it
+        const order = async key => { await select(key); };
         const demolish = async key => { await select(key); await clickId('mtb_ship_demolish'); };
         // what is on the drawing now: the details' layers, the crew's places, Malakai's plan; what is on the model
-        const seen = () => b.eval(`(() => {
+        const seen = async () => (await toTab('ship'), b.eval(`(() => {
             const on = e => e.offsetParent !== null && getComputedStyle(e).visibility !== 'hidden';
             const ids = [...document.querySelectorAll('#screen [data-id]')].filter(on).map(e => e.dataset.id);
             return {layers: ids.filter(id => /_(pencil|build|ink)$/.test(id) && !/^crew_|^malakai_|^frame_|^barge_/.test(id)).sort(), crew: ids.filter(id => id.startsWith('mtb_crew_area_')).sort(),
                     plan: ids.includes('plan_ship'), sheet: mtb.panel.view.sheet.path.split('/').pop(),
                     model: Object.entries(mtb.viewer.models).filter(([, m]) => m.visible).map(([k]) => k).sort(), crew3d: Object.entries(mtb.viewer.crewState()).filter(([, v]) => v !== 'hidden').map(([k]) => k).sort()};
-        })()`);
+        })()`));
         // the walk's own list: from the game's buildings (has_building / under_construction) and the parts' own buildings
         const parts = await b.eval(`Object.keys(mtb.panel.view.layers).filter(p => !['frame', 'barge'].includes(p))`);
         const layerNames = await b.eval(`Object.fromEntries(Object.entries(mtb.panel.view.layers).map(([p, l]) => [p, ['pencil', 'build', 'ink'].filter(s => l[s])]))`);
@@ -364,7 +371,7 @@ try {
     if (!process.env.STAGES_ONLY) await panelBar();
     if (!process.env.BAR_ONLY && !process.env.STAGES_ONLY) for (const s of [0.6, 1]) await walk(s);
 } finally {
-    server.kill();
+    await server.stop();
 }
 if (!process.env.BAR_ONLY && !process.env.STAGES_ONLY) writeFileSync(join(SHOTS, 'weight.json'), JSON.stringify(weight, null, 1));
 // the sheets: the 3D beside the drawing

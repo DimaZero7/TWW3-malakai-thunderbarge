@@ -14,7 +14,7 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {dirname, join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {launch, sleep, debugRect} from './cdp.mjs';
+import {launch, startServer, sleep, debugRect} from './cdp.mjs';
 import {standDesign} from './constructor_stand.mjs';
 import * as T from '../../web/js/tree_model.mjs';
 
@@ -30,9 +30,9 @@ mkdirSync(DATA, {recursive: true});
 const FILE = join(DATA, 'tree_design.json');
 const START = readFileSync(join(ROOT, 'tools/tests/tree_design_start.json'), 'utf-8');
 writeFileSync(FILE, START);
-const PORT = 8766, URL0 = `http://127.0.0.1:${PORT}/`;
-const server = spawn('py', ['-3.14', join(ROOT, 'tools/web_serve.py'), '--port', String(PORT), '--tree', FILE], {stdio: 'ignore'});
-for (let i = 0; i < 50; i++) { if (await fetch(URL0 + 'data/tree_design.json').then(r => r.ok).catch(() => false)) break; await sleep(200); }
+// the page's own server: the port checked free first, stopped with its process tree in the finally below (cdp.mjs startServer)
+const server = await startServer({root: ROOT, port: 8766, tree: FILE});
+const URL0 = server.url, PORT = server.port;
 const SHOTS = join(ROOT, 'build/web/shots');
 mkdirSync(SHOTS, {recursive: true});
 let failed = 0;
@@ -41,7 +41,10 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; results.push([name,
 const tmp = join(tmpdir(), 'mtb_walk_files');
 mkdirSync(tmp, {recursive: true});
 
-const b = await launch({width: 1280, height: 800});
+const b = await launch({width: 1280, height: 800}).catch(async e => { await server.stop(); throw e; });
+// the panel's two tabs (web/js/panel.js): a component of one is looked for on its tab, the tab clicked first as the author would
+const tabOf = id => /^(mtb_tree_node_|mtb_ship_demolish|mtb_tree_fit|tree_window|mtb_army_card_|mtb_crew_card_(?!pick_))/.test(id) ? 'tree' : /^(mtb_crew_|mtb_side_|scheme|plan_ship)/.test(id) ? 'ship' : null;
+const toTab = async t => { if (t && await b.eval('mtb.panel.view.tab') !== t) { const e = await b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="mtb_tab_${t}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; })()`); if (e) { await b.click(e.x, e.y); await sleep(150); } } };
 await b.size(1280, 800);
 const E = 'mtb.editor.api';
 const design = () => b.eval('JSON.stringify(mtb.editor.design())').then(s => JSON.parse(s));
@@ -142,7 +145,7 @@ const images = () => b.eval(`(async () => {
 // CAPS_ONLY=1: only part 4 (the new capabilities), for a quick walk
 if (process.env.CAPS_ONLY || process.env.CHAIN_ONLY || process.env.LINES_ONLY) {
     try { if (process.env.CAPS_ONLY) await walkCaps(); if (process.env.CHAIN_ONLY) { await walkChains(); await walkLines(); } if (process.env.LINES_ONLY) await walkLines(); const errs = b.errors.filter(e => !/status of 409 \(Conflict\).*api\/tree_design\?base=/.test(e)); check("caps: the console is clean (the 409 of the conflict walked on purpose aside), no dialog", !errs.length && !b.dialogs.length, [...errs, ...b.dialogs]); } catch (e) { failed++; console.log("FAIL walk stopped: " + e.stack); try { await b.shot(join(SHOTS, "caps_walk_error.png")); } catch (x) { /* no picture */ } }
-    await b.close(); server.kill();
+    try { await b.close(); } finally { await server.stop(); }
     check("the author's working file web/data/tree_design.json untouched, byte for byte", hash(WORK) === workBefore);
     console.log(`checks: ${results.length}, failed: ${failed}`); process.exit(failed ? 1 : 0);
 }
@@ -601,7 +604,7 @@ try {
     await clickText('#mode button', 'Игра', false);
     await b.until('document.body.dataset.mode === "game" && !!mtb.panel.view.tree && mtb.panel.view.tree.length === 26');
     await sleep(500);
-    const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, t: r.top, b: r.bottom}; })()`);
+    const comp = async id => (await toTab(tabOf(id)), b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, t: r.top, b: r.bottom}; })()`));
     const gm = 'mtb.panel.view';
     const nodeOnScreen = async name => comp('mtb_tree_node_' + await b.eval(`${gm}.tree.findIndex(v => v.node.name === ${JSON.stringify(name)})`));
     const inSight = async name => {
@@ -616,7 +619,7 @@ try {
     im = await images();
     check('game: every picture loaded', !im.bad.length && !im.missing.length, im);
     check('game: the overview under the screen no longer counts the game\'s hidden effects', !(await b.eval(`/не по-русски/.test(document.getElementById('overview').textContent)`)));
-    // the building window of a building with more than it can hold: every line and crew, the description shortened with …, inside the screen
+    // the building window of a building with more than the game's window holds: every line and crew, the whole description (laid out wider, never cut), inside the screen
     const flag = await inSight('Флагман');
     await b.move(flag.x, flag.y, 4); await sleep(300);
     const tip = await b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); if (!t) return null; const r = t.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect();
@@ -625,11 +628,13 @@ try {
         const desc = t.querySelector('[data-id="description_window"]').textContent;
         const ins = [...document.querySelectorAll('#screen .tooltip_instruction')].find(x => x.offsetParent !== null && x.style.visibility !== 'hidden');
         const bottom = ins ? ins.getBoundingClientRect().bottom : r.bottom;
-        return {effects, units, cut: desc.endsWith('…'), inside: r.top >= root.top - 0.5 && bottom <= root.bottom + 0.5}; })()`);
-    check('8-9: the game\'s window keeps all 10 lines and 4 crews, shortens the description with …, stays inside the screen', tip && tip.effects === 10 && tip.units === 4 && tip.cut && tip.inside, tip);
+        const want = mtb.panel.view.tree.find(v => v.node.name === 'Флагман').node.row.text || '';
+        return {effects, units, cut: desc !== want, width: Math.round(r.width), inside: r.top >= root.top - 0.5 && bottom <= root.bottom + 0.5}; })()`);
+    check('8-9: the game\'s window keeps all 10 lines and 4 crews and the whole description (laid out wider when it must), stays inside the screen', tip && tip.effects === 10 && tip.units === 4 && !tip.cut && tip.inside, tip);
     await b.shot(join(SHOTS, 'constructor_game_mode_info.png'));
     // order, turn, short of gold, the crew on the drawing, at the user's scale (~0.6)
-    const order = async name => { const n = await inSight(name); await b.click(n.x, n.y); const o = await comp('mtb_ship_order'); await b.click(o.x, o.y); };
+    // a click on a slot that can be built orders it, as the game's horde slot
+    const order = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(120); };
     const endTurn = async () => { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(120); };
     const gold = async v => { const q2 = await debugRect(b, `.gold_quick[data-gold="${v}"]`); await b.click(q2.x, q2.y); };
     const status = name => b.eval(`(() => { const v = ${gm}.tree.find(v => v.node.name === ${JSON.stringify(name)}); return mtb.M.status(v.node.key); })()`);
@@ -652,28 +657,30 @@ try {
     check('game: pirates ordered from the drawing', await b.eval('mtb.M.crew_order("rifles")') === 'pirates');
     await order('Каркас с рунами'); await endTurn();
     const three = await status('Пушечная палуба с тремя родителями');
-    check('game: three parents missing, all named', three.state === 'locked' && /Мастерская.*Палуба.*Кузня|Нужны постройки/.test(three.why), three.why);
+    check('game: three parents missing, all named', three.state === 'locked' && /^Требуются постройки: /.test(three.why) && ['Мастерская', 'Палуба', 'Кузня'].every(n => three.why.includes(n)), three.why);
     await sleep(300);
     await b.shot(join(SHOTS, 'constructor_game_mode.png'));
-    // «Развернуть дерево»: over the drawing, the game's size; and back
-    const ex = await comp('mtb_tree_expand');
-    await b.click(ex.x, ex.y);
-    await sleep(300);
-    const open = await b.eval(`(() => { const w = [...document.querySelectorAll('#screen [data-id="tree_window"]')][0]; const r = w.getBoundingClientRect(), s = [...document.querySelectorAll('#screen [data-id="scheme"]')][0].getBoundingClientRect(); return {open: w.classList.contains('open'), overDrawing: r.left <= s.left + 2, z: mtb.panel.view.pan.z}; })()`);
-    check('21: «Развернуть дерево» opens the tree over the drawing at the game\'s size', open.open && open.overDrawing && open.z === 1, open);
-    await b.shot(join(SHOTS, 'constructor_game_expanded.png'));
+    // the whole tree at once: a tree that is larger than its window has «Всё дерево» (every slot in sight, smaller) and «Вблизи» back; a tree the
+    // window holds is all in sight at the game's size, with no such button (in place of the old «Развернуть дерево»)
+    const allSeen = () => b.eval(`(() => { const p = mtb.panel.view.pan, w = p.win.el.getBoundingClientRect(); return {z: p.z, big: p.big(), every: mtb.panel.view.tree.every(t => { const r = t.button.el.getBoundingClientRect(); return r.left >= w.left - 0.5 && r.right <= w.right + 0.5 && r.top >= w.top - 0.5 && r.bottom <= w.bottom + 0.5; })}; })()`);
+    const zoomCheck = async label => {
+        await comp('tree_window');          // the tree's tab
+        const s0 = await allSeen(), ex = await comp('mtb_tree_fit');
+        if (!s0.big) { check(`21: ${label}: the tree in its window whole at the game's size, no zoom button`, s0.every && s0.z === 1 && !ex, {s0, ex}); return; }
+        await b.click(ex.x, ex.y); await sleep(300);
+        const s1 = await allSeen();
+        check(`21: ${label}: «Всё дерево» shows every slot of the tree in its window, smaller`, s1.z < 1 && s1.every, s1);
+        await b.shot(join(SHOTS, label === 'fitted' ? 'constructor_game_expanded.png' : 'constructor_game_expanded_k1.png'));
+        const ex1 = await comp('mtb_tree_fit'); await b.click(ex1.x, ex1.y); await sleep(200);
+        check(`21: ${label}: «Вблизи» back to the game's size`, (await allSeen()).z === 1);
+    };
+    await zoomCheck('fitted');
     await b.open(URL0 + '?mode=game&k=1');
     await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree)', 15000);
     await sleep(800);
     await b.eval(`document.getElementById('left').scrollLeft = 10000`);
     await sleep(200);
-    let ex1 = await comp('mtb_tree_expand');
-    await b.click(ex1.x, ex1.y);
-    await sleep(300);
-    await b.shot(join(SHOTS, 'constructor_game_expanded_k1.png'));
-    ex1 = await comp('mtb_tree_expand');
-    await b.click(ex1.x, ex1.y);
-    check('21: and back into the column', await b.eval(`!document.querySelector('#screen [data-id="tree_window"]').classList.contains('open')`));
+    await zoomCheck('1:1');
     im = await images();
     check('game at 1:1: every picture loaded', !im.bad.length && !im.missing.length, im);
     if (!process.env.SKIP_CAPS) await walkCaps();
@@ -685,8 +692,7 @@ try {
     console.log('FAIL walk stopped: ' + e.stack);
     try { await b.shot(join(SHOTS, 'constructor_walk_error.png')); } catch (x) { /* no picture */ }
 } finally {
-    await b.close();
-    server.kill();
+    try { await b.close(); } finally { await server.stop(); }
     check('the author\'s working file web/data/tree_design.json untouched, byte for byte', hash(WORK) === workBefore);
     check('no copy of the tree file left in web/data by the walk (the author\'s own copies aside)', readdirSync(join(ROOT, 'web/data')).filter(f => f.startsWith('tree_design.backup-')).join() === backupsBefore);
 }
@@ -696,7 +702,7 @@ try {
 // game's block and its panel; a change of the file from outside while the constructor is open; a conflict of versions. Pictures caps_*.png.
 async function walkCaps() {
     let im;
-    const gameComp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, t: r.top, b: r.bottom, l: r.left, r: r.right}; })()`);
+    const gameComp = async id => (await toTab(tabOf(id)), b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, t: r.top, b: r.bottom, l: r.left, r: r.right}; })()`));
     const design = () => b.eval('JSON.stringify(mtb.editor.design())').then(s => JSON.parse(s));
     const nodeByName = async name => (await design()).nodes.find(n => n.name === name);
     const pick = async key => {
@@ -871,11 +877,12 @@ async function walkCaps() {
     const ammo = await visibleText('value_ammo');
     const lines = await visibleText('accuracy');
     // the expectation from the export, by the mod's rule (the group's whole times the bonus, floor(x + 0.5), shared by its seats): no number written in
-    const want = await b.eval(`(() => { const n = mtb.panel.view.data.groups.rifles.options.pirates.numbers, total = Math.floor(n.ammo * 1.3 + 0.5), per = n.seats ? total / n.seats : total, r = Math.round(per * 10) / 10;
-        return {total, seats: n.seats, each: Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ','), base: n.ammo}; })()`);
+    // the group's whole (the mod rounds it) for the 11 riflemen as the number, a place's share in the note, the bonus line base → whole
+    const want = await b.eval(`(async () => { const C = await import('/js/crew_model.mjs'), o = mtb.panel.view.data.groups.rifles.options.pirates, a = C.crewAmmo(o.numbers, 30, o.unit_card.men);
+        return {total: a.total, base: a.base, note: C.ammoShare(a, 'rifles', 'на стрелка')}; })()`);
     const ammoNote = await visibleText('ammo_note');
-    check('caps: game: the pirates\' ammunition with the hold\'s +30 %: the volleys a seat and the group\'s whole as the mod counts them, green, from «Трюм»',
-        ammo === want.each && (!want.seats || ammoNote.includes(`на всех ${want.total}`)) && /Боезапас \+30 %/.test(lines) && /Трюм/.test(lines), {ammo, ammoNote, lines, want});
+    check('caps: game: the pirates\' ammunition with the hold\'s +30 %: the group\'s whole as the mod counts it, its share a rifleman, green, from «Трюм»',
+        ammo === String(want.total) && ammoNote === want.note && lines.includes(`(${want.base} → ${want.total})`) && /Боезапас \+30 ?%/.test(lines) && /Трюм/.test(lines), {ammo, ammoNote, lines, want});
     await b.shot(join(SHOTS, 'caps_effect_group.png'));
     const panelIn = await b.eval(`(() => { const p = [...document.querySelectorAll('#screen .unit_parchment')].find(x => x.offsetParent !== null); const r = p.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect(); return r.top >= root.top - 1 && r.bottom <= root.bottom + 1 && r.left >= root.left - 1 && r.right <= root.right + 1; })()`);
     check('caps: game: the unit\'s panel inside the screen', panelIn);
@@ -914,8 +921,7 @@ async function walkCaps() {
     await toGame();
     await resetGame();
     await buildTo('Прочный корпус');
-    await selectInGame('Вороньи гнёзда');
-    const ord = await gameComp('mtb_ship_order'); await b.click(ord.x, ord.y); await sleep(150);
+    await selectInGame('Вороньи гнёзда');       // the click on the slot orders it
     check('caps: game: the rings are being built with the nests', await b.eval(`mtb.M.stage('rings')`) === 'build');
     const et = await b.rect('#end_turn'); await b.click(et.x, et.y); await sleep(300);
     await b.until(`!!mtb.viewer.models.part_rings`, 15000).catch(() => {});
@@ -1033,7 +1039,7 @@ async function walkChains() {
     const smallText = sel => b.eval(`[...document.querySelectorAll(${JSON.stringify(sel)})].filter(e => e.offsetParent !== null && [...e.childNodes].some(c => c.nodeType === 3 && c.textContent.trim())).map(e => [e.textContent.trim().slice(0, 30), parseFloat(getComputedStyle(e).fontSize)]).filter(([, px]) => px < 11)`);
     const toConstructor = async () => { await clickText('#mode button', 'Конструктор'); await b.until('document.body.dataset.mode === "constructor"'); await sleep(300); };
     const toGame = async () => { await clickText('#mode button', 'Игра'); await b.until('document.body.dataset.mode === "game" && !!mtb.panel.view.tree'); await sleep(500); };
-    const gameComp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, t: r.top, b: r.bottom, l: r.left, r: r.right}; })()`);
+    const gameComp = async id => (await toTab(tabOf(id)), b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, t: r.top, b: r.bottom, l: r.left, r: r.right}; })()`));
     const nodeOnScreen = async name => gameComp('mtb_tree_node_' + await b.eval(`mtb.panel.view.tree.findIndex(v => v.node.name === ${JSON.stringify(name)})`));
     const inSight = async name => {
         let n = await nodeOnScreen(name);
@@ -1225,7 +1231,7 @@ async function walkChains() {
     const tv = await inSight('Винокурня');
     await b.move(tv.x, tv.y, 4); await sleep(350);
     const info = await infoText();
-    check('chains: game: III\'s window shows the whole set: inherited and own', /Боезапас стрелков( барки)?: \+25 %/.test(info) && /Стоимость найма: -20%/.test(info) && /: 8/.test(info), info);
+    check('chains: game: III\'s window shows the whole set: inherited and own', /Боезапас стрелков( барки)?: \+25 ?%/.test(info) && /Стоимость найма: -20%/.test(info) && /: 8/.test(info), info);
     await b.shot(join(SHOTS, 'chain_game_info.png'));
     const lvls = await b.eval(`['Пивной чертог', 'Таверна', 'Винокурня'].map(n => { const v = mtb.panel.view.tree.find(t => t.node.name === n); return v.level ? v.level.path.split('_').pop() : ''; })`);
     check('chains: game: the slots carry the numerals I, II, III', lvls.join() === '1.png,2.png,3.png', lvls);

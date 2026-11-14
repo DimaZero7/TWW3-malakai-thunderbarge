@@ -6,7 +6,7 @@
 // that file (web/js/constructor.js). ?mode=constructor or ?mode=game at load; otherwise the last mode used. ?tree=blueprint: the old tree of
 // blueprint.json in place of the file's.
 
-import {makeRoot, onClick, setTooltipRoot} from './gameui.js';
+import {makeRoot, onClick, setTooltipRoot, whenPictures} from './gameui.js';
 import {GameSim} from './game_sim.js';
 import {makeBuildings, turnsText} from './barge_buildings.js';
 import {makePanel, crewState} from './panel.js';
@@ -141,30 +141,50 @@ async function main() {
     };
     // The page's state lives through a reload: localStorage, one key per stage.
     const saveKey = 'mtb_web_state_' + stageName;
-    const save = () => { const {game, M, panel} = G; try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected, crew: M.crew_snapshot(), crew_chosen: M.crew_chosen()})); } catch (e) { /* no storage: the page still works */ } };
+    const save = () => { const {game, M, panel} = G; try { localStorage.setItem(saveKey, JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), selected: panel.view.selected, crew: M.crew_snapshot(), crew_chosen: M.crew_chosen(), ship: M.news_snapshot(), message: M.message_snapshot()})); } catch (e) { /* no storage: the page still works */ } };
     const goldInput = document.getElementById('gold_value');
     const showGold = () => { if (document.activeElement !== goldInput) goldInput.value = G.game.treasury(); };
 
     // The game's screen: the root at the size the game would give it (1600 x 900 in «Игра»; in «Как в игре» the chosen screen and UI scale,
-    // web/js/ingame.js) and the panel built on it. Built again when that size or the layout's sketch changes; the game's state (G.game, G.M) stays.
+    // web/js/ingame.js) and the panel built on it. Built again when that size changes; the game's state (G.game, G.M) stays, and so do the panel's
+    // tab and the tree's place. The tab is remembered through a reload (as the game would keep the panel's last tab).
     let ig = null;
-    const screenSpec = () => (document.body.dataset.mode === 'ingame' && ig ? ig.spec() : {w: 1600, h: 900, layout: flags.layout || 'A'});
-    const screenKey = () => { const s = screenSpec(); return `${s.w}x${s.h}:${s.layout}`; };
+    const TAB_KEY = 'mtb_panel_tab', PAN_KEY = 'mtb_panel_pan_' + stageName;
+    const screenSpec = () => (document.body.dataset.mode === 'ingame' && ig ? ig.spec() : {w: 1600, h: 900});
+    const screenKey = () => { const s = screenSpec(); return `${s.w}x${s.h}`; };
     const makeScreen = () => {
         const s = screenSpec();
-        const selected = G.panel ? G.panel.view.selected : null;
+        const old = G.panel ? G.panel.view : null;
+        const selected = old ? old.selected : null;
+        let tab = old ? old.tab : null;
+        if (!tab) { try { tab = localStorage.getItem(TAB_KEY); } catch (e) { /* no storage */ } }
+        if (flags.tab) tab = flags.tab;
+        // the tree's place, its zoom and where «Вблизи» goes back to: from the screen before, else from the last visit (a reload)
+        let pan = old && old.pan ? old.pan.state() : null;
+        if (!pan) { try { pan = JSON.parse(localStorage.getItem(PAN_KEY) || 'null'); } catch (e) { /* no storage */ } }
         host.innerHTML = '';
         const root = makeRoot(host, s.w, s.h);
         setTooltipRoot(root);
-        const panel = makePanel(root, G.M, G.levels, art, G.bp, {...flags, layout: s.layout}, cards);
+        const panel = makePanel(root, G.M, G.levels, art, G.bp, flags, cards, {tab, pan});
         onClick(c => panel.click(c));
         panel.view.onSelect = save;
+        panel.view.onSeen = save;
+        // the tree's place kept through a reload, written a moment after it stops moving
+        let panTimer = null;
+        panel.view.onPan = () => { clearTimeout(panTimer); panTimer = setTimeout(() => { try { localStorage.setItem(PAN_KEY, JSON.stringify(panel.view.pan.state())); } catch (e) { /* no storage */ } }, 150); };
+        panel.view.onTab = t => { try { localStorage.setItem(TAB_KEY, t); } catch (e) { /* no storage */ } };
         panel.view.onCrewArea = g => onCrewArea(g);
         if (selected && G.M.level(selected)) panel.view.selected = selected;
         G.panel = panel; G.root = root; G.screenKey = screenKey();
+        // shown once its pictures are in (after the first refresh has set them): never a frame with the parchment or the barge missing
+        root.el.style.visibility = 'hidden';
+        queueMicrotask(() => { if (G.root === root) whenPictures(root); });
+        // built where it is not shown (the constructor's mode at load, or the frame of «Как в игре» not entered yet): its texts were measured as
+        // nothing (uic:TextDimensions needs the screen shown), so it is built again once it is shown (ensureScreen)
+        G.hidden = host.getClientRects().length === 0;
     };
-    // the screen again when its size or sketch is not the one shown (a mode, a screen or a layout chosen)
-    const ensureScreen = () => { if (G && G.screenKey !== screenKey()) { makeScreen(); update(); } };
+    // the screen again when its size is not the one shown (a mode or a screen chosen)
+    const ensureScreen = () => { if (G && (G.screenKey !== screenKey() || G.hidden)) { makeScreen(); update(); } };
 
     const buildGame = design => {
         // the levels: the file's nodes (web/js/tree_model.mjs, gameData), or the mod's data and blueprint.json's tree without a file
@@ -196,9 +216,12 @@ async function main() {
                 M.set_side_chosen_silently(saved.side_chosen);
                 M.set_crew_silently(saved.crew);
                 M.set_crew_chosen_silently(saved.crew_chosen);
+                M.set_news_silently(saved.ship);
+                M.set_message_silently(saved.message);      // the foot line as it was before the reload
                 if (saved.selected && M.level(saved.selected)) panel.view.selected = saved.selected;
             }
         } catch (e) { /* a broken or missing save: start fresh */ }
+        M.sync_ship();          // what stands now is what the next building is compared with
         if (flags.gold !== undefined) game.gold = Number(flags.gold);      // ?gold=500: start with this much, to see the short of gold state
         fit();
         update();
@@ -224,6 +247,7 @@ async function main() {
     document.getElementById('gold_set').addEventListener('click', () => setGold(Number(goldInput.value)));
     goldInput.addEventListener('keydown', e => { if (e.key === 'Enter') setGold(Number(goldInput.value)); });
     for (const b of document.querySelectorAll('.gold_quick')) b.addEventListener('click', () => setGold(Number(b.dataset.gold)));
+    for (const b of document.querySelectorAll('.gold_add')) b.addEventListener('click', () => setGold(G.game.treasury() + Number(b.dataset.add)));
     // Debug: every building of the tree built at once, as if the campaign were over (the guns, the bombs, the nests and every detail on the drawing)
     document.getElementById('build_all').addEventListener('click', () => {
         const {M, panel} = G;
@@ -235,7 +259,7 @@ async function main() {
         if (panel.view.selected && M.level(panel.view.selected)) { M.debug_build_to(panel.view.selected); log('отладка: построено до выбранной'); }
     });
     document.getElementById('reset_all').addEventListener('click', () => {
-        try { localStorage.removeItem(saveKey); } catch (e) { /* nothing saved */ }
+        try { localStorage.removeItem(saveKey); localStorage.removeItem(PAN_KEY); } catch (e) { /* nothing saved */ }
         location.reload();
     });
     document.getElementById('end_turn').addEventListener('click', () => { log('конец хода'); G.game.end_turn(); update(); save(); });
@@ -260,6 +284,11 @@ async function main() {
     document.addEventListener('click', e => { if (!debugBox.contains(e.target)) debugBox.classList.remove('open'); });
     // an action done folds it again (the gold's field stays open while it is typed in)
     document.getElementById('debug_tools').addEventListener('click', e => { if (e.target.closest('button')) debugBox.classList.remove('open'); });
+    // Escape: the panel closes what is open on it (the crew's choice, then the demolish button), as the game's panels do
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape' || !G || document.body.dataset.mode === 'constructor') return;
+        if (G.panel.escape()) e.preventDefault();
+    });
     const fit = () => {
         if (!G) return;
         if (document.body.dataset.mode === 'ingame') { if (ig) ig.fit(); return; }
@@ -322,7 +351,7 @@ async function main() {
     // for checks from the browser's console: the state as text
     window.mtb = {get game() { return G.game; }, get M() { return G.M; }, get panel() { return G.panel; }, get root() { return G.root; }, ig, viewer, get editor() { return editor; }, setMode,
         describe: () => ({turn: G.game.turn, gold: G.game.treasury(), hull: viewer.current, mode: document.body.dataset.mode,
-            levels: (G.panel.view.tree ? G.panel.view.tree.map(v => ({key: v.node.key, name: v.node.name, ...G.M.status(v.node.key)})) : G.panel.view.levels.map(l => ({name: l.name, ...G.M.status(l.key)}))),
+            levels: G.panel.view.tree.map(v => ({key: v.node.key, name: v.node.name, ...G.M.status(v.node.key)})),
             stage: stageName, port: blueprint.parts.port ? G.M.stage('port') : null, message: G.M.message(),
             shown: Object.entries(viewer.models).filter(([, m]) => m.visible).map(([k]) => k), hidden_nodes: viewer.hiddenNodes()})};
     window.turnsText = turnsText;

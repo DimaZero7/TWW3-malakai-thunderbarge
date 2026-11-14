@@ -290,7 +290,9 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
             const c = cardOf(n, place(n)), lines = nameLines(n);
             const frame = n.branch ? `/art/branch_frame_${n.branch}.png` : url(D + 'building_frame_plain.png');
             const full = T.resolve(d, n.id).full, lvl = T.inLine(d, n.id) ? T.levelOf(d, n.id) : 0;
-            const crew = full.crew.map(x => crewCard(x.c)).filter(Boolean);
+            const fresh = T.newOnLevel(d, n.id);      // the cards of a node: only what it brings new in its line, as the game's tree (and the game's column)
+            const one = T.oneCardPerUnit(fresh.crew.map(x => x.c), fresh.units.map(x => x.u), T.crewUnitOf(data.groups));      // one card a unit, as the game's column
+            const crew = fresh.crew.map(x => crewCard(x.c)).filter(Boolean);
             const el = h('div', {class: 'cx-node' + (sel.has(n.id) ? ' sel' : '') + (over && over[n.id] ? ' moving' : '') + (lvl ? ' leveled' : ''), 'data-id': n.id,
                                  style: `left:${c.x}px;top:${c.y}px;height:${c.bottom - c.y + 4}px`, title: nodeTitle(n)},
                 h('div', {class: 'slot'},
@@ -304,7 +306,7 @@ export function makeConstructor(host, {data, cards, design, problems = [], onCha
                         h('img', {src: url(D + 'icon_hourglass.png'), alt: '', class: 'hg'}), h('span', {class: 'tu'}, String(n.turns)))),
                 crew.length ? h('div', {class: 'thumbs'}, crew.map((k, i) => h('div', {class: 'card', style: `top:${i * Math.min(16, 46 / Math.max(1, crew.length - 1))}px`},
                     h('img', {src: url(k.uc.picture), alt: ''}), h('img', {src: url(`ui/skins/tww3_mtb/unit_card_build_frame_${k.colour}.png`), alt: ''})))) : null,
-                army({units: full.units.map(x => x.u)}),
+                army({units: one.units}),
                 h('div', {class: 'name' + (n.name.trim() ? '' : ' empty')}, ...lines.flatMap((l, i) => (i ? [h('br'), l] : [l]))),
                 warned.has(n.id) ? h('div', {class: 'warn'}, '!') : null,
                 h('div', {class: 'hd up', title: 'Тяните к постройке, которая строится ПОСЛЕ этой'}),
