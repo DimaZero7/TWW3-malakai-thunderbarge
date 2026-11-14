@@ -722,6 +722,146 @@ function I.frame_read()
   return out
 end
 
+-- 12. The order of campaign events around a turn end, a cancel, a dismantle. Every candidate event of events.lua is listened to; each firing
+-- gets a sequence number, os.clock(), what its context says and the state of the watched slots at that moment. Turn events of other
+-- factions and characters are only counted (they fire for the whole world).
+local EVENTS = {'FactionTurnEnd', 'FactionTurnStart', 'FactionBeginTurnPhaseNormal', 'CharacterTurnEnd', 'CharacterTurnStart', 'SlotTurnStart',
+  'MilitaryForceBuildingCompleteEvent', 'MilitaryForceBuildingCancelled', 'MilitaryForceDevelopmentPointChange', 'CharacterHordeBuildingDemolished',
+  'BuildingCompleted', 'BuildingCancelled', 'BuildingDemolished', 'BuildingConstructionIssued', 'BuildingConstructionIssuedByPlayer',
+  'ForeignSlotBuildingCompleteEvent', 'FactionHordeStatusChange', 'SlotOpens', 'WorldStartRound'}
+local WORLDWIDE = {FactionTurnEnd = true, FactionTurnStart = true, FactionBeginTurnPhaseNormal = true, CharacterTurnEnd = true, CharacterTurnStart = true,
+  SlotTurnStart = true, WorldStartRound = true}
+
+local function short(v)
+  if v == nil then return nil end
+  local t = type(v)
+  if t == 'string' or t == 'number' or t == 'boolean' then return v end
+  for _, m in ipairs({'name', 'key', 'command_queue_index', 'building'}) do
+    local ok, x = pcall(function() return v[m](v) end)
+    if ok and x ~= nil and type(x) ~= 'userdata' and type(x) ~= 'table' then return m .. ':' .. tostring(x) end
+  end
+  return tostring(v)
+end
+
+local function describe(context)
+  local out = {}
+  local ok, s = pcall(function() return context.string end)
+  if ok and s ~= nil then out.string = tostring(s) end
+  for _, m in ipairs({'faction', 'character', 'building', 'military_force', 'garrison_residence', 'slot', 'region'}) do
+    local okm, v = pcall(function() return context[m](context) end)
+    if okm and v ~= nil then out[m] = short(v) end
+  end
+  return out
+end
+
+local function watched()
+  local out = {}
+  local list = slot_list()
+  for _, n in ipairs(S.watch or {}) do
+    local w = {slot = n}
+    if n < list:num_items() then
+      local it = list:item_at(n)
+      w.model = it:has_building() and it:building() or ''
+    end
+    local ok, r = pcall(slot_read, n)
+    w.cco = ok and r or {err = tostring(r)}
+    out[#out + 1] = w
+  end
+  return out
+end
+
+function I.events_on(a)
+  S.seq, S.log, S.noise, S.watch = 0, {}, {}, a.watch or {}
+  local me_faction, me_cqi = faction(), cqi()
+  local reg = {}
+  for _, ev in ipairs(EVENTS) do
+    core:remove_listener(LISTENER .. 'ev_' .. ev)
+    local ok, err = pcall(function()
+      core:add_listener(LISTENER .. 'ev_' .. ev, ev, true, function(context)
+        local st = _G.mtb_pp_state
+        local d = describe(context)
+        local ours = string.find(tostring(d.faction), me_faction, 1, true) or string.find(tostring(d.character), me_cqi, 1, true)
+          or string.find(tostring(d.military_force), me_cqi, 1, true)
+        if WORLDWIDE[ev] and not ours then
+          st.noise[ev] = (st.noise[ev] or 0) + 1
+          return
+        end
+        st.seq = st.seq + 1
+        local rec = {seq = st.seq, clock = os.clock(), event = ev, context = d}
+        local okt, turn = pcall(function() return cm:turn_number() end)
+        rec.turn = okt and turn or nil
+        local okw, w = pcall(watched)
+        rec.slots = okw and w or {err = tostring(w)}
+        st.log[#st.log + 1] = rec
+      end, true)
+    end)
+    reg[ev] = ok and true or tostring(err)
+  end
+  return {registered = reg, watch = S.watch, turn = cm:turn_number(), slots = watched()}
+end
+
+function I.events_watch(a) S.watch = a.watch or S.watch; return {watch = S.watch, slots = watched()} end
+function I.events_mark(a)
+  S.seq = (S.seq or 0) + 1
+  S.log = S.log or {}
+  S.log[#S.log + 1] = {seq = S.seq, clock = os.clock(), event = 'MARK ' .. tostring(a.text), turn = cm:turn_number(), slots = watched()}
+  return {seq = S.seq}
+end
+function I.events_read(a)
+  local out, from = {}, a.from or 0
+  for _, r in ipairs(S.log or {}) do if r.seq > from then out[#out + 1] = r end end
+  return {log = out, noise = S.noise, seq = S.seq or 0, turn = cm:turn_number(), slots = watched()}
+end
+function I.events_off()
+  for _, ev in ipairs(EVENTS) do core:remove_listener(LISTENER .. 'ev_' .. ev) end
+  return {off = #EVENTS}
+end
+
+-- The cancel the mod uses: the same order command once more on a slot being built ([игра: 191708], full refund).
+function I.cancel(a)
+  local g = gold()
+  local before = slot_read(a.slot)
+  local r = order(a.key, a.slot, 'own')
+  r.gold_before, r.before = g, before
+  return r
+end
+
+function I.dismantle(a)
+  local base = SLOTS .. '.At(' .. a.slot .. ')'
+  local before = {can = value(char(base .. '.CanDismantle')), model = slots()[a.slot + 1]}
+  local ok, err = pcall(common.call_context_command, 'CcoCampaignCharacter', cqi(), base .. '.Dismantle')
+  return {ok = ok, err = (not ok) and tostring(err) or nil, before = before, dismantling = value(char(base .. '.IsDismantling')), model_after = slots()[a.slot + 1]}
+end
+
+function I.avail(a)
+  local n = a.slot or first_empty()
+  if not n then return {err = 'no slot to read against', info = slots_info()} end
+  return {slot = n, reads = availability(a.key, n), present = {r1 = a.r1 and index_of(a.r1), r2 = a.r2 and index_of(a.r2)}, slots = slots()}
+end
+
+-- 14. The effect list of a level as the context reads it (the info panel's own list is filled by C++: CampaignEffectsListTooltip).
+function I.effects(a)
+  local out = {}
+  for _, key in ipairs(a.keys or {}) do
+    local o = {key = key, size = value(rec(key, 'EffectList.Size')), nonzero = value(rec(key, 'EffectList.Filter((x) => x.Value != 0).Size')), rows = {}}
+    local n = tonumber(o.size) or 0
+    for i = 0, math.min(n, 24) - 1 do
+      local row = {}
+      for _, f in ipairs({'Key', 'Value', 'LocalisedText', 'Description', 'IconPath', 'IsPositive', 'Scope', 'EffectScopeContext.Key'}) do
+        row[f] = value(rec(key, 'EffectList.At(' .. i .. ').' .. f))
+      end
+      o.rows[#o.rows + 1] = row
+    end
+    out[#out + 1] = o
+  end
+  local texts = {}
+  for _, e in ipairs(a.effects or {}) do
+    local ok, t = pcall(common.get_localised_string, 'effects_description_' .. e)
+    texts[e] = ok and t or ('ERR ' .. tostring(t))
+  end
+  return {levels = out, texts = texts}
+end
+
 -- ---------------------------------------------------------------- the call ----------------------------------------------------------------
 function PP.run(name, args)
   local fn = I[name]
