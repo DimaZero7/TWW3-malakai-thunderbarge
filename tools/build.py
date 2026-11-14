@@ -3,7 +3,9 @@
 Reads the stock rows from the game's db.pack, derives the new unit's rows (new keys only), writes
 table fragments named !tww3_mtb (sorted before the game's data__), a .loc, the variant file, the
 battle XML and the probe into build/v1/tww3_mtb_v1.pack, then reads the pack back and checks it.
-Touches nothing outside build/v1 (no game folder).
+The campaign pack (build/campaign/pack/tww3_mtb_campaign.pack) carries the author's tree of buildings: tools/tree_port.py runs tools/tree_export.mjs over
+web/data/tree_design.json with the switches of data/tree_port.json into build/tree/tree_rows.json, and its rows go into the tables as they are.
+Touches nothing outside build/ (no game folder).
 """
 import argparse
 import hashlib
@@ -20,6 +22,7 @@ import crew_options  # noqa: E402
 import dbtable  # noqa: E402
 import gamepack  # noqa: E402
 import pfh5  # noqa: E402
+import tree_port  # noqa: E402
 
 OUT = REPO / "build" / "v1"
 DATA = REPO / "data"
@@ -282,8 +285,10 @@ UPGRADE_ROWS = {"thunderburner_dwf_spirit_of_grungni": "mtb_thunderburner", "thu
                 "awe_inspiring_sight_dwf_spirit_of_grungni": "mtb_awe_inspiring_sight"}
 
 
-def derive_campaign(g, t):
-    """Adds the campaign's rows to the v1 rows t. New keys, except building_effects_junction, where the same keys override."""
+def derive_campaign(g, t, tree=None, config=None):
+    """Adds the campaign's rows to the v1 rows t. New keys, except building_effects_junction, where the same keys override.
+    tree: build/tree/tree_rows.json (tools/tree_port.export) and config: data/crew_options.json with the tree's building sections (tree_port.crew_config):
+    the buildings are the author's tree. Without them: the old chains of data/crew_options.json (what tools/web_export.py shows the page as the mod)."""
     t["ancillaries"] = [dict(one(g["ancillaries"], key=ANCILLARY_LIKE), key=ANCILLARY, provided_bodyguard_unit=UNIT)]
     t["ancillaries_included_agent_subtypes"] = [{"agent_subtype": SUBTYPE, "ancillary": ANCILLARY}]
     # The map keeps Malakai's own model (filename) and animation; only the battle model (battle_filename) changes.
@@ -324,7 +329,10 @@ def derive_campaign(g, t):
     # No second barge in ordinary battles: the buildings stop enabling the summon. Quest battles enable it by their own bundle.
     t["building_effects_junction"] = [dict(r, value=0.0, value_damaged=0.0, value_ruined=0.0)
                                       for r in g["building_effects_junction"] if r["effect"] == SUMMON_EFFECT]
-    t["__building_loc__"], t["__building_files__"] = crew_buildings.add_rows(t, g)
+    if tree is not None:
+        t["__building_loc__"], t["__building_files__"] = crew_buildings.add_tree_rows(t, g, tree, config)
+    else:
+        t["__building_loc__"], t["__building_files__"] = crew_buildings.add_rows(t, g)
     return t
 
 
@@ -333,7 +341,10 @@ def build_campaign(blob_files, tables, stock):
     sep = chr(92)
     out = REPO / "build" / "campaign" / "pack"
     out.mkdir(parents=True, exist_ok=True)
-    tables = derive_campaign(stock, {k: [dict(r) for r in v] for k, v in tables.items()})
+    # the author's tree: its rows (build/tree/tree_rows.json) and the crew config the current Lua reads by building, both from the tree
+    tree = tree_port.export(stock)
+    crew_options.use_config(tree_port.crew_config(crew_options.CONFIG, tree))
+    tables = derive_campaign(stock, {k: [dict(r) for r in v] for k, v in tables.items()}, tree, crew_options.CONFIG)
     building_loc, building_files = tables.pop("__building_loc__"), tables.pop("__building_files__")
     files = {k: v for k, v in blob_files.items() if not k.startswith(f"script{sep}battle") and not k.startswith(f"db{sep}")}
     files.update(crew_options.extend(tables, stock, UNIT, BARGE))

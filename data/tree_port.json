@@ -1,0 +1,36 @@
+{
+  "_about": "The switches of the port of the author's tree (web/data/tree_design.json) into the mod's tables: docs/design/port-to-game.md, sections 2 and 6. Read by tools/tree_export.mjs (every rule) and tools/tree_port.py (runs it in the build). A different answer of the author to a question В1-В4 is a change here and py -3.14 tools/build.py; nothing else to edit.",
+  "keys": {
+    "_q": "В1. mode new: every level gets a new key wh3_dlc25_dwarf_spirit_of_grungni_mtb_<node id> (a leading mtb_ of the id is not doubled) and every line a new chain mtb_<first node id>; the vanilla rows of the stock chains stay for the AI. mode vanilla: a line whose nodes are exactly the levels of a stock chain of Malakai (mod_key) keeps the stock keys and chain; their stock effects absent from the tree are written as 0, their stock units stay. always_vanilla: lines that keep the stock keys in both modes (the hull: primary slot, startpos, quests; support_radius: the game's script sets the radius by these keys).",
+    "mode": "new",
+    "always_vanilla": ["airship_hull_", "support_radius_"]
+  },
+  "development_points": {
+    "_q": "В2. mode stock: as the game does: the hull levels keep the stock points (2 / 4 / 8 / 16), the first level of every other line costs points, the higher levels 0. A first level standing for a stock level (mod_key) takes that level's points, a new one by its engine tier (first_level_by_tier). mode zero: every level 0. mode tree: the node's own field dev (not in the constructor yet: 0).",
+    "mode": "stock",
+    "first_level_by_tier": {"1": 1, "2": 1, "3": 2, "4": 3, "5": 3}
+  },
+  "vanilla_chains": {
+    "_q": "В3. Malakai's stock side chains the tree does not use (barracks, the stock beer hall, cargo hold, crew training, engines, workshops). mode keep: untouched, the AI builds them; until stage 4 hides the horde tab the player sees them there too. mode hide: their levels get visible_in_ui = false (whether the AI still builds them: unproven, the probe). mode remove: building_chain_set_items.remove = true for them (unproven, takes them from the AI too).",
+    "mode": "keep"
+  },
+  "tiers": {
+    "_q": "В4. mode links: the engine tier of a level (primary_slot_building_building_level_requirement + 1, the hull level it needs) is the highest of its own tier and of the tiers its links lead to: a required hull node's tier, a required building's engine tier. mode own: the author's tier only (none: 1). own_row: a level stands at least one tier over the level it continues, as the stock tab draws one level of a chain per tier row and hides the lower of two on one row. The author's col and row place the tiles on the panel; this changes only the engine's check.",
+    "mode": "links",
+    "own_row": true
+  },
+  "slot_cap": {
+    "_q": "В4. Secondary slots of MALAKAI_BOUND_HORDE (stock 10): the tree has 16 side lines, the rest is room for the vanilla chains of the AI.",
+    "value": 18
+  },
+  "rules": {
+    "_about": "Mapping rules, not questions to the author. level_like: the stock level a new level's row is copied from when its node stands for no stock level. scope_default: the scope of the effects of the kind horde_cost (the catalogue's own). units_key_base: the first id of our building_units_allowed rows (the table's key is an i32; stock ids are skipped). part_groups: a detail of the ship that the current Lua knows as a crew group (the pub: src/tww3_mtb_crew.lua sets it when the building stands). vanilla_effects_left: stock effects of the stock-key levels that tools/build.py already overrides (the summon), not written again here. set_default: the building set (the colour category of the horde tab) of a new line whose first node stands for no stock level; a line of a stock level takes its stock chain's set.",
+    "level_like": "engines_2",
+    "units_key_base": 1910300000,
+    "part_groups": {"pub": ["pub", "stock"]},
+    "vanilla_effects_left": ["wh3_dlc25_effect_army_ability_enable_spirit_of_grungni_summon_1"],
+    "set_default": "wh3_dlc25_set_dwarf_spirit_of_grungni_compartments",
+    "chain_set": "wh3_main_secondary_core_generic_horde",
+    "culture_set": "wh_main_bas_dwf"
+  }
+}

@@ -593,20 +593,9 @@ def effect_text(template, value):
 
 
 def units_allowed(stock_prefix):
-    """building_units_allowed rows of the barge's buildings. The table is not in data/db_layouts.json: its columns come from the RPFM schema the way
-    tools/refresh_layouts.py reads them (TWW3-batle-ai, read only). None when that schema is not there."""
-    try:
-        import refresh_layouts
-        ron = (refresh_layouts.NEIGHBOUR / "build" / "rpfm" / "schema_wh3.ron").read_text(encoding="utf-8")
-    except Exception as e:      # noqa: BLE001  the neighbour project or its schema is missing: the overview goes without recruitment
-        print("units allowed: no schema,", e)
-        return None
-    sep = chr(92)
-    for name, blob in gamepack.entries(gamepack.DATA / "db.pack", lambda n: n.count(sep) == 2 and n.split(sep)[1] == "building_units_allowed_tables"):
-        fields = refresh_layouts.fields(ron, "building_units_allowed", dbtable.header(blob)[1])
-        rows = dbtable.decode(blob, [tuple(f) for f in fields])
-        return [r for r in rows if r["building"].startswith(stock_prefix)]
-    return None
+    """building_units_allowed rows of the barge's buildings, read by its layout in data/db_layouts.json (tools/refresh_layouts.py)."""
+    rows = build.game_tables().get("building_units_allowed")
+    return [r for r in rows if r["building"].startswith(stock_prefix)] if rows is not None else None
 
 
 def export_overview():

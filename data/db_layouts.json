@@ -575,6 +575,19 @@
   ],
   "version": null
  },
+ "building_chain_sets": {
+  "fields": [
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "parent_set",
+    "OptionalStringU8"
+   ]
+  ],
+  "version": null
+ },
  "building_chains": {
   "fields": [
    [
@@ -862,6 +875,43 @@
   ],
   "version": null
  },
+ "building_sets": {
+  "fields": [
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "icon",
+    "StringU8"
+   ],
+   [
+    "sort_order",
+    "I32"
+   ],
+   [
+    "colour_r",
+    "I32"
+   ],
+   [
+    "colour_g",
+    "I32"
+   ],
+   [
+    "colour_b",
+    "I32"
+   ],
+   [
+    "show_in_ui",
+    "Boolean"
+   ],
+   [
+    "audio_switch",
+    "OptionalStringU8"
+   ]
+  ],
+  "version": 5
+ },
  "building_superchains": {
   "fields": [
    [
@@ -870,6 +920,39 @@
    ]
   ],
   "version": null
+ },
+ "building_units_allowed": {
+  "fields": [
+   [
+    "building",
+    "StringU8"
+   ],
+   [
+    "unit",
+    "StringU8"
+   ],
+   [
+    "XP",
+    "I32"
+   ],
+   [
+    "key",
+    "I32"
+   ],
+   [
+    "conditions",
+    "I32"
+   ],
+   [
+    "faction",
+    "OptionalStringU8"
+   ],
+   [
+    "enabled",
+    "Boolean"
+   ]
+  ],
+  "version": 4
  },
  "building_upgrades_junction": {
   "fields": [
@@ -900,6 +983,35 @@
    ]
   ],
   "version": null
+ },
+ "campaign_effect_scopes": {
+  "fields": [
+   [
+    "key",
+    "StringU8"
+   ],
+   [
+    "location",
+    "StringU8"
+   ],
+   [
+    "ownership",
+    "OptionalStringU8"
+   ],
+   [
+    "source",
+    "StringU8"
+   ],
+   [
+    "target",
+    "StringU8"
+   ],
+   [
+    "territory",
+    "OptionalStringU8"
+   ]
+  ],
+  "version": 2
  },
  "campaign_map_attrition_unit_immunities": {
   "fields": [

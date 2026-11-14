@@ -23,6 +23,15 @@ SEP = chr(92)
 CONFIG = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))
 for _group in CONFIG["groups"].values():    # disabled: the data stays in the file, the game gets nothing of it
     _group["options"] = {k: o for k, o in _group["options"].items() if not o.get("disabled")}
+
+
+def use_config(config):
+    """The config this module builds from: data/crew_options.json by default; tools/build.py gives it the same with the building sections of the author's
+    tree (tools/tree_port.py crew_config)."""
+    global CONFIG
+    for group in config["groups"].values():
+        group["options"] = {k: o for k, o in group["options"].items() if not o.get("disabled")}
+    CONFIG = config
 EMPTY_ROW = "mtb_bp_empty"
 HULL_TABLE = "zeppelin01_dlc25_thunderbarge_grungni"
 HULL_VARIANT = "wh3_dlc25_dwf_mnt_veh_thunderbarge_grungni"

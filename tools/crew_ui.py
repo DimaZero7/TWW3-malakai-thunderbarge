@@ -284,7 +284,7 @@ def building_lines(config, t, stock, bindings):
                 text = f"Открывает в экипаже: {name} ({label}). {need}. Ставится в панели экипажа"
             elif opt.get("ability"):
                 text = f"Открывает в экипаже: {name}, стрела на носу шара и способность в бою. Ставится в панели экипажа"
-            elif short in config["auto_active"]:
+            elif short in config["auto_active"] and group.get("no_panel"):      # src/tww3_mtb_crew.lua on_built sets only a mount or a group the panel does not list
                 text = f"Экипаж: {name} ({label}) встают сразу"
             else:
                 text = f"Открывает в экипаже: {name} ({label}). Ставится в панели экипажа"

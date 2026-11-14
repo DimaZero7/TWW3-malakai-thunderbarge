@@ -14,9 +14,21 @@ import dbtable  # noqa: E402
 import gamepack  # noqa: E402
 
 sys.path.insert(0, str(NEIGHBOUR))
-from tools.nn import dbschema  # noqa: E402
+try:            # the neighbour moved its RON reader and schema copy (11.2026): the new places first, the old ones after
+    from sim.passports import dbschema  # noqa: E402
+except ImportError:
+    from tools.nn import dbschema  # noqa: E402
 
 TARGET = REPO / "data" / "db_layouts.json"
+SCHEMAS = [NEIGHBOUR / "tmp" / "rpfm" / "schema_wh3.ron", NEIGHBOUR / "build" / "rpfm" / "schema_wh3.ron", NEIGHBOUR / "reverse" / "ghidra" / "db" / "schema_wh3.ron"]
+
+
+def schema_text():
+    """The RPFM schema of the neighbour project (read only), wherever it keeps it now."""
+    for path in SCHEMAS:
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+    raise SystemExit("no RPFM schema in TWW3-batle-ai: " + ", ".join(str(p) for p in SCHEMAS))
 
 
 def fields(ron, table, version):
@@ -31,7 +43,7 @@ def fields(ron, table, version):
 
 
 def main():
-    ron = (NEIGHBOUR / "build" / "rpfm" / "schema_wh3.ron").read_text(encoding="utf-8")
+    ron = schema_text()
     old = json.loads(TARGET.read_text(encoding="utf-8"))
     wanted = set(old)
     if "--add" in sys.argv:

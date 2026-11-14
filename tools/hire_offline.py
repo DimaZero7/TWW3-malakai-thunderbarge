@@ -1,8 +1,11 @@
 """Checks the crew's hire in src/tww3_mtb_crew.lua as built, without the game: a fake campaign. Needs lupa: python tools/hire_offline.py
 
 Reads the module out of build/campaign/pack/tww3_mtb_campaign.pack, so py -3.14 tools/build.py comes first. Each case stands alone.
+The buildings are named by the level of the mod they stand for (mod_key of the author's tree: crew_weapons_1); their keys in the game come from
+build/tree/tree_rows.json (the tree gives most of them new keys, data/tree_port.json В1).
 A load is a new module on the same saved values and treasury: nothing may be taken or given by it.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -35,6 +38,13 @@ function ModLog() end
 _G.tww3_mtb_campaign = {when_ready = function() end, file_log = function() end, find_malakai = function() return nil end}
 '''
 PREFIX = "wh3_dlc25_dwarf_spirit_of_grungni_"
+TREE = json.loads((REPO / "build" / "tree" / "tree_rows.json").read_text(encoding="utf-8"))
+KEYS = {r["mod_key"]: r["key"] for r in TREE["levels"] if r["mod_key"]}
+
+
+def key(short):
+    """The game's key of the tree's level that stands for the mod's level short."""
+    return KEYS[short]
 
 
 def source():
@@ -65,7 +75,7 @@ def case(name, body):
 
 
 def built(run, *shorts):
-    run("local M = tww3_mtb_crew; " + " ".join(f"saved['mtb_crew_built'] = (saved['mtb_crew_built'] or '') .. '{PREFIX}{s}@1,'" for s in shorts))
+    run("local M = tww3_mtb_crew; " + " ".join(f"saved['mtb_crew_built'] = (saved['mtb_crew_built'] or '') .. '{key(s)}@1,'" for s in shorts))
 
 
 def num(run, code):
@@ -124,7 +134,7 @@ def replaced_and_back(run):
 
 def empty_free(run):
     built(run, "airship_hull_2", "mtb_guns_1")
-    run("saved['mtb_crew_cannons'] = 'stock'; saved['mtb_crew_built'] = saved['mtb_crew_built'] .. '" + PREFIX + "support_radius_1@1," + PREFIX + "mtb_guns_2@1,'")
+    run("saved['mtb_crew_cannons'] = 'stock'; saved['mtb_crew_built'] = saved['mtb_crew_built'] .. '" + key("support_radius_1") + "@1," + key("mtb_guns_2") + "@1,'")
     expect(run, "tww3_mtb_crew.hire_of('cannons', 'empty')", 0)
     expect(run, "tww3_mtb_crew.choose('cannons', 'empty')", True)
     expect(run, "gold", 10000)
@@ -170,13 +180,13 @@ def building_gone(run):
     run("tww3_mtb_crew.choose('rifles', 'quarrellers')")
     expect(run, "gold", 10000 - cost)
     # the same path the reconcile takes: the order goes with its building, the gold comes back
-    run("local M = tww3_mtb_crew; saved['mtb_crew_built'] = '" + PREFIX + "airship_hull_2@1,'")
+    run("local M = tww3_mtb_crew; saved['mtb_crew_built'] = '" + key("airship_hull_2") + "@1,'")
     run("""
     local forces = {num_items = function() return 1 end, item_at = function() return {horde_details = function() return {is_null_interface = function() return false end,
-      military_force_slot_list = function() return {num_items = function() return 1 end, item_at = function() return {has_building = function() return true end, building = function() return '""" + PREFIX + """airship_hull_2' end} end} end} end} end}
+      military_force_slot_list = function() return {num_items = function() return 1 end, item_at = function() return {has_building = function() return true end, building = function() return '""" + key("airship_hull_2") + """' end} end} end} end} end}
     local f = cm:get_faction()
     f.military_force_list = function() return forces end
-    saved['mtb_crew_built'] = '""" + PREFIX + """airship_hull_2@1,""" + PREFIX + """crew_weapons_1@1'
+    saved['mtb_crew_built'] = '""" + key("airship_hull_2") + """@1,""" + key("crew_weapons_1") + """@1'
     turn = turn + 1
     tww3_mtb_crew.reconcile()
     """)

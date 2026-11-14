@@ -3,6 +3,8 @@
   py -3.14 tools/crew_cycle.py all               everything below, in order, each session with its own hard limit
   py -3.14 tools/crew_cycle.py session NAME      one session of data/crew_cycle.json
   py -3.14 tools/crew_cycle.py report            the table of results from build/crew/cycle/results.jsonl
+  py -3.14 tools/crew_cycle.py session port_probe [--dry-run] [--small] [--limit N] [--stash-user-pack]
+                     the engine probe of docs/design/port-to-game.md, stage 1 (tools/tests/port_probe.py): refuses unless every check of CLAUDE.md passes
   --igpu             the lowest settings instead of what the session asks: the RTX is out of the machine
   --scale N          all time limits of the session times N, for a slow GPU
   --limit-scale N    only the hard limit of the session times N; fights stay as long as in earlier runs, so kills compare
@@ -843,8 +845,20 @@ def main():
     ap.add_argument("--limit-scale", type=float, default=1.0)
     ap.add_argument("--minimized", action="store_true")
     ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE")
+    # session port_probe only (tools/tests/port_probe.py): it has no entry in data/crew_cycle.json, its steps are its own
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--small", action="store_true")
+    ap.add_argument("--limit", type=int)
+    ap.add_argument("--stash-user-pack", action="store_true")
     args = ap.parse_args()
     SCALE, LIMIT_SCALE, IGPU, MINIMIZED, EXTRA_SETTINGS = args.scale, args.limit_scale, args.igpu, args.minimized, args.set
+    if args.what == "session" and args.name == "port_probe":
+        sys.path.insert(0, str(TESTS))
+        import port_probe
+        extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
+        if args.limit:
+            extra += ["--limit", str(args.limit)]
+        return port_probe.main(extra)
     if args.what == "report":
         report()
     elif args.what == "session":
