@@ -264,7 +264,8 @@ local function refresh()
         plate.button:SetState(group == M.selected and 'selected' or 'active')
         plate.card:SetImagePath(card_path(row), 0)
         local next_row = orders[group] and row_of(group, orders[group])
-        plate.variant:SetStateText(next_row and ('→ ' .. next_row.name) or row.name)
+        -- from what stands to what is ordered as the game writes a change («X — Y»: campaign_localised_strings_string_worldroots_teleport_dialogue_body)
+        plate.variant:SetStateText(next_row and (row.name .. ' — ' .. next_row.name) or row.name)
         ui.sel[group]:SetVisible(group == M.selected)
     end
     for group, layer in pairs(ui.occ) do
@@ -500,8 +501,15 @@ end
 
 local function on_click(id)
     if id == BUTTON and M.NEW_SHIP_PANEL then
+        -- as a stock HUD button: nothing while the game's own moment is up (the screen refuses, the button looks inactive and says why)
         local s = ship_screen()
-        if s then s.toggle() else log('the new screen did not start') end
+        if not s then log('the new screen did not start'); return end
+        if s.is_open() then s.close()
+        else
+            local ok, why = s.open()
+            if not ok then log('open: ' .. tostring(why)) end
+        end
+        M.refresh_button()
         return
     end
     if id == BUTTON then
@@ -547,11 +555,17 @@ function M.refresh_button()
         at(mark, -2, -2)
         ring:Layout()
     end
-    local why = M.blocked()
+    local why, open, waits = M.blocked(), ui ~= nil, cm:get_saved_value(NEW) == true
+    if M.NEW_SHIP_PANEL then
+        -- the new screen: inactive while the game's own moment is up; the mark while the turn's report or something new waits unseen
+        local s = ship_screen()
+        local st = s and s.button_state() or {}
+        why, open, waits = st.why, s and s.is_open() or false, st.mark == true
+    end
     b:SetVisible(true)
-    if not ui then b:SetState(why and 'inactive' or 'active') end
+    if not open then b:SetState(why and 'inactive' or 'active') end
     local mark = find_uicomponent(b, 'alert')
-    if mark then mark:SetVisible(not why and not ui and cm:get_saved_value(NEW) == true) end
+    if mark then mark:SetVisible(not why and not open and waits) end
     b:SetTooltipText(TOOLTIP_TITLE .. '\n' .. (why or 'Кто стоит на барке: стрелки, пушки, купола, люки, палуба. Открытые постройками варианты выбираются здесь.'), true)
 end
 
@@ -654,12 +668,22 @@ M.start = guarded(function()
     -- The HUD's button group sets its children's states itself while it starts up (a new campaign: as late as after the intro), so a button
     -- that must stay shut is looked at again. Only while it is shut: then nothing else changes the button.
     core:get_tm():repeat_real_callback(guarded(function()
+        if M.NEW_SHIP_PANEL then M.refresh_button(); return end      -- the game's moments come and go: its state and mark looked at again
         if not M.blocked() then return end
         local ring = find_uicomponent(core:get_ui_root(), 'hud_campaign', 'faction_buttons_docker', 'button_group_management')
         local b = ring and find_uicomponent(ring, BUTTON)
         if b and b:CurrentState() ~= 'inactive' then b:SetState('inactive') end
     end), 2000, 'mtb_crew_button_watch')
-    for _, name in ipairs({'click', 'turn', 'panel', 'turn_start'}) do core:remove_listener('tww3_mtb_crew_ui_' .. name) end
+    for _, name in ipairs({'click', 'turn', 'panel', 'turn_start', 'moment'}) do core:remove_listener('tww3_mtb_crew_ui_' .. name) end
+    -- the new screen's button follows the game's moments as the stock buttons do: looked at again a moment after each (the game's ui manager
+    -- notes a panel in the same event)
+    if M.NEW_SHIP_PANEL then
+        for _, event in ipairs({'PanelOpenedCampaign', 'PanelClosedCampaign', 'PendingBattle', 'BattleCompleted', 'FactionTurnEnd', 'DilemmaChoiceMadeEvent'}) do
+            core:add_listener('tww3_mtb_crew_ui_moment', event, true, function()
+                core:get_tm():real_callback(guarded(M.refresh_button), 100, 'mtb_crew_button_moment')
+            end, true)
+        end
+    end
     -- The tree opens on the mouse, without any event of its own: looked at twice a second while the horde's slots are on the screen, by name only.
     core:get_tm():repeat_real_callback(guarded(M.watch_tree), 500, 'mtb_crew_tree_watch')
     core:add_listener('tww3_mtb_crew_ui_click', 'ComponentLClickUp', function(context)

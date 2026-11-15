@@ -506,6 +506,10 @@ function makeCrewArea(view, M, data, art, blueprint, flags, sheet, frame, scale,
         const card = o.unit_card ? unitCard(hit, 'card', cx, 0, o.unit_card, group.card_frame || 'gold') : image(hit, 'card', LAYOUTS + 'card_empty.png', cx, 0, UNIT_W, UNIT_H);
         const slot = {key: o.key, hit, card};
         slot.selected = image(card, 'selected', 'ui/skins/default/unit_card_selected.png', 0, 0, UNIT_W, UNIT_H);
+        // the author's option (ui_text.mjs OPTIONS.order_frame, off by default): the card of the kind ordered for the turn's start carries a frame of
+        // its own, the selected frame in the green of the game's recruitment banner, so a choice made reads as made while nobody stands yet
+        // (run 20261115-065150, picker_cards.png: the crossbows ordered, the selected frame still on «Пусто»)
+        if (OPTIONS.order_frame) { slot.ordered = image(card, 'ordered', 'ui/skins/default/unit_card_selected.png', 0, 0, UNIT_W, UNIT_H); slot.ordered.SetImageColour(...OPTIONS.order_frame_colour, 255); }
         slot.padlock = image(card, 'padlock', 'ui/skins/default/padlock.png', (UNIT_W - 26) / 2, 46, 26, 33);
         // the game's mark of a unit being recruited (land_unit_card.twui.xml, campaign > Turns: 70 x 34 at -5, 48, the banner with the hourglass)
         slot.turnsBanner = make(card, 'Turns', 'turns_banner');
@@ -807,7 +811,7 @@ function unitInfo(parent, id, spec, flags = {}) {
             if (ab.vs_large) row('vs_large', D + 'icon_stat_damage.png', 'Против крупных', '+' + ab.vs_large, null);
         }
         row('range', D + 'icon_stat_range.png', 'Дальность', num(ab.range), null);
-        if (ab.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${ab.blast + ab.blast_ap} · ${ab.radius} м`, null);
+        if (ab.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${ab.blast + ab.blast_ap}, радиус ${ab.radius} м`, null);
         row('wind_up', D + 'icon_stat_reload_time.png', 'Замах, с', num(ab.wind_up), null);
     }
     if (n.range) {
@@ -829,8 +833,8 @@ function unitInfo(parent, id, spec, flags = {}) {
             info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, W - 48, 20, '');
             y += 16;
         } else row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', String(n.ammo), n.ammo / best(x => x.ammo));
-        if (n.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${n.blast + n.blast_ap} · ${n.radius} м`, null);
-        if (o.fragments) row('fragments', D + 'icon_stat_damage.png', 'Взрыв осколка', `${o.fragments.blast + o.fragments.blast_ap} · ${o.fragments.radius} м`, null);
+        if (n.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${n.blast + n.blast_ap}, радиус ${n.radius} м`, null);
+        if (o.fragments) row('fragments', D + 'icon_stat_damage.png', 'Взрыв осколка', `${o.fragments.blast + o.fragments.blast_ap}, радиус ${o.fragments.radius} м`, null);
     }
     // what the buildings that stand add, a line a kind with the buildings it comes from (green; red when it makes the crew worse)
     info.accuracy = text(panel, 'accuracy', 'text_unit_note', 14, y + 2, W - 28, 20, '');
@@ -869,7 +873,7 @@ function unitInfo(parent, id, spec, flags = {}) {
             const b = bonus[k], head = gameText(`${FX.KINDS[k].name} ${FX.signedPct(b.pct, false)}`), from = `: ${b.from.map(f => f.name).join(', ')}`;
             // (its buildings not named: the panel would outgrow the screen; the building window names them, grey too)
             if (b.from.every(f => f.pending)) return `[[col:${WORDS.bonus_pending_colour}]]${head}${WORDS.bonus_pending}[[/col]]`;
-            const said = [b.from.some(f => f.pending) ? WORDS.bonus_in_battle.replace('%s', FX.signedPct(b.battle, false)) : '', k === 'ammo' ? `${ammo.base} → ${ammo.total}` : ''].filter(Boolean);
+            const said = [b.from.some(f => f.pending) ? WORDS.bonus_in_battle.replace('%s', FX.signedPct(b.battle, false)) : '', k === 'ammo' ? `с ${ammo.base} до ${ammo.total}` : ''].filter(Boolean);
             return colour(k, b.battle, head + (said.length ? ` (${said.join(', ')})` : '') + from);
         });
         info.accuracy.SetStateText(lines.join('\n'));
@@ -922,7 +926,7 @@ function armyInfo(parent, id, u, all, building) {
     text(panel, 'custom_name_display', 'text_unit', 48, y, W - 60, 34, {melee_infantry: 'Пехота ближнего боя', missile_infantry: 'Стрелковая пехота', warmachine: 'Боевая машина'}[u.caste] || u.caste);
     y += 36;
     image(panel, 'icon_men', D + 'icon_entity_small.png', 12, y + 2, 26, 26);
-    text(panel, 'dy_men', 'text_unit', 40, y, 60, 30, String(st.men) + (st.engines ? ` · ${st.engines}` : ''));
+    text(panel, 'dy_men', 'text_unit', 40, y, 60, 30, String(st.men) + (st.engines ? ` + ${st.engines}` : ''));
     image(panel, 'icon_upkeep', D + 'icon_income.png', 104, y + 2, 26, 26).SetTooltipText('Содержание за ход', true);
     text(panel, 'upkeep', 'text_unit', 132, y, 50, 30, String(u.upkeep));
     image(panel, 'icon_cost', D + 'icon_treasury.png', 196, y + 2, 26, 26);
@@ -1640,6 +1644,7 @@ function refreshCrewArea(view, M, c) {
         // the kinds in the order M.crew_options gives now (a building that came to stand changes it): the window is made once and kept (in the game too: hidden on close, shown again)
         at(slot.hit, c.slotAt.x + options.indexOf(o) * c.slotAt.w, c.slotAt.y);
         slot.selected.SetVisible(o.key === now);
+        if (slot.ordered) slot.ordered.SetVisible(o.key === order && o.key !== now);
         slot.padlock.SetVisible(!o.unlocked);
         slot.turnsBanner.SetVisible(o.key === order);
         slot.card.ShaderTechniqueSet(o.unlocked ? 'normal_t0' : 'set_greyscale_t0');
@@ -1660,7 +1665,7 @@ function refreshCrewArea(view, M, c) {
         }
     }
     const upkeep = M.crew_upkeep(), next = M.crew_upkeep_next();
-    c.foot.SetStateText(`Содержание экипажа: ${upkeep} за ход` + (next !== upkeep ? ` → ${next}` : ''));
+    c.foot.SetStateText(`Содержание экипажа: ${upkeep} за ход` + (next !== upkeep ? `, со следующего хода ${next}` : ''));
 }
 
 // The unit's panel beside the choice, as the game's tooltip of a unit card stands by it: over the choice, centred on the card under the mouse, when
@@ -1710,8 +1715,17 @@ function escape(view) {
     return false;
 }
 
+// The treasury's tooltip: what the turn's end does to it besides the faction's own income (M.turn_gold: a dismantle's refund, the hire of an order a
+// dismantle cancels, the crew's upkeep), as the game's top bar shows its own forecast beside the treasury
+function goldTip(M) {
+    const g = M.turn_gold();
+    const said = [g.refund ? `за снос +${g.refund}` : '', g.back ? `возврат найма +${g.back}` : '', g.upkeep ? `содержание экипажа -${g.upkeep}` : ''].filter(Boolean);
+    return 'Казна фракции' + (said.length ? `\nВ начале следующего хода, кроме доходов фракции: ${said.join(', ')}.` : '');
+}
+
 function refresh(view, M) {
     view.gold.SetStateText(M.game.treasury() < 0 ? `[[col:red]]${M.game.treasury()}[[/col]]` : String(M.game.treasury()));      // the game's treasury may be in debt
+    view.gold.SetTooltipText(goldTip(M), true);
     // the points 18 after the treasury's number (made after the treasury's box, they lie over its empty right part and take the mouse there)
     const goldW = Math.max(1, view.gold.TextDimensions()[0]);
     const points = M.points();

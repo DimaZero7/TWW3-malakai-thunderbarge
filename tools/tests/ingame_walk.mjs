@@ -295,9 +295,10 @@ try {
         return bad; })()`);
     check('points: the round of every slot is clear of its padlock and level numeral, the unit cards, the «+N» plates, the lines, other slots and every price plate', !roundsClear.length, roundsClear.slice(0, 8));
     await b.click(s0.x, s0.y); await sleep(150);
-    const p2 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Прочный корпус'); return {msg: mtb.panel.view.footText(), deny: v.deny.Visible(), state: mtb.M.status(v.node.key).state}; })()`);
-    check('points: a click on it is refused: the foot line gives the game\'s reason with what is needed and what there is, the slot flashes red, nothing ordered',
-        p2.msg === 'Не хватает избытка населения: нужно 2, есть 0.' && p2.deny && p2.state === 'locked', p2);
+    const p2 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Прочный корпус'); return {msg: mtb.panel.view.footText(), report: mtb.M.report(), deny: v.deny.Visible(), state: mtb.M.status(v.node.key).state}; })()`);
+    // the turn's report not seen yet (barge_buildings.js M.report: a moment after the turn) stays first, the refusal after it
+    check('points: a click on it is refused: the foot line gives the game\'s reason with what is needed and what there is (after the turn\'s report while it is unseen), the slot flashes red, nothing ordered',
+        p2.msg === [p2.report, 'Не хватает избытка населения: нужно 2, есть 0.'].filter(Boolean).join(' ') && p2.deny && p2.state === 'locked', p2);
     await b.move(s0.x, s0.y, 3); await sleep(350);
     const p3 = await short();
     check('points: its building window says why in red, the same sentence', p3.window === `[[col:red]]${p3.reason}[[/col]]`, p3);
@@ -1031,7 +1032,7 @@ async function fix2() {
             const r = await b.eval(`(() => { const s = mtb.panel.view.crewAreas['${g}'].slots.find(x => x.key === '${o}'); const i = s.info; if (!i || !i.rows.ammo) return null;
                 return {value: i.rows.ammo.value.el.textContent, note: i.ammoNote ? i.ammoNote.el.textContent : '', bonus: (i.bonusLines || []).join(' ').replace(/\\[\\[[^\\]]*\\]\\]/g, ''), men: i.panel.el.querySelector('[data-id="dy_men"]').textContent}; })()`);
             if (!r) continue;
-            const total = Number(r.value), m = /^(\d+) \S+(?: по (\d+)|, около (\d+) )/.exec(r.note), bm = /Боезапас [^(]*\((\d+) → (\d+)\)/.exec(r.bonus);
+            const total = Number(r.value), m = /^(\d+) \S+(?: по (\d+)|, около (\d+) )/.exec(r.note), bm = /Боезапас [^(]*\((?:[^)]*?, )?с (\d+) до (\d+)\)/.exec(r.bonus);
             const ok = Number.isInteger(total) && (!r.note || (m && (m[2] ? Number(m[1]) * Number(m[2]) === total : !Number.isInteger(total / Number(m[1])) && Math.abs(total / Number(m[1]) - Number(m[3])) <= 0.5)))
                 && (!bm || Number(bm[2]) === total) && (!m || Number(m[1]) === Number(r.men));
             sums.push({g, o, ...r, ok});
@@ -1041,7 +1042,7 @@ async function fix2() {
         }
         await clickId('mtb_crew_close_' + g);
     }
-    check(`10: every crew's ammunition adds up (${sums.length} panels): the group's whole as the number, «N мест по M» = whole or «около M» when not whole, the bonus «(base → whole)», the places = the men`, sums.length >= 10 && sums.every(x => x.ok), sums.filter(x => !x.ok).slice(0, 4));
+    check(`10: every crew's ammunition adds up (${sums.length} panels): the group's whole as the number, «N мест по M» = whole or «около M» when not whole, the bonus «(с base до whole)», the places = the men`, sums.length >= 10 && sums.every(x => x.ok), sums.filter(x => !x.ok).slice(0, 4));
     const pir = sums.find(x => x.g === 'rifles' && x.o === 'pirates');
     check('11: the pirates: 11 men, 11 places, their ammunition for 11', pir && pir.men === '11' && /^11 стрелков/.test(pir.note), pir);
     await b.move(2, 2); await sleep(200);

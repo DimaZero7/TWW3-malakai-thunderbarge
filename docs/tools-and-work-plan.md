@@ -195,6 +195,13 @@ Lua считает набор групп (5 бит)
 - Бонусы экипажа, которых бой пока не применяет (этап 5): правило переноса одно — `crewBoosts` / `crewPort` в `web/js/tree_model.mjs` (им же пишет `port.as` `tools/tree_export.mjs`); `gameData` метит такие эффекты `pending`, `tools/ship_config.mjs` сверяет метки с `build/tree/tree_rows.json` (`port.as = skip`) и останавливает сборку при расхождении. `crewBonuses` / `crew_bonuses` дают `pct` (всё) и `battle` (что применяет бой); значения панели — `battle`. Слова — `WORDS.bonus_pending`, `bonus_in_battle` в `web/js/ui_text.mjs`. `py -3.10 tools/crew_bridge_offline.py` требует: метка панели = известный разрыв, `battle` = то, что применяет бой. Снимки: `build/web/shots/pending/`. Усиления групп и множитель боезапаса в `crew_data` — из дерева (`tree_rows.json` `crew_config`), не из `data/crew_options.json`.
 - Векторы: `crew_pays` (сим `crew_pays`, действие `crew_pays`) — содержание не берётся, пока экипаж не может служить; `script_remove` (постройка ушла без события) и `drop_locked` (на странице `M.drop_locked()`, в прогоне моста — `bridge.lose`).
 
+## Скорость прогонов: вступление новой кампании и хронометраж
+
+- Любая сессия (`port_probe`, `ship_panel`, `crew_hire` и сессии `data/crew_cycle.json` с `new_campaign`) по умолчанию пропускает вступление кампании Малакая (ролик, облёт, сцена после облёта, около 160 с): `tools/tests/skip_intro.lua` вызывает `cm:on_key_press_up("ESCAPE")` — то же, что игра делает при нажатии Esc игроком, и только пока сверху стека Esc лежит запись самого вступления. Ни клавиш, ни мыши, ни фокуса. Карта готова, когда игра сообщила `ScriptEventCampaignIntroComplete` и кнопка конца хода активна; ожидания в главном меню и опросы короче (`Session.new_campaign` в `tools/crew_cycle.py`).
+- `py -3.14 tools/crew_cycle.py session ship_panel --option skip_intro=0` (так же `port_probe`, `crew_hire` и прочие сессии) — старый запуск: вступление играет, 10 с в меню, 8 с и опрос кнопки раз в 3 с.
+- `py -3.10 tools/tests/skip_intro_test.py` — скрипт пропуска на заглушке стека Esc игры, без игры; входит в `--dry-run` всех трёх сессий.
+- Каждый прогон пишет `<прогон>/timeline.txt`: запуск, главное меню, загрузка кампании, вступление, концы хода (по событиям игры), бой туда и обратно, остановка. `py -3.14 tools/session_timeline.py <папка прогона>` — то же для готовой папки (у старых прогонов — только по `log.txt` и `window.log`).
+
 ## Что остаётся непроверенным
 
 - Все три проверки этапа 1.

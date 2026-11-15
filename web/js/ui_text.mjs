@@ -89,4 +89,9 @@ export const OPTIONS = {
     short_slot_marked: false,
     short_slot_rim: 110,
     short_slot_plate: 140,      // the dimmed price plate's opacity of 255
+    // the crew's choice: the card of the kind ordered for the turn's start in a frame of its own (the selected frame in the green of the game's
+    // recruitment banner turns_banner_queued.png and of a link the hovered slot opens), beside the selected frame of who stands now. Off: the game's
+    // own look (the hourglass banner alone). The colour is a picture coloured in advance in the game (tools/ship_ui.py TINTS)
+    order_frame: false,
+    order_frame_colour: [145, 231, 50],
 };

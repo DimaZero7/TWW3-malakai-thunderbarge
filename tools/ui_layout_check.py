@@ -423,6 +423,7 @@ def main(argv=None):
             "mtb_ship_unseen": "1" if ship.get("unseen") else "0",
             "mtb_ship_message": msg.get("text") or "",
             "mtb_ship_turn_line": lj(msg["turn_line"]) if msg.get("turn_line") else "",
+            "mtb_ship_report": lj(msg["report"]) if msg.get("report") else "",
             "mtb_malakai_side_chosen": "1" if snap.get("side_chosen") else "0",
             "mtb_ship_tab": "tree",
             "mtb_ship_scroll": "",

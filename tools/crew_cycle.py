@@ -12,6 +12,9 @@
   --limit-scale N    only the hard limit of the session times N; fights stay as long as in earlier runs, so kills compare
   --minimized        ask Windows to start the game minimized and not active
   --set KEY=VALUE    a setting for this session only (run_game.py restores the file after it)
+  --option skip_intro=0   every session: today's start (10 s at the main menu, the new campaign's intro played, 8 s + 3 s polls).
+                     Default 1: the intro skipped by the game's own Esc path (tools/tests/skip_intro.lua), shorter polls. Every run
+                     writes <run>/timeline.txt (tools/session_timeline.py): the start's phases, the turn ends, the battles, the stop.
 
 Sessions are in data/crew_cycle.json. Each runs through tools/run_game.py (lock, closing of the game, the user's files restored),
 with memreader Plus from the Workshop folder unless the session says otherwise. Pictures only through PrintWindow.
@@ -34,6 +37,7 @@ import crew_session  # noqa: E402
 import far_view  # noqa: E402
 import rc  # noqa: E402
 import run_game as rg  # noqa: E402
+import session_timeline  # noqa: E402
 
 SPEC = json.loads((REPO / "data" / "crew_cycle.json").read_text(encoding="utf-8"))
 OPTIONS = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))
@@ -47,6 +51,7 @@ LIMIT_SCALE = 1.0
 IGPU = False
 MINIMIZED = False
 EXTRA_SETTINGS = []
+SKIP_INTRO = True       # --option skip_intro=0: today's start (10 s at the menu, the intro played, 8 s + 3 s polls)
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
@@ -60,6 +65,8 @@ class Session:
         self.deadline = deadline
         self.dir = None
         self.battle_no = 0
+        self.skip_intro = SKIP_INTRO       # --option skip_intro=0 turns it off (new_campaign, wait_mode)
+        self.timeline = session_timeline.Timeline()
 
     def log(self, *a):
         text = time.strftime("%H:%M:%S ") + " ".join(str(x) for x in a)
@@ -80,18 +87,106 @@ class Session:
         self.check_time()
         return rc.send(code, scaled(wait))
 
-    def mode(self):
-        row = rc.send("return mtb.mode", 3)
+    def mode(self, wait=3):
+        row = rc.send("return mtb.mode", wait)
         return row["result"] if row["ok"] else None
 
+    def mark(self, what):
+        """A point of the timeline (<run>/timeline.txt, tools/session_timeline.py)."""
+        self.timeline.mark(what)
+
     def wait_mode(self, mode, limit=300):
+        # skip_intro on: a poll every ~2 s instead of every 5 s (the remote answers within 0.3 s once its mode runs)
+        fast = self.skip_intro
         end = time.time() + scaled(limit)
         while time.time() < end:
             self.check_time()
-            if self.mode() == mode:
+            if self.mode(1.5 if fast else 3) == mode:
+                self.mark(f"mode {mode}")
+                if mode == "campaign":
+                    self.timeline_lua(False)
                 return
-            time.sleep(2)
+            time.sleep(0.5 if fast else 2)
         raise TimeoutError(f"mode {mode} not reached in {limit} s")
+
+    def timeline_lua(self, skip):
+        """tools/tests/skip_intro.lua in the campaign: the game's timeline lines, and with skip the intro skipped by the game's own Esc path."""
+        row = self.script("skip_intro.lua", mtb_skip="1" if skip else "0")
+        if skip or not row["ok"]:
+            self.log("skip_intro", row["result"])
+        return str(row["result"])
+
+    def new_campaign(self, faction, end_turn_limit=200):
+        """The main menu -> a new campaign of `faction` -> the map ready for the player. skip_intro on (default): 3 s at the main
+        menu (start_campaign sent again once if the menu still answers 45 s later), the faction's intro skipped (tools/tests/
+        skip_intro.lua), ready when the intro reports complete and the end turn button is active, then 4 s for the game's fade back
+        to picture. Off (--option skip_intro=0): today's waits exactly (10 s, 8 s, the button polled every 3 s). end_turn_limit
+        None: not waiting for the button (crew_cycle.json sessions without wait_end_turn)."""
+        start = f'frontend.start_campaign("wh3_main_combi", "wh3_main_combi", "{faction}"); return 1'
+        self.wait_mode("frontend", 240)
+        self.mark("frontend answers")
+        if not self.skip_intro:
+            time.sleep(10)
+            self.log(self.plain(start, 10)["result"])
+            self.mark("start_campaign sent")
+            self.wait_mode("campaign", 900)
+            self.mark("first tick (campaign Lua answers)")
+            time.sleep(8)
+            if end_turn_limit:
+                end = time.time() + scaled(end_turn_limit)
+                while time.time() < end and self.visible("button_end_turn") in ("-", "inactive"):
+                    time.sleep(3)
+            self.mark("map ready (end turn button polled, no skip)")
+            return
+        time.sleep(3)
+        self.log(self.plain(start, 10)["result"])
+        self.mark("start_campaign sent")
+        sent, again = time.time(), False
+        end = sent + scaled(900)
+        while True:
+            self.check_time()
+            now = self.mode(1.5)
+            if now == "campaign":
+                break
+            if now == "frontend" and not again and time.time() - sent > 45:     # the campaign's loading stops the menu's Lua within seconds
+                self.log("start_campaign again: the main menu still answers 45 s after the call", self.plain(start, 10)["result"])
+                again = True
+            if time.time() > end:
+                raise TimeoutError("mode campaign not reached in 900 s")
+            time.sleep(0.5)
+        self.mark("mode campaign")
+        self.mark("first tick (campaign Lua answers)")
+        self.timeline_lua(True)
+        ready = ('local b = mtb.find("button_end_turn", true); return (b and tostring(b:CurrentState()) or "-") .. " | " .. '
+                 '(_G.mtb_skip_intro and _G.mtb_skip_intro.report() or "no skip_intro")')
+        end = time.time() + scaled(end_turn_limit or 200)
+        active_since, text = None, ""
+        while time.time() < end:
+            self.check_time()
+            text = str(self.plain(ready, 5)["result"])
+            button = text.split(" | ")[0]
+            if button == "active":
+                active_since = active_since or time.time()
+                if "done=true" in text or time.time() - active_since > 20:      # 20 s of an active button: the intro's end was missed
+                    break
+            else:
+                active_since = None
+            time.sleep(1)
+        self.log("intro", text)
+        self.mark("map ready (" + text.split(" | ")[-1][:120] + ")")
+        time.sleep(4)       # the fade back to picture: 1 + 1 s after the flyover's skip, the post-intro scene's 3.5 s
+
+    def finish_timeline(self, note=""):
+        """<run>/timeline.txt after the game is closed (run_game.py has copied tww3_mtb_events.jsonl into the run folder)."""
+        if not self.dir:
+            return
+        try:
+            import session_timeline
+            lines = session_timeline.write(self.dir, self.timeline.marks, getattr(self, "launch_started", None),
+                                           note or f"skip_intro {'on' if self.skip_intro else 'off'}")
+            print("\n".join(lines[:12]), flush=True)
+        except Exception as e:     # the timeline must never cost the run's own results
+            print("timeline not written:", type(e).__name__, e, flush=True)
 
     def shot(self, name):
         s = rc.state()
@@ -756,17 +851,18 @@ def run_session(name):
                 raise RuntimeError("the session did not start, see " + str(OUT))
             time.sleep(1)
         session.dir = Path(rc.state()["run"])
+        session.launch_started = rc.state().get("started")
+        session.mark("launch (run_game.py)")
         session.log("run", session.dir)
-        if spec.get("new_campaign"):
-            session.wait_mode("frontend", 240)
-            time.sleep(10)
-            session.log(session.plain(f'frontend.start_campaign("wh3_main_combi", "wh3_main_combi", "{spec["new_campaign"]}"); return 1', 10)["result"])
-        session.wait_mode("campaign", 900)
-        time.sleep(8)
-        if spec.get("wait_end_turn"):      # the intro video of a new campaign plays first
-            end = time.time() + scaled(spec["wait_end_turn"])
-            while time.time() < end and session.visible("button_end_turn") in ("-", "inactive"):
-                time.sleep(3)
+        if spec.get("new_campaign"):        # the intro of a new campaign: skipped unless --option skip_intro=0 (Session.new_campaign)
+            session.new_campaign(spec["new_campaign"], spec.get("wait_end_turn"))
+        else:
+            session.wait_mode("campaign", 900)
+            time.sleep(8)
+            if spec.get("wait_end_turn"):
+                end = time.time() + scaled(spec["wait_end_turn"])
+                while time.time() < end and session.visible("button_end_turn") in ("-", "inactive"):
+                    time.sleep(3)
         session.shot("map")
         row = session.plain("return tostring(tww3_mtb_crew and tww3_mtb_crew.status) .. ' ' .. mtb.dump(tww3_mtb_crew and tww3_mtb_crew.get())", 15)
         session.log("loaded", row["result"])
@@ -824,12 +920,15 @@ def run_session(name):
     except Exception as e:  # the game must be closed in every case
         session.log("ERROR", type(e).__name__, e)
     finally:
+        session.mark("stop asked")
         if proc.poll() is None:     # the flag closes whatever session is running: only ours may get it
             rg.STOP.write_text("stop")
         try:
             proc.wait(180)
         except subprocess.TimeoutExpired:
             session.log("session did not end in 180 s")
+        session.mark("game gone" if not rg.rb.game_running() else "run_game.py ended, a game is still in tasklist")
+        session.finish_timeline()
         session.log("session", name, outcome, "seconds", round(time.time() - started))
         for source, target in getattr(session, "saves", []):
             moved = SAVES / source
@@ -841,6 +940,21 @@ def run_session(name):
     return outcome == "done"
 
 
+def skip_intro_option(items, default=True):
+    """(skip_intro, the other NAME=VALUE items) of --option lists: skip_intro=0|1|true|false|off|on."""
+    skip, rest = default, []
+    for item in items or []:
+        name, _, value = item.partition("=")
+        if name.strip() != "skip_intro":
+            rest.append(item)
+            continue
+        low = value.strip().lower()
+        if low not in ("0", "1", "true", "false", "off", "on"):
+            raise SystemExit(f"--option skip_intro={value}: 0 or 1")
+        skip = low in ("1", "true", "on")
+    return skip, rest
+
+
 def report():
     rows = [json.loads(line) for line in RESULTS.read_text(encoding="utf-8").splitlines()]
     for r in rows:
@@ -848,7 +962,7 @@ def report():
 
 
 def main():
-    global SCALE, LIMIT_SCALE, IGPU, MINIMIZED, EXTRA_SETTINGS
+    global SCALE, LIMIT_SCALE, IGPU, MINIMIZED, EXTRA_SETTINGS, SKIP_INTRO
     ap = argparse.ArgumentParser()
     ap.add_argument("what", choices=["all", "session", "report"])
     ap.add_argument("name", nargs="?")
@@ -862,16 +976,21 @@ def main():
     ap.add_argument("--small", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--stash-user-pack", action="store_true")
-    ap.add_argument("--option", action="append", default=[], metavar="NAME=VALUE")       # session ship_panel only: a probe answer as an option
+    # skip_intro=0|1 for every session (default 1: Session.new_campaign); the other names: session ship_panel only, a probe answer as an option
+    ap.add_argument("--option", action="append", default=[], metavar="NAME=VALUE")
     args = ap.parse_args()
     SCALE, LIMIT_SCALE, IGPU, MINIMIZED, EXTRA_SETTINGS = args.scale, args.limit_scale, args.igpu, args.minimized, args.set
+    SKIP_INTRO, rest = skip_intro_option(args.option)
+    skip = ["--option", f"skip_intro={int(SKIP_INTRO)}"]
+    if rest and not (args.what == "session" and args.name == "ship_panel"):
+        raise SystemExit(f"--option {rest}: only skip_intro outside the session ship_panel")
     if args.what == "session" and args.name == "port_probe":
         sys.path.insert(0, str(TESTS))
         import port_probe
         extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
         if args.limit:
             extra += ["--limit", str(args.limit)]
-        return port_probe.main(extra)
+        return port_probe.main(extra + skip)
     if args.what == "session" and args.name == "ship_panel":
         # the new airship panel in the game (tools/tests/ship_session.py): the probe's machinery, its own steps, the same options
         sys.path.insert(0, str(TESTS))
@@ -879,9 +998,9 @@ def main():
         extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
         if args.limit:
             extra += ["--limit", str(args.limit)]
-        for o in args.option:
+        for o in rest:
             extra += ["--option", o]
-        return ship_session.main(extra)
+        return ship_session.main(extra + skip)
     if args.what == "session" and args.name == "crew_hire":
         # the new panel's hire into the old crew mechanics (tools/tests/crew_hire_session.py): ship_panel's machinery, the battle of this file
         sys.path.insert(0, str(TESTS))
@@ -889,7 +1008,7 @@ def main():
         extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
         if args.limit:
             extra += ["--limit", str(args.limit)]
-        return crew_hire_session.main(extra)
+        return crew_hire_session.main(extra + skip)
     if args.what == "report":
         report()
     elif args.what == "session":

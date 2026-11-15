@@ -214,10 +214,12 @@ local function write_mounts(mr, found, land_unit, choice)
     mr.write(land_unit, mount_offset, row(mr, found.mounts, CONFIG.hull_mounts[code]))
 end
 
--- The new panel's Malakai at the rail: {side, seat, row, helm_seat, helm_row} (CONFIG.malakai, tools/crew_options.py): his own model on the seat
--- of his side that the page gives him (web/js/main.js: ap_crew_<side>_1), no weapon there, a crew dwarf with the wheel at the helm. nil: he keeps
--- the helm (the switch off, M.MALAKAI_AT_RAIL false, the AI, no data). The side is the model's (src/tww3_mtb_ship.lua malakai_side, saved as
--- mtb_malakai_side), left by default as there.
+-- The new panel's Malakai at the rail: {side, seat, row, helm_seat, helm_row, variant, helm_variant} (CONFIG.malakai, tools/crew_options.py
+-- malakai_rows): on the seat of his side that the page gives him (web/js/main.js: ap_crew_<side>_1) a row whose variant is his own body with his
+-- rifle (variant), no weapon row; at the helm a crew dwarf with the wheel (helm_variant). The row's variant is what the battle shows: the
+-- variant names are here for the battle's check (the seat's man read from memory, var=). nil: he keeps the helm (the switch off,
+-- M.MALAKAI_AT_RAIL false, the AI, no data). The side is the model's (src/tww3_mtb_ship.lua malakai_side, saved as mtb_malakai_side), left by
+-- default as there.
 function M.malakai_seat()
     local mk = CONFIG.malakai
     if not mk or not M.MALAKAI_AT_RAIL or not new_panel() or profile() ~= 'player' then return nil end
@@ -229,7 +231,8 @@ function M.malakai_seat()
     end
     side = side or cm:get_saved_value('mtb_malakai_side')
     if side ~= 'left' and side ~= 'right' then side = 'left' end
-    return {side = side, seat = mk.seats[side], row = mk.rows[side], helm_seat = mk.helm_seat, helm_row = mk.helm_crew}
+    return {side = side, seat = mk.seats[side], row = mk.rows[side], helm_seat = mk.helm_seat, helm_row = mk.helm_crew,
+            variant = mk.rail_variant, helm_variant = mk.helm_variant}
 end
 
 -- What the seats are pointed at: {seat = battle_personalities key}, the choice's option on every seat of its group (at the boost's level), and

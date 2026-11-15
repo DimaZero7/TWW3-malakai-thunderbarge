@@ -18,6 +18,7 @@ import crew_ui  # noqa: E402
 import gamepack  # noqa: E402
 import gun_models  # noqa: E402
 import hull_parts  # noqa: E402
+import seat_models  # noqa: E402
 
 SEP = chr(92)
 CONFIG = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))
@@ -414,29 +415,78 @@ def building_bindings(t, stock):
     return bindings, levels, sorted(followed)
 
 
+def without_props(definition, attach_points):
+    """A definition with the meshes of these prop slots taken out (the slot stays, empty)."""
+    for attach in attach_points:
+        pattern = re.compile(r'(<SLOT name="[^"]+" attach_point="' + re.escape(attach) + r'" *)>.*?</SLOT>', re.S)
+        definition, n = pattern.subn(r"\1/>", definition)
+        if n != 1:
+            raise SystemExit(f"no slot with a mesh on {attach} in the definition")
+    return definition
+
+
+def with_prop(definition, attach, model):
+    """A definition whose prop slot on attach holds exactly this mesh."""
+    pattern = re.compile(r'(<SLOT name="[^"]+" attach_point="' + re.escape(attach) + r'" *)(?:/>|>.*?</SLOT>)', re.S)
+    definition, n = pattern.subn(lambda m: f'{m.group(1)}>\n\t\t<VARIANT_MESH model="{model}" />\n\t</SLOT>', definition)
+    if n != 1:
+        raise SystemExit(f"no slot on {attach} in the definition")
+    return definition
+
+
+def prop_model(definition, attach):
+    found = re.findall(r'attach_point="' + re.escape(attach) + r'" *>\s*<VARIANT_MESH model="([^"]+)"', definition)
+    if len(found) != 1:
+        raise SystemExit(f"expected one mesh on {attach}, found {found}")
+    return found[0]
+
+
 def malakai_rows(t, stock, unit, stock_seat):
-    """The new panel's Malakai at the rail (data/crew_options.json malakai_at_rail; docs/design/port-to-game.md, В6 (а) and 8.6): for each side a seat row
-    that is the stock rifle seat's own row with autonomous_rider_hero on (a hero seat of a character's unit shows the character's model: the clones of
-    tools/crew_options.py option_rows) and no weapon (the riflemen's ammo is the other 11 seats'), so his seat neither shoots nor takes the group's ammo;
-    the helm gets the stock barge's crew captain. Returns the Lua data {seats, rows, helm_seat, helm_crew, helm_own} or None without the section."""
+    """The new panel's Malakai at the rail (data/crew_options.json malakai_at_rail; docs/design/port-to-game.md, В6 (а) and 8.6).
+
+    Each side's seat row is the stock rifle seat's own row (its place, the rifle crew's animation table) pointed at a variant of our own: Malakai's
+    on-foot definition (dwf_malakai_makaisson: his body dwf_malakai_01, his rifle on be_prop_3, his axe on be_prop_1), its scale, without the props
+    rail.empty_props names. No weapon (battle_entity_stats none): his seat does not shoot and takes none of the riflemen's ammo (11 seats share it).
+    autonomous_rider_hero stays on as in the run that proved the row (20261115-065150): it did NOT give the seat his model, the row's variant is
+    what the battle shows, so the variant is set explicitly.
+    The helm gets a crew dwarf of our own (helm.definition: the plain Thunderbarge's master engineer, with the Spirit of Grungni's wheel); the stock
+    Grungni barge's captain is a daemon slayer with an orange crest, too like Malakai himself to tell apart at the wheel.
+    Returns the Lua data {seats, rows, helm_seat, helm_crew, helm_own, rail_variant, helm_variant} and {pack path: bytes}, or (None, {})."""
     spec = CONFIG.get("malakai_at_rail")
     if not spec:
-        return None
+        return None, {}
     rifles = CONFIG["groups"]["rifles"]["seats"]
     junction = "land_units_to_battle_personalities_junctions"
     own = [r["battle_personality"] for r in t[junction] if r["land_unit"] == unit and r["riders_attachment_point"] == spec["helm_seat"]]
     if len(own) != 1 or spec["helm_seat"] not in CONFIG["fixed_seats"]:
         raise SystemExit(f"malakai_at_rail: the helm {spec['helm_seat']} is not one fixed seat of {unit} ({own})")
-    one(stock["battle_personalities"], key=spec["helm_crew"])
+    files = {}
+    # Malakai at the rail: his own definition, his scale
+    rail = spec["rail"]
+    text = without_props(stock_definition({"variant_filename": rail["definition"]}), rail.get("empty_props", []))
+    if seat_models.MALAKAI_BODY not in text.replace(SEP, "/").lower() or not re.search(r'attach_point="be_prop_3" *>\s*<VARIANT_MESH model="[^"]*rifle', text):
+        raise SystemExit(f"malakai_at_rail: {rail['definition']} is not Malakai's body with his rifle on be_prop_3: the game changed")
+    t["variants"].append(dict(one(stock["variants"], variant_name=rail["variant_like"]), variant_name=spec["rail_variant"], variant_filename=spec["rail_variant"]))
+    files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{spec['rail_variant']}.variantmeshdefinition"] = text.encode("utf-8")
     rows = {}
     for side, seat in spec["seats"].items():
         if seat not in rifles:
             raise SystemExit(f"malakai_at_rail: {seat} is not a rifle seat")
         base = one(stock["battle_personalities"], key=stock_seat[seat])
         key = f"mtb_bp_malakai_rail_{side}"
-        t["battle_personalities"].append(dict(base, key=key, autonomous_rider_hero=True, battle_entity_stats=None))
+        t["battle_personalities"].append(dict(base, key=key, variant=spec["rail_variant"], autonomous_rider_hero=True, battle_entity_stats=None))
         rows[side] = key
-    return {"seats": dict(spec["seats"]), "rows": rows, "helm_seat": spec["helm_seat"], "helm_crew": spec["helm_crew"], "helm_own": own[0]}
+    # the crew dwarf at the helm: the plain barge's captain with this barge's wheel, on the stock helm row's place and animation
+    helm = spec["helm"]
+    wheel = prop_model(stock_definition({"variant_filename": helm["wheel_from"]}), "be_prop_0")
+    text = with_prop(stock_definition({"variant_filename": helm["definition"]}), "be_prop_0", wheel)
+    if seat_models.MALAKAI_BODY in text.replace(SEP, "/").lower() or seat_models.WHEEL not in text:
+        raise SystemExit(f"malakai_at_rail: the helm's crew {helm['definition']} is Malakai or holds no wheel")
+    t["variants"].append(dict(one(stock["variants"], variant_name=helm["variant_like"]), variant_name=spec["helm_variant"], variant_filename=spec["helm_variant"]))
+    files[f"variantmeshes{SEP}variantmeshdefinitions{SEP}{spec['helm_variant']}.variantmeshdefinition"] = text.encode("utf-8")
+    t["battle_personalities"].append(dict(one(stock["battle_personalities"], key=helm["row_like"]), key=spec["helm_crew"], variant=spec["helm_variant"]))
+    return ({"seats": dict(spec["seats"]), "rows": rows, "helm_seat": spec["helm_seat"], "helm_crew": spec["helm_crew"], "helm_own": own[0],
+             "rail_variant": spec["rail_variant"], "helm_variant": spec["helm_variant"]}, files)
 
 
 def extend(t, stock, unit, barge, table_name_check=True):
@@ -502,9 +552,10 @@ def extend(t, stock, unit, barge, table_name_check=True):
             files.update(definition_files)
             files.update(option_files(group_key, key, opt))
     weapon_upgrades(t, stock, unit, ammo, own_stats)
-    malakai = malakai_rows(t, stock, unit, stock_seat)
+    malakai, malakai_files = malakai_rows(t, stock, unit, stock_seat)
     if malakai:
         data["malakai"] = malakai
+        files.update(malakai_files)
     if CONFIG.get("remove_bow_figure"):
         files.update(hull_files())
     # The tables hold the stock crew: without memreader Plus, or before the module has written, the unit is the stock barge.

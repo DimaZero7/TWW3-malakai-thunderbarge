@@ -11,7 +11,9 @@ every step the answer must hold:
   * the numbers the panel shows (crew bonuses and ammunition) equal what the battle applies, except the known gaps: the tree's effects the port
     skips (build/tree/tree_rows.json, port.as = skip: stage 5) and the mod's own sources of the screen's data the battle has not. The gaps are
     listed with how often each was seen; anything else is a mismatch.
---break NAME breaks the packed crew module on purpose (upkeep_twice, no_sync, no_drop, bay, malakai, old_turn) to show the replay catching it.
+--break NAME breaks the packed crew module on purpose (upkeep_twice, no_sync, no_drop, bay, malakai, old_turn) to show the replay catching it;
+swap_models swaps the variants of Malakai's rail rows and the helm crew's row in the pack's tables (names kept): his seats are checked by the
+model their rows show (tools/seat_models.py), so that must be caught too.
 Exit 1 on any mismatch.
 """
 import argparse
@@ -23,6 +25,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import pfh5  # noqa: E402
+import seat_models  # noqa: E402
 import game_lua_env as genv  # noqa: E402
 import lua_vectors as lv  # noqa: E402
 
@@ -44,6 +47,8 @@ BREAKS = {
     "no_drop": [("    local any = model.drop_locked()", "    local any = false")],
     "bay": [("if of_model and spec.mount and saved == spec.mount and not M.mount_ready(group)", "if false and of_model")],
     "malakai": [("M.MALAKAI_AT_RAIL = true", "M.MALAKAI_AT_RAIL = false")],
+    # not the module's text: the pack's rows of his rail and of the helm's crew swap their variants, every name kept (tools/seat_models.py)
+    "swap_models": [],
     "old_turn": [("            if new_panel() then\n                -- the model's own turn start", "            if false then\n                -- the model's own turn start"),
                  ("    if profile() ~= 'player' or new_panel() then return end      -- the new panel: the model's turn start", "    if profile() ~= 'player' then return end      --"),
                  ("    if new_panel() then return end      -- the new panel's model takes the upkeep", "    if false then return end      -- BROKEN, was: the new panel's model takes the upkeep")],
@@ -94,6 +99,13 @@ def main(argv=None):
             crew_src = crew_src.replace(old, new, 1)
     tree = json.loads(TREE.read_text(encoding="utf-8"))
     X, skipped = expectations(tree)
+    # the model each of the pack's seat rows shows: Malakai's seats are checked by it, not by the rows' names
+    tables = seat_models.pack_tables(files, json.loads((REPO / "data" / "db_layouts.json").read_text(encoding="utf-8")))
+    if args.broken == "swap_models":
+        rail = json.loads((REPO / "data" / "crew_options.json").read_text(encoding="utf-8"))["malakai_at_rail"]
+        seat_models.swap_malakai_variants(tables, [f"mtb_bp_malakai_rail_{side}" for side in rail["seats"]], rail["helm_crew"])
+    X["models"] = {key: {k: m[k] for k in ("variant", "known", "malakai", "wheel", "rifle")}
+                   for key, m in seat_models.seat_models(files, tables).items() if m}
 
     lua, info = genv.new_runtime()
     lv.F32 = True

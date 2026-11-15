@@ -749,7 +749,7 @@ function UI.make_panel(env)
                 if ab.vs_large and ab.vs_large ~= 0 then row('vs_large', K.D .. 'icon_stat_damage.png', 'Против крупных', '+' .. str(ab.vs_large), nil) end
             end
             row('range', K.D .. 'icon_stat_range.png', 'Дальность', num(ab.range), nil)
-            if ab.blast and ab.blast ~= 0 then row('blast', K.D .. 'icon_stat_damage.png', 'Взрыв', str(ab.blast + ab.blast_ap) .. ' · ' .. str(ab.radius) .. ' м', nil) end
+            if ab.blast and ab.blast ~= 0 then row('blast', K.D .. 'icon_stat_damage.png', 'Взрыв', str(ab.blast + ab.blast_ap) .. ', радиус ' .. str(ab.radius) .. ' м', nil) end
             row('wind_up', K.D .. 'icon_stat_reload_time.png', 'Замах, с', num(ab.wind_up), nil)
         end
         if n.range and n.range ~= 0 then
@@ -766,8 +766,8 @@ function UI.make_panel(env)
                 info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, Wd - 48, 20, '')
                 y = y + 16
             else row('ammo', K.D .. 'icon_stat_ammo.png', 'Боезапас', str(n.ammo), n.ammo / best(function(x) return x.ammo end)) end
-            if n.blast and n.blast ~= 0 then row('blast', K.D .. 'icon_stat_damage.png', 'Взрыв', str(n.blast + n.blast_ap) .. ' · ' .. str(n.radius) .. ' м', nil) end
-            if o.fragments then row('fragments', K.D .. 'icon_stat_damage.png', 'Взрыв осколка', str(o.fragments.blast + o.fragments.blast_ap) .. ' · ' .. str(o.fragments.radius) .. ' м', nil) end
+            if n.blast and n.blast ~= 0 then row('blast', K.D .. 'icon_stat_damage.png', 'Взрыв', str(n.blast + n.blast_ap) .. ', радиус ' .. str(n.radius) .. ' м', nil) end
+            if o.fragments then row('fragments', K.D .. 'icon_stat_damage.png', 'Взрыв осколка', str(o.fragments.blast + o.fragments.blast_ap) .. ', радиус ' .. str(o.fragments.radius) .. ' м', nil) end
         end
         info.accuracy = text(panel, 'accuracy', 'text_unit_note', 14, y + 2, Wd - 28, 20, '')
         info.accuracy_y = y + 2
@@ -819,7 +819,7 @@ function UI.make_panel(env)
                     else
                         local said = {}
                         if some then push(said, string.format(cfg.words.bonus_in_battle, signedPct(b.battle))) end
-                        if k == 'ammo' then push(said, str(ammo.base) .. ' → ' .. str(ammo.total)) end
+                        if k == 'ammo' then push(said, 'с ' .. str(ammo.base) .. ' до ' .. str(ammo.total)) end
                         push(lines, colour(k, b.battle, head .. (#said > 0 and (' (' .. table.concat(said, ', ') .. ')') or '') .. from))
                     end
                 end
@@ -878,7 +878,7 @@ function UI.make_panel(env)
         text(panel, 'custom_name_display', 'text_unit', 48, y, Wd - 60, 34, CASTE[u.caste] or u.caste)
         y = y + 36
         image(panel, 'icon_men', K.D .. 'icon_entity_small.png', 12, y + 2, 26, 26)
-        text(panel, 'dy_men', 'text_unit', 40, y, 60, 30, str(st.men) .. ((st.engines and st.engines ~= 0) and (' · ' .. str(st.engines)) or ''))
+        text(panel, 'dy_men', 'text_unit', 40, y, 60, 30, str(st.men) .. ((st.engines and st.engines ~= 0) and (' + ' .. str(st.engines)) or ''))
         image(panel, 'icon_upkeep', K.D .. 'icon_income.png', 104, y + 2, 26, 26):SetTooltipText('Содержание за ход', true)
         text(panel, 'upkeep', 'text_unit', 132, y, 50, 30, str(u.upkeep))
         image(panel, 'icon_cost', K.D .. 'icon_treasury.png', 196, y + 2, 26, 26)
@@ -1059,6 +1059,12 @@ function UI.make_panel(env)
             local card = o.unit_card and unitCard(hit, 'card', cx, 0, o.unit_card, group.card_frame or 'gold') or image(hit, 'card', K.LAYOUTS .. 'card_empty.png', cx, 0, K.UNIT_W, K.UNIT_H)
             local slot = {key = o.key, hit = hit, card = card}
             slot.selected = image(card, 'selected', K.D .. 'unit_card_selected.png', 0, 0, K.UNIT_W, K.UNIT_H)
+            -- the author's option (cfg.options.order_frame, off by default): the ordered kind's card in a frame of its own (panel.js)
+            if cfg.options.order_frame then
+                local rgb = cfg.options.order_frame_colour
+                slot.ordered = image(card, 'ordered', K.D .. 'unit_card_selected.png', 0, 0, K.UNIT_W, K.UNIT_H)
+                slot.ordered:SetImageColour(rgb[1], rgb[2], rgb[3], 255)
+            end
             slot.padlock = image(card, 'padlock', K.D .. 'padlock.png', (K.UNIT_W - 26) / 2, 46, 26, 33)
             slot.turnsBanner = make(card, 'Turns', 'turns_banner')
             size(slot.turnsBanner, 70, 34)
@@ -1598,6 +1604,7 @@ function UI.make_panel(env)
             -- the kinds in the order M.crew_options gives now: the window is built once and kept, and a building that came to stand changes the order
             at(slot.hit, c.slotAt.x + idx * c.slotAt.w, c.slotAt.y)
             slot.selected:SetVisible(o.key == now)
+            if slot.ordered then slot.ordered:SetVisible(o.key == order and o.key ~= now) end
             slot.padlock:SetVisible(not o.unlocked)
             slot.turnsBanner:SetVisible(o.key == order)
             slot.card:ShaderTechniqueSet(o.unlocked and 'normal_t0' or 'set_greyscale_t0')
@@ -1622,7 +1629,7 @@ function UI.make_panel(env)
         end
         if not c.foot then return end
         local upkeep, nextU = M.crew_upkeep(), M.crew_upkeep_next()
-        c.foot:SetStateText('Содержание экипажа: ' .. str(upkeep) .. ' за ход' .. (nextU ~= upkeep and (' → ' .. str(nextU)) or ''))
+        c.foot:SetStateText('Содержание экипажа: ' .. str(upkeep) .. ' за ход' .. (nextU ~= upkeep and (', со следующего хода ' .. str(nextU)) or ''))
     end
 
     -- The tab shown: the other's windows that pop up under the mouse go with it
@@ -1655,6 +1662,14 @@ function UI.make_panel(env)
         for _, g in ipairs(view.area_order) do local a = view.crewAreas[g]; if a.open then a.buildPick() end end
         local gold = M.game.treasury()
         view.gold:SetStateText(gold < 0 and ('[[col:red]]' .. str(gold) .. '[[/col]]') or str(gold))
+        -- the treasury's tooltip: what the turn's end does to it besides the faction's own income (panel.js goldTip)
+        do
+            local tg, said = M.turn_gold(), {}
+            if tg.refund ~= 0 then said[#said + 1] = 'за снос +' .. str(tg.refund) end
+            if tg.back ~= 0 then said[#said + 1] = 'возврат найма +' .. str(tg.back) end
+            if tg.upkeep ~= 0 then said[#said + 1] = 'содержание экипажа -' .. str(tg.upkeep) end
+            view.gold:SetTooltipText('Казна фракции' .. (#said > 0 and ('\nВ начале следующего хода, кроме доходов фракции: ' .. table.concat(said, ', ') .. '.') or ''), true)
+        end
         -- the points 18 after the treasury's number (made after the treasury's box, they lie over its empty right part)
         local goldW = max(1, width(view.gold))
         local points = M.points()

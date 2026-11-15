@@ -25,7 +25,9 @@ import build  # noqa: E402
 import crew_options  # noqa: E402
 import dbtable  # noqa: E402
 import gamepack  # noqa: E402
+import hull_parts  # noqa: E402
 import pfh5  # noqa: E402
+import seat_models  # noqa: E402
 import tree_port  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -309,6 +311,8 @@ def main(argv=None):
     ap.add_argument("--rows", default=str(tree_port.ROWS))
     ap.add_argument("--vectors", action="store_true", help="also the page's vectors on the pack's Lua (node tools/tests/vectors_export.mjs, py -3.10 tools/lua_vectors.py; about 3 min) and the "
                     "screen's drawing (node tools/tests/ui_dump_export.mjs, py -3.10 tools/ui_layout_check.py; about 2 min more)")
+    ap.add_argument("--break", dest="broken", choices=["swap_models"], default=None,
+                    help="swap_models: Malakai's rail rows and the helm's crew row swap their variants (names kept), to show the model check catching it")
     args = ap.parse_args(argv)
     files, _ = pfh5.read_pack(Path(args.pack).read_bytes())
     tree_rows = json.loads(Path(args.rows).read_text(encoding="utf-8"))
@@ -318,6 +322,9 @@ def main(argv=None):
         if name.startswith("db" + SEP):
             table = name.split(SEP)[1].removesuffix("_tables")
             t[table] = dbtable.decode(blob, [tuple(f) for f in build.LAYOUTS[table]["fields"]])
+    if args.broken == "swap_models":
+        rail = CONFIG["malakai_at_rail"]
+        seat_models.swap_malakai_variants(t, [f"mtb_bp_malakai_rail_{side}" for side in rail["seats"]], rail["helm_crew"])
     stock = build.game_tables()
     loc = loc_read(files[f"text{SEP}db{SEP}tww3_mtb.loc"])
     # 0. the author's tree
@@ -436,18 +443,36 @@ def main(argv=None):
     # 4b. the new panel's Malakai at the rail (data/crew_options.json malakai_at_rail; docs/design/port-to-game.md 8.6): his seat rows (his own model,
     # no weapon), the helm's crew row, the data in the crew module; the riflemen's ammo for the seats that shoot (per_seat x ammo_rule.seats, 11)
     rail = CONFIG.get("malakai_at_rail")
+    stock_seat_rows = {r["riders_attachment_point"]: r["battle_personality"] for r in stock["land_units_to_battle_personalities_junctions"] if r["land_unit"] == build.BARGE}
     if rail:
         rifle_seats = CONFIG["groups"]["rifles"]["seats"]
         for side, seat in rail["seats"].items():
             row = pers.get(f"mtb_bp_malakai_rail_{side}")
             if seat not in rifle_seats:
                 fail(f"malakai_at_rail: {seat} is not a rifle seat")
-            if not row or row.get("autonomous_rider_hero") is not True or row.get("battle_entity_stats"):
-                fail(f"mtb_bp_malakai_rail_{side}: missing, not his own model or with a weapon: {row and {k: row.get(k) for k in ('autonomous_rider_hero', 'battle_entity_stats')}}")
+            if not row or row.get("battle_entity_stats") or row.get("man_animations_table") != pers[stock_seat_rows[seat]]["man_animations_table"]:
+                fail(f"mtb_bp_malakai_rail_{side}: missing, with a weapon or not on the rifle seat's animations: {row and {k: row.get(k) for k in ('battle_entity_stats', 'man_animations_table')}}")
             if f'"mtb_bp_malakai_rail_{side}"' not in crew_lua:
                 fail(f"mtb_bp_malakai_rail_{side}: not in the crew module's data")
         if rail["helm_crew"] not in pers or f'"{rail["helm_crew"]}"' not in crew_lua or rail["helm_seat"] not in CONFIG["fixed_seats"]:
             fail(f"malakai_at_rail: the helm's crew {rail['helm_crew']} or its seat {rail['helm_seat']}")
+        # the MODEL each of his rows shows (tools/seat_models.py), not the row's name: his body and rifle at the rail, a crew dwarf with the wheel at
+        # the helm, his body and the wheel on his own helm row; and nowhere else on the barge his body
+        helm_own = next(r["battle_personality"] for r in t["land_units_to_battle_personalities_junctions"]
+                        if r["land_unit"] == build.UNIT and r["riders_attachment_point"] == rail["helm_seat"])
+        mk = {"rows": {side: f"mtb_bp_malakai_rail_{side}" for side in rail["seats"]}, "helm_crew": rail["helm_crew"], "helm_own": helm_own,
+              "rail_variant": rail["rail_variant"], "helm_variant": rail["helm_variant"]}
+        models = seat_models.seat_models(files, t, stock, hull_parts.game_file)
+        for line in seat_models.malakai_problems(models, mk):
+            fail("malakai_at_rail: " + line)
+        # every row the crew module can write or the tables hold for the unit
+        planned = set(re.findall(r'"(mtb_bp_[a-z0-9_]+)"', crew_lua)) | {r["battle_personality"] for r in t["land_units_to_battle_personalities_junctions"] if r["land_unit"] == build.UNIT}
+        for key in sorted(planned - set(mk["rows"].values()) - {helm_own}):
+            if models.get(key) and models[key]["malakai"]:
+                fail(f"malakai_at_rail: {key} shows Malakai's body too ({models[key]['variant']}): a second Malakai on the barge")
+        for name, variant in (("rail_variant", rail["rail_variant"]), ("helm_variant", rail["helm_variant"])):
+            if f'"{variant}"' not in crew_lua:
+                fail(f"malakai_at_rail: {name} {variant} not in the crew module's data (the battle's check compares it)")
         shooting = len(rifle_seats) - 1
         for key, opt in CONFIG["groups"]["rifles"]["options"].items():
             rule = opt.get("ammo_rule")
@@ -534,7 +559,10 @@ def main(argv=None):
         node = shutil.which("node")
         major = int(subprocess.run([node, "--version"], capture_output=True, text=True).stdout.strip().lstrip("v").split(".")[0] or 0)
         websocket = ["--experimental-websocket"] if major < 22 else []       # tools/tests/cdp.mjs needs a global WebSocket
-        for cmd in ([node, *websocket, str(REPO / "tools" / "tests" / "ui_dump_export.mjs")], [shutil.which("py"), "-3.10", str(REPO / "tools" / "ui_layout_check.py")]):
+        # 10. every string the panel draws within the characters proven to draw right in the game's fonts (tools/glyph_check.py: the vectors, the
+        # dumps, the configs and the modules' literals; run 20261115-065150: «→» ran into the digit after it)
+        for cmd in ([node, *websocket, str(REPO / "tools" / "tests" / "ui_dump_export.mjs")], [shutil.which("py"), "-3.10", str(REPO / "tools" / "ui_layout_check.py")],
+                    [shutil.which("py"), "-3.14", str(REPO / "tools" / "glyph_check.py")]):
             run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
             print((run.stdout + run.stderr).strip()[-2500:])
             if run.returncode != 0:

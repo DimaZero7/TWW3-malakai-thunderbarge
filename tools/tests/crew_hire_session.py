@@ -531,6 +531,7 @@ def plan_text(args, limit):
         f"     -> tools/run_game.py: lock {sg.LOCK} = «mtb, начало HH:MM»; packs from {PACK} (the switch on); our mod list; used_mods.txt only read;",
         f"        low graphics, windowed {res}, Normal difficulty, RTX checked; no focus, under other windows (focus guard); the user's folders put back.",
         "  2. main menu -> new campaign wh3_dlc25_dwf_malakai, the end turn button, peace with everyone, events accepted.",
+        pp.skip_intro_plan(getattr(args, "skip_intro", True)),
         "  3. census, smoke (ship_panel's helpers and this session's, canary after each); load the screen by the switch; the bridge attached (else ABORT);",
         "     the hull II ordered (points and gold by script when short); turn end 1 (the barge, Malakai on it); the dummies and the gun ports stood by",
         "     script (idle force, no construction in a slot), the beer hall ordered; turn end 2 (the places; the bare bay and the boost in the old",
@@ -564,15 +565,18 @@ def run(args):
     print("the session against the fake game (py -3.10, lupa, the game's emulated Lua, the real crew module):")
     print("\n".join("  " + l for l in (fake.stdout + fake.stderr).strip().splitlines()[-60:]))
     print(plan_text(args, limit))
+    skip_ok, skip_lines = pp.skip_intro_check()
+    print("skip_intro.lua against a stub of the game's Esc stack (py -3.10, lupa):")
+    print("\n".join("  " + l for l in skip_lines[-12:]))
     if args.dry_run:
         print("\n".join(sg.describe()))
         state = "would launch" if not blockers else ("would STOP: " + "; ".join(r[0] for r in blockers))
         if stash_blocked and not other:
             state += " (with --stash-user-pack and the author's yes it would launch)"
-        print("dry run:", state, "| fake game:", "ok" if fake.returncode == 0 else f"FAILED ({fake.returncode})")
-        return 0 if fake.returncode == 0 else 1
-    if fake.returncode != 0:
-        print("not launching: the session failed against the fake game")
+        print("dry run:", state, "| fake game:", "ok" if fake.returncode == 0 else f"FAILED ({fake.returncode})", "| skip_intro:", "ok" if skip_ok else "FAILED")
+        return 0 if fake.returncode == 0 and skip_ok else 1
+    if fake.returncode != 0 or (args.skip_intro and not skip_ok):
+        print("not launching: the session failed against the fake game" if fake.returncode != 0 else "not launching: skip_intro.lua failed its check")
         return 1
     if other or (stash_blocked and not args.stash_user_pack):
         print("not launching:", "; ".join(r[0] for r in blockers))
@@ -592,6 +596,7 @@ def launch(args, cfg, limit):
             return 3
     started = time.time()
     session = cc.Session("crew_hire", started + limit)
+    session.skip_intro = args.skip_intro
     session.current = {}
     cmd = [sys.executable, str(Path(__file__).resolve()), "_session", "--label", "crew_hire", "--timeout", str(limit + 120),
            "--packs", "harness", "campaign", "--user-mods", "memreader_plus.pack"]
@@ -612,14 +617,9 @@ def launch(args, cfg, limit):
         (OUT / "last_run.txt").write_text(str(session.dir), encoding="utf-8")
         shutil.copy2(CONFIG, session.dir / "crew_hire_config.json")
         session.log("run", session.dir)
-        session.wait_mode("frontend", 240)
-        time.sleep(10)
-        session.log(session.plain(f'frontend.start_campaign("wh3_main_combi", "wh3_main_combi", "{pp.FACTION_KEY}"); return 1', 10)["result"])
-        session.wait_mode("campaign", 900)
-        time.sleep(8)
-        end = time.time() + 200
-        while time.time() < end and session.visible("button_end_turn") in ("-", "inactive"):
-            time.sleep(3)
+        session.launch_started = rc.state().get("started")
+        session.mark("launch (run_game.py)")
+        session.new_campaign(pp.FACTION_KEY)     # the intro skipped unless --option skip_intro=0 (tools/crew_cycle.py Session.new_campaign)
         session.shot("ch_map")
         session.log("peace", session.prog("return P.peace()")["result"])
         accept = ('local n = 0; for _ = 1, 4 do local e = mtb.find("events", true); local b = e and mtb.find("button_accept", true, e); '
@@ -634,6 +634,7 @@ def launch(args, cfg, limit):
         how = f"error before or between steps: {type(e).__name__}: {e}"
         session.log("ERROR", how)
     finally:
+        session.mark("stop asked")
         if proc is not None and proc.poll() is None:
             rg.STOP.write_text("stop")
         if proc is not None:
@@ -642,6 +643,8 @@ def launch(args, cfg, limit):
             except subprocess.TimeoutExpired:
                 session.log("run_game.py did not end in 240 s: it keeps the lock while a game is in tasklist")
         gone = not cc.rg.rb.game_running()
+        session.mark("game gone" if gone else "a game is still in tasklist")
+        session.finish_timeline()
         status = {}
         if session.dir and (session.dir / "status.json").exists():
             status = json.loads((session.dir / "status.json").read_text(encoding="utf-8"))
@@ -669,7 +672,10 @@ def main(argv=None):
     ap.add_argument("--small", action="store_true")
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     ap.add_argument("--stash-user-pack", action="store_true")
-    return run(ap.parse_args(argv))
+    ap.add_argument("--option", action="append", default=[], metavar="skip_intro=0|1", help="skip_intro=0: the new campaign's intro played, today's waits")
+    args = ap.parse_args(argv)
+    args.skip_intro = pp.skip_intro_args(args.option)
+    return run(args)
 
 
 if __name__ == "__main__":

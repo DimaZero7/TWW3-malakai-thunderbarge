@@ -63,10 +63,11 @@ const cost = (M, k) => M.level(k).cost;
     check('dummies: the demolish is ordered, they stand until the turn ends', M.demolish(P + 'crew_weapons_1').ok && M.status(P + 'crew_weapons_1').state === 'dismantling' && M.crew('rifles') === 'quarrellers');
     check('dummies: a second click says why nothing more happens', M.reason(P + 'crew_weapons_1') === `Сносится: «${M.level(P + 'crew_weapons_1').name}» уйдёт в конце хода.` && !M.can_demolish(P + 'crew_weapons_1').ok, M.reason(P + 'crew_weapons_1'));
     check('the beer hall still cannot go: the dummies stand on it until the turn ends', !M.can_demolish(P + 'beer_hall_1').ok);
-    game.end_turn(); ledger -= opt('pirates').upkeep;
+    // the game gives back a share of the dismantled level's price when it goes (campaign_variables building_dismantle_recoup_multiplier_when_full_health)
+    game.end_turn(); ledger -= opt('pirates').upkeep; ledger += M.refund(P + 'crew_weapons_1');
     check('the turn ended: the dummies gone, the crossbows left for nothing, the pirates came', M.status(P + 'crew_weapons_1').state !== 'built' && M.crew('rifles') === 'pirates' && /^Снесено: «/.test(M.message()), M.message()); same('dummies demolished');
     check('beer hall: the demolish is ordered', M.demolish(P + 'beer_hall_1').ok);
-    game.end_turn();
+    game.end_turn(); ledger += M.refund(P + 'beer_hall_1');
     check('beer hall demolished: the pirates leave for nothing', M.crew('rifles') === 'empty' && !game.has_building(P + 'beer_hall_1')); same('beer hall demolished');
     game.end_turn();
     check('nothing more is taken with nobody aboard', game.treasury() === ledger);
@@ -137,9 +138,9 @@ const cost = (M, k) => M.level(k).cost;
     check('a crew opened by a node of the file', M2.set_crew('rifles', 'thunderers').kind === 'ordered');
     check('a parent cannot go while the child stands', !M2.can_demolish(K(a)).ok && !M2.can_demolish(K(hall)).ok);
     check('the child demolished; the parent waits for the turn\'s end', M2.demolish(K(b)).ok && !M2.can_demolish(K(a)).ok);
-    game2.end_turn();
+    game2.end_turn(); ledger += M2.refund(K(b));
     check('then the parent', M2.demolish(K(a)).ok);
-    game2.end_turn();
+    game2.end_turn(); ledger += M2.refund(K(a));
     check('the order of the crew came back with the child gone', M2.crew_order('rifles') === null);
     check('treasury matches the ledger', game2.treasury() === ledger, `${game2.treasury()} vs ${ledger}`);
 }
@@ -243,15 +244,18 @@ const cost = (M, k) => M.level(k).cost;
     // the dismantle
     ({game, M} = make({dev_points: 100}));
     M.debug_build_to(P + 'crew_weapons_1');
-    const before = game.treasury();
-    check('dismantle: before it, the preview names what goes and the crew place it closes', M.demolish_preview(P + 'crew_weapons_1') === `Снос: «${M.level(P + 'crew_weapons_1').name}» уйдёт в конце хода. Закроется место экипажа «Стрелки».`, M.demolish_preview(P + 'crew_weapons_1'));
-    check('dismantle: ordered, said so', M.demolish(P + 'crew_weapons_1').ok && M.message() === `Снос заказан: «${M.level(P + 'crew_weapons_1').name}» уйдёт в конце хода. Закроется место экипажа «Стрелки».`, M.message());
+    M.report_read();        // the panel has shown what the build brought
+    const before = game.treasury(), back = Math.floor(M.cost(P + 'crew_weapons_1') * 0.6);
+    check('dismantle: the game gives back 60 % of the level\'s price (its data: building_dismantle_recoup_multiplier_when_full_health 0.6)', M.refund(P + 'crew_weapons_1') === back && back > 0, M.refund(P + 'crew_weapons_1'));
+    check('dismantle: before it, the preview names what goes, the gold it gives back and the crew place it closes', M.demolish_preview(P + 'crew_weapons_1') === `Снос: «${M.level(P + 'crew_weapons_1').name}» уйдёт в конце хода. За снос вернётся ${back} золота. Закроется место экипажа «Стрелки».`, M.demolish_preview(P + 'crew_weapons_1'));
+    check('dismantle: ordered, said so', M.demolish(P + 'crew_weapons_1').ok && M.message() === `Снос заказан: «${M.level(P + 'crew_weapons_1').name}» уйдёт в конце хода. За снос вернётся ${back} золота. Закроется место экипажа «Стрелки».`, M.message());
+    check('dismantle: the treasury\'s forecast has the refund', M.turn_gold().refund === back && M.turn_gold().net === back, M.turn_gold());
     check('dismantle: it stands until the turn ends, being dismantled', game.standing(P + 'crew_weapons_1') && M.status(P + 'crew_weapons_1').state === 'dismantling' && M.can_demolish(P + 'crew_weapons_1').why === 'Уже сносится: постройка уйдёт в конце хода');
     check('dismantle: the level above it cannot be ordered meanwhile', M.status(P + 'crew_weapons_2').state === 'locked', M.status(P + 'crew_weapons_2').why);
     const dependant = Object.values(M.level ? data.chains.flatMap(c => c.levels) : []).find(l => (l.requires || []).includes(P + 'crew_weapons_1') && !M.missing(l.key).length);
     if (dependant) check('dismantle: what needs it waits, named', M.status(dependant.key).why === `«${M.level(P + 'crew_weapons_1').name}» сносится: уйдёт в конце хода`, M.status(dependant.key).why);
     game.end_turn();
-    check('dismantle: gone at the turn\'s start, said in the turn\'s line, no gold back', !game.has_building(P + 'crew_weapons_1') && game.treasury() === before && M.message().startsWith(`Снесено: «${M.level(P + 'crew_weapons_1').name}».`), M.message());
+    check('dismantle: gone at the turn\'s start, the refund paid and said in the turn\'s line', !game.has_building(P + 'crew_weapons_1') && game.treasury() === before + back && M.message().startsWith(`Снесено: «${M.level(P + 'crew_weapons_1').name}». За снос вернулось ${back} золота.`), M.message());
     // a construction under way in the slot: cancel it first
     ({game, M} = make({dev_points: 100}));
     M.debug_build_to(P + 'airship_hull_5');
@@ -295,6 +299,41 @@ const cost = (M, k) => M.level(k).cost;
     check('a waiting order or cancel: the foot line says it waits from the click on, then the verdict replaces it',
         said[0] === `Заказ «${name}» отправлен, ждём ответа игры.` && /^Заказано: /.test(said[1]) && said[2] === `Отмена «${name}» отправлена, ждём ответа игры.`
         && /^Отменено: /.test(said[3]) && said[4] === `Заказ «${name}» отправлен, ждём ответа игры.`, JSON.stringify(said));
+}
+// the turn's report (run 20261115-065150: «…«Арбалетчики» сошли с корабля…» proven only as text; the first click, «Пусто», put «У бортов никого.»
+// in its place before anyone saw it): the news of the turn's start stays until the panel has shown it; a click before that is said after it
+{
+    const game = new GameSim(data, {...sim, dev_points: 1000, gold: 100000, built: stage.built || sim.built, demolish: stage.demolish_mode});
+    const M = makeBuildings(data, game, stage.parts);
+    const P = data.prefix;
+    for (const k of ['airship_hull_1', 'airship_hull_2', 'beer_hall_1', 'infantry_workshop_1', 'crew_weapons_1']) M.debug_build_to(P + k);
+    M.report_read();
+    M.set_crew('rifles', 'quarrellers');
+    game.end_turn();
+    M.report_read();
+    check('report: the crossbows came with the turn, the panel showed it', M.crew('rifles') === 'quarrellers' && M.report() === null);
+    M.demolish(P + 'crew_weapons_1');
+    game.end_turn();
+    const news = M.report();
+    check('report: the turn\'s start told the dummies gone, the gold back and the crossbows gone, unread', !!news && /^Снесено: «/.test(news) && /За снос вернулось \d+ золота\./.test(news) && /сошли с корабля/.test(news), news);
+    M.set_crew('rifles', 'empty');
+    check('report: a click before the panel showed it is said after it, not instead', M.message() === news + ' У бортов никого.', M.message());
+    const again = (() => { const g2 = new GameSim(data, {...sim, dev_points: 1000, gold: 100000, built: [], demolish: stage.demolish_mode}); g2.restore(game.snapshot()); const m2 = makeBuildings(data, g2, stage.parts); m2.set_message_silently(JSON.parse(JSON.stringify(M.message_snapshot()))); return m2; })();
+    check('report: kept unread through a reload', again.report() === news && again.message() === M.message(), again.message());
+    M.report_read();
+    check('report: once shown, the click\'s line is the foot row', M.report() === null && M.message() === 'У бортов никого.', M.message());
+    M.set_crew('rifles', 'empty');
+    check('report: the next turn has none of it', (game.end_turn(), M.report() === null || !/Снесено/.test(M.report())), M.report());
+}
+// the game's own moments (another faction's turn, a battle, a dilemma, an event, a modal panel, the game's window): the panel cannot be opened then,
+// and says why in the game's words
+{
+    const game = new GameSim(data, {...sim, built: stage.built || sim.built});
+    const M = makeBuildings(data, game, stage.parts);
+    const whys = ['turn', 'battle', 'dilemma', 'event', 'panel', 'dialog'].map(k => { game.modal = k; return M.can_open(); });
+    game.modal = null;
+    check('modal: refused in each of the game\'s moments with its reason, open otherwise', whys.every(r => !r.ok && r.why) && M.can_open().ok
+        && whys[0].why === 'Недоступно во время хода другой фракции.' && whys[1].why === 'Недоступно, пока ведется битва.', JSON.stringify(whys));
 }
 
 console.log(failed ? `failed: ${failed}` : 'failed: 0');

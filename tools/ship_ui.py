@@ -67,6 +67,7 @@ TINTS = [
     ("ui/skins/default/building_frame_hover.png", (145, 231, 50)),      # the ring of a slot that the hovered one opens
     ("ui/skins/default/building_frame_hover.png", (226, 40, 40)),       # the ring of a refused click
     ("ui/skins/default/unit_cat_holder_round_fill.png", (35, 158, 139)),    # the teal round of a level's development points (building_frame.twui.xml, dev_points: its light grey x #2CC7AF)
+    ("ui/skins/default/unit_card_selected.png", (145, 231, 50)),    # the frame of the ordered kind's card (web/js/ui_text.mjs OPTIONS.order_frame)
 ]
 CLEAR = "ui/tww3_mtb/clear.png"     # a fully transparent picture: a holder that has a picture passes PropagateOpacity to its children
 

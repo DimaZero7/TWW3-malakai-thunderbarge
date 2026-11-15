@@ -66,6 +66,11 @@ function observe(w) {
     o.growth = g ? [g.now, g.per_turn, g.need, g.turns ?? '-', g.max].join('/') : null;
     o.waiting = M.waiting();
     o.foot_tail = M.foot_tail();
+    o.report = M.report();
+    const co = M.can_open();
+    o.can_open = co.ok ? 'ok' : co.kind + ':' + co.why;
+    const tg = M.turn_gold();
+    o.turn_gold = [tg.refund, tg.back, tg.upkeep, tg.net].map(num).join('/');
     o['view.tab'] = w.view.tab;
     o['view.scroll'] = w.view.scroll ? [w.view.scroll.x, w.view.scroll.y, w.view.scroll.zoom].map(num).join(',') : null;
     for (const r of config.levels) {
@@ -82,6 +87,7 @@ function observe(w) {
         const d = M.can_demolish(k);
         o[`b.${s}.demolish`] = d.ok ? 'ok' : d.why;
         o[`b.${s}.demolish_preview`] = M.demolish_preview(k);
+        o[`b.${s}.refund`] = M.refund(k);
         o[`b.${s}.stands`] = M.stands(k);
         o[`b.${s}.has`] = game.has_building(k);
     }
@@ -133,6 +139,8 @@ function apply(w, a) {
     case 'end_turn': game.end_turn(); return '';
     case 'tick': return String(game.tick());        // the game's next tick: the commands it applies a moment later (async)
     case 'ship_seen': M.ship_seen(); return '';
+    case 'report_read': M.report_read(); return '';        // the panel has been on the screen with the turn's report (GAME: the screen, a moment after)
+    case 'modal': game.modal = a.kind || null; return '';  // the game's own moment the panel gives way to (GAME: the adapter's blocker)
     case 'side': M.set_malakai_side(a.side); return '';
     case 'gold': game.gold = a.gold; return '';
     case 'points': game.dev = a.points; return '';
@@ -321,6 +329,72 @@ for (const [inherit, hide, label] of [[true, [], 'II inherits'], [false, [], 'II
     S.run({do: 'set_crew', group: 'rifles', option: 'pirates'}); S.run({do: 'end_turn'});
     S.run({do: 'order', key: levels.key_of[two]}); S.run({do: 'end_turn'});
     S.run({do: 'demolish', key: levels.key_of[two]});
+    S.run({do: 'reload'});
+    add('tests', S);
+}
+
+// ---- 15.11, the session run 20261115-065150 (crew_hire): the gold a dismantle gives back, the turn's report, the game's moments ----
+{
+    // the dummies opened the crossbows, the crossbows stand; the dummies dismantled: the refund said before (the round button's tooltip, the
+    // order's line), in the treasury's forecast and at the turn's start; the crew goes with the building, its upkeep no longer due
+    const S = scenario('refund 1: the dummies dismantled with the crossbows on board: 600 of 1000 back at the end of the turn, the forecast, the line', authorSpec({demolish: stage.demolish_mode}));
+    for (const mk of ['airship_hull_1', 'airship_hull_2', 'beer_hall_1', 'infantry_workshop_1', 'crew_weapons_1']) S.build(byMod(mk));
+    S.run({do: 'set_crew', group: 'rifles', option: 'quarrellers'});
+    S.run({do: 'end_turn'});
+    S.run({do: 'report_read'});
+    S.run({do: 'demolish', key: byMod('crew_weapons_1')});
+    S.run({do: 'end_turn'});
+    // a level II dismantled: its own price's share (the game's data does not say whether the line's lower levels count: the session reads it)
+    S.run({do: 'gold', gold: 20000});
+    S.build(byMod('crew_weapons_1'));
+    S.build(byMod('crew_weapons_2'));
+    S.run({do: 'set_crew', group: 'rifles', option: 'quarrellers'});
+    S.run({do: 'demolish', key: byMod('crew_weapons_2')});
+    S.run({do: 'reload'});
+    S.run({do: 'end_turn'});
+    add('tests', S);
+}
+{
+    // an order whose kind a dismantle closes: its hire back in the forecast; no upkeep while the crew cannot serve
+    const S = scenario('refund 2: an order cancelled by a dismantle, the crew that cannot serve pays nothing', authorSpec({demolish: stage.demolish_mode, crew_pays: true}));
+    for (const mk of ['airship_hull_1', 'airship_hull_2', 'beer_hall_1', 'infantry_workshop_1', 'crew_weapons_1']) S.build(byMod(mk));
+    S.run({do: 'set_crew', group: 'rifles', option: 'pirates'});
+    S.run({do: 'end_turn'});
+    S.run({do: 'set_crew', group: 'rifles', option: 'quarrellers'});
+    S.run({do: 'demolish', key: byMod('crew_weapons_1')});
+    S.run({do: 'crew_pays', pays: false});
+    S.run({do: 'crew_pays', pays: true});
+    S.run({do: 'end_turn'});
+    add('tests', S);
+}
+{
+    // the turn's report: the crossbows hired, the turn ended with the panel closed; the first click does not take the report's place (the
+    // session's «Пусто» first: «У бортов никого.» stood alone); once the panel has shown it, a click's line replaces it; through a reload
+    const S = scenario('report 1: the news of the turn kept until the panel has shown it, a click before that said after it', authorSpec({demolish: stage.demolish_mode}));
+    for (const mk of ['airship_hull_1', 'airship_hull_2', 'beer_hall_1', 'infantry_workshop_1', 'crew_weapons_1']) S.build(byMod(mk));
+    S.run({do: 'set_crew', group: 'rifles', option: 'quarrellers'});
+    S.run({do: 'demolish', key: byMod('crew_weapons_1')});
+    S.run({do: 'end_turn'});
+    S.run({do: 'set_crew', group: 'rifles', option: 'empty'});
+    S.run({do: 'reload'});
+    S.run({do: 'refuse', key: byMod('mtb_nest_1')});
+    S.run({do: 'report_read'});
+    S.run({do: 'set_crew', group: 'rifles', option: 'empty'});
+    // a crew gone after the turn's start (the bridge's lose: a building gone without an event) joins a report not read yet
+    S.run({do: 'set_crew', group: 'rifles', option: 'pirates'});
+    S.run({do: 'end_turn'});
+    S.run({do: 'script_remove', key: byMod('beer_hall_1')});
+    S.run({do: 'drop_locked'});
+    S.run({do: 'report_read'});
+    S.run({do: 'end_turn'});
+    add('tests', S);
+}
+{
+    // the game's own moments: the panel cannot be opened and closes itself (the screen); the model says why, in the game's words
+    const S = scenario('modal 1: the turn of another faction, a battle, a dilemma, an event, a panel, the window of the game, none', authorSpec());
+    for (const kind of ['turn', 'battle', 'dilemma', 'event', 'panel', 'dialog']) S.run({do: 'modal', kind});
+    S.run({do: 'modal'});
+    S.run({do: 'modal', kind: 'dilemma'});
     S.run({do: 'reload'});
     add('tests', S);
 }
@@ -675,7 +749,8 @@ function walkAction(r, w) {
         return built.length ? {do: 'demolish', key: back(pick(r, built))} : {do: 'end_turn'};
     }
     if (x < 0.88) return {do: 'reload'};
-    if (x < 0.91) return {do: 'ship_seen'};
+    if (x < 0.895) return {do: 'ship_seen'};
+    if (x < 0.91) return {do: 'report_read'};      // the panel has shown the turn's report
     if (x < 0.93) return {do: 'side', side: pick(r, ['left', 'right'])};
     if (x < 0.955) return {do: 'gold', gold: pick(r, [0, 90, 450, 1200, 5000, 40000])};
     if (x < 0.97) return {do: 'view', tab: pick(r, ['buildings', 'ship']), scroll: {x: -Math.floor(r() * 900), y: Math.floor(r() * 400), zoom: pick(r, [1, 0.5])}};

@@ -53,6 +53,11 @@ return function(Ship, CM, Fake)
         put('growth', g and (num(g.now) .. '/' .. num(g.per_turn) .. '/' .. num(g.need) .. '/' .. (g.turns ~= nil and num(g.turns) or '-') .. '/' .. tostring(g.max and true or false)) or nil)
         put('waiting', M.waiting())
         put('foot_tail', M.foot_tail())
+        put('report', M.report())
+        local co = M.can_open()
+        put('can_open', co.ok and 'ok' or (co.kind .. ':' .. co.why))
+        local tg = M.turn_gold()
+        put('turn_gold', num(tg.refund) .. '/' .. num(tg.back) .. '/' .. num(tg.upkeep) .. '/' .. num(tg.net))
         put('view.tab', w.view.tab)
         local s = w.view.scroll
         put('view.scroll', s and (num(s.x) .. ',' .. num(s.y) .. ',' .. num(s.zoom)) or nil)
@@ -72,6 +77,7 @@ return function(Ship, CM, Fake)
             local d = M.can_demolish(k)
             put(b .. '.demolish', d.ok and 'ok' or d.why)
             put(b .. '.demolish_preview', M.demolish_preview(k))
+            put(b .. '.refund', M.refund(k))
             put(b .. '.stands', M.stands(k))
             put(b .. '.has', game.has_building(k))
         end
@@ -145,6 +151,8 @@ return function(Ship, CM, Fake)
         elseif act == 'end_turn' then game.end_turn(); return ''
         elseif act == 'tick' then return tostring(game.tick())
         elseif act == 'ship_seen' then M.ship_seen(); return ''
+        elseif act == 'report_read' then M.report_read(); return ''
+        elseif act == 'modal' then game.set_modal(a.kind); return ''
         elseif act == 'side' then M.set_malakai_side(a.side); return ''
         elseif act == 'gold' then game.set_gold(a.gold); return ''
         elseif act == 'points' then game.set_dev(a.points); return ''

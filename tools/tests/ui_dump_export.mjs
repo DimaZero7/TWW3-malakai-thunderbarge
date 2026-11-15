@@ -93,7 +93,7 @@ const b = await launch({width: 1600, height: 900, port: Number(process.env.MTB_C
 let failed = 0;
 try {
     // the page's timers stopped before any of its scripts runs: what the dump sees is the first frame of every timer
-    await b.send('Page.addScriptToEvaluateOnNewDocument', {source: 'window.setInterval = () => 0;'});
+    await b.send('Page.addScriptToEvaluateOnNewDocument', {source: 'window.setInterval = () => 0; window.MTB_REPORT_READ_MS = 0;'});      // nor the turn's report read by time (main.js)
     await b.size(1600, 900);
     const URL0 = server.url + '?mode=game';
     const ready = () => b.until('!!(window.mtb && mtb.M && mtb.panel && mtb.root && mtb.root.pictures)', 20000).catch(e => { throw new Error(e.message + ' | the page: ' + b.errors.join(' | ').slice(0, 1500)); });

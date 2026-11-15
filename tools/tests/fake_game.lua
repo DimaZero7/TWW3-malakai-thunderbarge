@@ -29,6 +29,12 @@ function Fake.new(config, sim)
     -- the adapter's crew_pays: only when the vector gives sim.crew_pays (the page's game has no such method otherwise)
     local crewPays = sim.crew_pays
     local demolishMode = sim.demolish or 'chain'
+    -- the share of a level's price the game gives back when its dismantled building goes, in per cent (game_sim.js refundPct)
+    local refundPct = sim.dismantle_refund or 60
+    -- the game's moment the panel gives way to (game_sim.js modal): nil or 'turn' | 'battle' | 'dilemma' | 'event' | 'panel' | 'dialog'
+    local modal = nil
+    function G.blocker() return modal end
+    function G.set_modal(m) modal = m end
     local levels, levelList = {}, {}
     for _, r in ipairs(config.levels) do
         if not levels[r.key] then levelList[#levelList + 1] = r end
@@ -182,6 +188,12 @@ function Fake.new(config, sim)
         end
         return false
     end
+    function G.dismantle_refund(key)
+        local row = levels[key]
+        if not row then return 0 end
+        local v = row.cost * refundPct
+        return (v - v % 100) / 100
+    end
     function G.dismantle(key)
         if not built[key] or hull[key] or G.dismantling(key) then return false end
         local row = levels[key]
@@ -276,6 +288,8 @@ function Fake.new(config, sim)
         asked = nil
         local gone = {}
         for _, k in ipairs(dismantles) do if built[k] then gone[#gone + 1] = k end end
+        local refunds = {}
+        for _, k in ipairs(gone) do refunds[k] = G.dismantle_refund(k); gold = gold + refunds[k] end
         for _, k in ipairs(gone) do takeDown(k) end
         dismantles = {}
         local done = {}
@@ -292,7 +306,7 @@ function Fake.new(config, sim)
         end
         turn = turn + 1
         gold = gold + income
-        for _, key in ipairs(gone) do G.emit('BuildingDemolished', {key = key}) end
+        for _, key in ipairs(gone) do G.emit('BuildingDemolished', {key = key, refund = refunds[key]}) end
         G.emit('FactionTurnStart', {turn = turn})
         for _, key in ipairs(done) do G.emit('MilitaryForceBuildingCompleteEvent', {building = key}) end
     end

@@ -7,6 +7,8 @@ A load is a new module on the same saved values and treasury: nothing may be tak
 The cases «new panel» run with src/tww3_mtb_crew_ui.lua's switch on and the screen not started: the old order, upkeep and set() step aside for
 the model, the seats follow the model's saved state, Malakai stands at the rail (docs/design/port-to-game.md 8.6). With the model itself:
 py -3.10 tools/crew_bridge_offline.py.
+Malakai's seats are checked by the MODEL their rows show (tools/seat_models.py), not by the rows' names; --break swap_models swaps the variants of
+his rail rows and the helm crew's row in the read tables to show that check failing.
 """
 import json
 import sys
@@ -17,6 +19,7 @@ import lupa
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import pfh5  # noqa: E402
+import seat_models  # noqa: E402
 
 PACK = REPO / "build" / "campaign" / "pack" / "tww3_mtb_campaign.pack"
 SEP = chr(92)
@@ -50,12 +53,13 @@ def key(short):
     return KEYS[short]
 
 
-def source():
-    files, _ = pfh5.read_pack(PACK.read_bytes())
-    return files[f"script{SEP}campaign{SEP}mod{SEP}tww3_mtb_crew.lua"].decode("utf-8")
-
-
-SRC = source()
+FILES, _ = pfh5.read_pack(PACK.read_bytes())
+SRC = FILES[f"script{SEP}campaign{SEP}mod{SEP}tww3_mtb_crew.lua"].decode("utf-8")
+# the model each of the pack's seat rows shows (tools/seat_models.py; the game's own definitions are not read here: a stock one is unknown)
+TABLES = seat_models.pack_tables(FILES, json.loads((REPO / "data" / "db_layouts.json").read_text(encoding="utf-8")))
+if "--break" in sys.argv and sys.argv[sys.argv.index("--break") + 1:][:1] == ["swap_models"]:     # the model check must catch it
+    seat_models.swap_malakai_variants(TABLES, ["mtb_bp_malakai_rail_left", "mtb_bp_malakai_rail_right"], "mtb_bp_helm_crew")
+MODELS = seat_models.seat_models(FILES, TABLES)
 failed = 0
 
 
@@ -254,14 +258,48 @@ def old_reads_model(run):
     expect(run, "tww3_mtb_crew.get().rifles", "quarrellers")
 
 
+def plan_models(run):
+    """{seat: model (tools/seat_models.py) of the row the module would write}: who stands where, not the rows' names."""
+    plan = run("return tww3_mtb_crew.seat_plan()")
+    return {seat: MODELS.get(row) for seat, row in plan.items()}
+
+
+def malakai_where(run, side):
+    """His own body on exactly the rail seat of his side, with his rifle and no wheel; at the helm a crew dwarf with the wheel, not him."""
+    mk = run("return tww3_mtb_crew.config().malakai")
+    models = plan_models(run)
+    rail, helm = models.get(mk.seats[side]), models.get(mk.helm_seat)
+    assert rail and rail["malakai"] and rail["rifle"] and not rail["wheel"] and rail["variant"] == mk.rail_variant, \
+        f"{mk.seats[side]}: {rail and (rail['variant'], seat_models.short(rail['figure']), seat_models.short(rail['props']))}, not Malakai with his rifle"
+    assert helm and helm["known"] and not helm["malakai"] and helm["wheel"] and helm["variant"] == mk.helm_variant, \
+        f"{mk.helm_seat}: {helm and (helm['variant'], seat_models.short(helm['figure']))}, not a crew dwarf at the wheel"
+    others = sorted(seat for seat, m in models.items() if m and m["malakai"] and seat != mk.seats[side])
+    assert not others, f"Malakai's body also on {others}"
+
+
 def new_malakai_seat(run):
     expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_malakai_rail_left")
-    expect(run, "tww3_mtb_crew.seat_plan().ap_captain", "wh3_dlc25_dwf_veh_thunderbarge_grungni_captain")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_captain", "mtb_bp_helm_crew")
+    malakai_where(run, "left")
     run("saved['mtb_malakai_side'] = 'right'")
     expect(run, "tww3_mtb_crew.seat_plan().ap_crew_right_1", "mtb_bp_malakai_rail_right")
     expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_empty")
+    malakai_where(run, "right")
+    # a crew standing on the other rifle seats, its boost: his seat and his look stay his
+    run("saved['mtb_crew_rifles'] = '" + MODEL_STATE + "'")
+    malakai_where(run, "right")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_quarrellers_crew_left_1")
+    run("tww3_mtb_crew.boost_level = function() return 2 end")
+    malakai_where(run, "right")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_quarrellers_crew_left_1_b2")
+    # switched off: as stock, Malakai at the wheel and nowhere else
     run("tww3_mtb_crew.MALAKAI_AT_RAIL = false")
     expect(run, "tww3_mtb_crew.seat_plan().ap_captain", "mtb_dwf_veh_thunderbarge_grungni_malakai_captain")
+    models = plan_models(run)
+    helm = models["ap_captain"]
+    assert helm["malakai"] and helm["wheel"], f"switched off: the helm shows {helm['variant']}, not Malakai at the wheel"
+    others = sorted(seat for seat, m in models.items() if m and m["malakai"] and seat != "ap_captain")
+    assert not others, f"switched off: Malakai's body also on {others}"
 
 
 def old_no_malakai(run):
@@ -289,4 +327,5 @@ case("new panel: the seats get the model's standing crew; its empty bay is the p
 case("new panel: set() refuses a place of the panel, not the pub", new_set_refuses, new_panel=True)
 case("new panel: Malakai at the rail of his side, a crew dwarf at the helm; back at the helm when switched off", new_malakai_seat, new_panel=True)
 print("failed:", failed)
+sys.exit(1 if failed else 0)
 sys.exit(1 if failed else 0)

@@ -117,6 +117,7 @@ const opt = (g, k) => data.groups[g].options[k];
         check(`«${only.name}» stands`, M.crew('cannons') === only.key && game.treasury() === ledger);
         const r = M.demolish(top.key);
         check(`demolish «${top.name}» ordered: it stands till the turn ends, «${only.name}» with it`, r.ok && M.status(top.key).state === 'dismantling' && M.crew('cannons') === only.key, M.message());
+        ledger += M.refund(top.key);          // the game's share of the dismantled level's price, paid when it goes
         game.end_turn(); ledger -= M.crew_upkeep();
         check(`the turn ended: «${top.name}» gone, «${only.name}» left for nothing`, M.crew('cannons') === data.groups.cannons.mount && game.treasury() === ledger && /Снесено: «/.test(M.message()), M.message());
     } else check('the guns\' top level opens a kind of its own', false, line.map(r => r.key));
@@ -126,12 +127,16 @@ const opt = (g, k) => data.groups[g].options[k];
     const standingHatch = () => hatches.find(r => game.standing(r.key));
     let ok = true;
     for (let i = 0; i < 6 && standingHatch() && hatches.filter(r => game.has_building(r.key)).length > 1; i++) {
-        ok = ok && M.demolish(standingHatch().key).ok;
+        const h = standingHatch();
+        ok = ok && M.demolish(h.key).ok;
+        ledger += M.refund(h.key);
         game.end_turn(); ledger -= M.crew_upkeep();
     }
     const k = (M.crew_options('bombs').find(o => !o.empty && o.unlocked) || {}).key;
     if (k) { M.set_crew('bombs', k); ledger -= opt('bombs', k).hire; }
-    ok = ok && !!standingHatch() && M.demolish(standingHatch().key).ok;
+    const last = standingHatch();
+    ok = ok && !!last && M.demolish(last.key).ok;
+    if (last) ledger += M.refund(last.key);
     game.end_turn();
     if (k) ledger += opt('bombs', k).hire;
     ledger -= M.crew_upkeep();

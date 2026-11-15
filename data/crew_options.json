@@ -7,13 +7,28 @@
   "ap_thunderburner"
  ],
  "malakai_at_rail": {
-  "_about": "The new panel only (src/tww3_mtb_crew.lua malakai_seat; docs/design/port-to-game.md, В6 (а) and 8.6): Malakai on the rifle seat of the side the player chose (the page: web/js/main.js, ap_crew_<side>_1), his own model (autonomous_rider_hero) without a weapon, on the rifle seat's animation table; at the helm the stock barge's crew captain. The riflemen shoot from the other 11 seats, so their ammo is per_seat x 11. Not proven in a battle yet (session crew_hire).",
+  "_about": "The new panel only (src/tww3_mtb_crew.lua malakai_seat; docs/design/port-to-game.md, В6 (а) and 8.6): Malakai on the rifle seat of the side the player chose (the page: web/js/main.js, ap_crew_<side>_1), on the rifle seat's animation table, without a weapon row (he does not shoot; the riflemen shoot from the other 11 seats, so their ammo is per_seat x 11). His look is the variant rail_variant, made from his on-foot definition (rail.definition: his body, his rifle on be_prop_3, his axe on be_prop_1; empty_props taken out, the cog as on the page's 3D) at his on-foot scale (rail.variant_like): autonomous_rider_hero alone does not give a seat his model (run 20261115-065150: the pirate showed). The helm: helm_crew, a row of our own with helm_variant, the plain Thunderbarge's master engineer (helm.definition) holding this barge's wheel (helm.wheel_from), at the Grungni crew's scale; the stock Grungni captain is a daemon slayer with an orange crest, too like Malakai at the wheel. Checked by model, not by row name: tools/seat_models.py.",
   "seats": {
    "left": "ap_crew_left_1",
    "right": "ap_crew_right_1"
   },
+  "rail_variant": "mtb_v_malakai_rail",
+  "rail": {
+   "definition": "dwf_malakai_makaisson",
+   "variant_like": "wh3_dlc25_dwf_cha_malakai_makaisson",
+   "empty_props": [
+    "be_prop_5"
+   ]
+  },
   "helm_seat": "ap_captain",
-  "helm_crew": "wh3_dlc25_dwf_veh_thunderbarge_grungni_captain"
+  "helm_crew": "mtb_bp_helm_crew",
+  "helm_variant": "mtb_v_helm_crew",
+  "helm": {
+   "row_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_captain",
+   "definition": "dwf_thunderbarge_crew_captain",
+   "wheel_from": "dwf_thunderbarge_grungni_crew_captain",
+   "variant_like": "wh3_dlc25_dwf_veh_thunderbarge_grungni_crew_captain"
+  }
  },
  "groups": {
   "rifles": {

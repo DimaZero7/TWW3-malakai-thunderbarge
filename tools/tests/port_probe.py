@@ -1507,6 +1507,7 @@ def plan_text(args, limit):
         f"        (used_mods.txt only read); low graphics, windowed {res}, Normal difficulty, RTX checked; SW_SHOWNOACTIVATE + KeepBehind (no focus, under other windows);",
         "        the user's save/settings folders copied and put back; autosave off.",
         "  2. main menu -> new campaign wh3_dlc25_dwf_malakai (frontend.start_campaign), wait for the end turn button, peace with everyone, events accepted.",
+        skip_intro_plan(getattr(args, "skip_intro", True)),
         f"  3. census of the game's Lua (alone, -> <run>/{CENSUS_FILE}); smoke: every shared helper once, protected, canary after each (-> <run>/{SMOKE_FILE});",
         f"     logic: src/ logic modules + their self-test, 30 answers compared (-> <run>/{LOGIC_FILE}, {LOGIC_F32_FILE}; never aborts);",
         "     the session ABORTS (game closed as in 4) if the canary broke in the smoke, or if items 0, 7, 8 all fail with one error;",
@@ -1547,15 +1548,18 @@ def run(args):
     head = [l for l in fake_lines[:-40] if l.startswith(("syntax ", "fake standard library", "fake string library"))]
     print("\n".join("  " + l for l in head + fake_lines[-40:]))
     print(plan_text(args, limit))
+    skip_ok, skip_lines = skip_intro_check()
+    print("skip_intro.lua against a stub of the game's Esc stack (py -3.10, lupa):")
+    print("\n".join("  " + l for l in skip_lines[-12:]))
     if args.dry_run:
         print("\n".join(sg.describe()))
         state ="would launch" if not blockers else ("would STOP: " + "; ".join(r[0] for r in blockers))
         if stash_blocked and not other_blockers:
             state += " (with --stash-user-pack and the author's yes it would launch)"
-        print("dry run:", state, "| fake game:", "ok" if fake.returncode == 0 else f"FAILED ({fake.returncode})")
-        return 0 if fake.returncode == 0 else 1
-    if fake.returncode != 0:
-        print("not launching: the probe failed against the fake game")
+        print("dry run:", state, "| fake game:", "ok" if fake.returncode == 0 else f"FAILED ({fake.returncode})", "| skip_intro:", "ok" if skip_ok else "FAILED")
+        return 0 if fake.returncode == 0 and skip_ok else 1
+    if fake.returncode != 0 or (args.skip_intro and not skip_ok):
+        print("not launching: the probe failed against the fake game" if fake.returncode != 0 else "not launching: skip_intro.lua failed its check")
         return 1
     if other_blockers or (stash_blocked and not args.stash_user_pack):
         print("not launching:", "; ".join(r[0] for r in blockers))
@@ -1575,6 +1579,7 @@ def launch(args, cfg, limit):
             return 3
     started = time.time()
     session = cc.Session("port_probe", started + limit)
+    session.skip_intro = args.skip_intro
     session.current = {}
     cmd = [sys.executable, str(Path(__file__).resolve()), "_session", "--label", "port_probe", "--timeout", str(limit + 120),
            "--packs", "harness", "campaign", "--user-mods", "memreader_plus.pack"]
@@ -1595,14 +1600,9 @@ def launch(args, cfg, limit):
         (OUT / "last_run.txt").write_text(str(session.dir), encoding="utf-8")
         shutil.copy2(CONFIG, session.dir / "port_probe_config.json")
         session.log("run", session.dir)
-        session.wait_mode("frontend", 240)
-        time.sleep(10)
-        session.log(session.plain(f'frontend.start_campaign("wh3_main_combi", "wh3_main_combi", "{FACTION_KEY}"); return 1', 10)["result"])
-        session.wait_mode("campaign", 900)
-        time.sleep(8)
-        end = time.time() + 200
-        while time.time() < end and session.visible("button_end_turn") in ("-", "inactive"):
-            time.sleep(3)
+        session.launch_started = rc.state().get("started")
+        session.mark("launch (run_game.py)")
+        session.new_campaign(FACTION_KEY)        # the intro skipped unless --option skip_intro=0 (tools/crew_cycle.py Session.new_campaign)
         session.shot("pp_map")
         session.log("peace", session.prog("return P.peace()")["result"])
         accept = ('local n = 0; for _ = 1, 4 do local e = mtb.find("events", true); local b = e and mtb.find("button_accept", true, e); '
@@ -1617,6 +1617,7 @@ def launch(args, cfg, limit):
         how = f"error before or between items: {type(e).__name__}: {e}"
         session.log("ERROR", how)
     finally:
+        session.mark("stop asked")
         if proc is not None and proc.poll() is None:
             rg.STOP.write_text("stop")
         if proc is not None:
@@ -1625,6 +1626,8 @@ def launch(args, cfg, limit):
             except subprocess.TimeoutExpired:
                 session.log("run_game.py did not end in 240 s: it keeps the lock while a game is in tasklist")
         gone = not cc.rg.rb.game_running()
+        session.mark("game gone" if gone else "a game is still in tasklist")
+        session.finish_timeline()
         status = {}
         if session.dir and (session.dir / "status.json").exists():
             status = json.loads((session.dir / "status.json").read_text(encoding="utf-8"))
@@ -1652,7 +1655,31 @@ def main(argv=None):
     ap.add_argument("--small", action="store_true")
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     ap.add_argument("--stash-user-pack", action="store_true")
-    return run(ap.parse_args(argv))
+    ap.add_argument("--option", action="append", default=[], metavar="skip_intro=0|1", help="skip_intro=0: the new campaign's intro played, today's waits")
+    args = ap.parse_args(argv)
+    args.skip_intro = skip_intro_args(args.option)
+    return run(args)
+
+
+def skip_intro_args(items):
+    """skip_intro of --option (tools/crew_cycle.py skip_intro_option); any other name is refused."""
+    import crew_cycle as cc
+    skip, rest = cc.skip_intro_option(items)
+    if rest:
+        raise SystemExit(f"--option {rest}: only skip_intro=0|1 here")
+    return skip
+
+
+def skip_intro_check():
+    """The dry run's check of tools/tests/skip_intro.lua against a stub of the game's Esc stack (py -3.10, lupa): (ok, lines)."""
+    r = subprocess.run(["py", "-3.10", str(TESTS / "skip_intro_test.py")], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return r.returncode == 0, (r.stdout + r.stderr).strip().splitlines()
+
+
+def skip_intro_plan(skip):
+    return ("     the intro (movie, flyover, post-intro scene) skipped by the game's own Esc path, tools/tests/skip_intro.lua; ready when it reports"
+            " complete; 3 s at the menu; <run>/timeline.txt" if skip else
+            "     skip_intro=0: the intro played, 10 s at the menu, 8 s + 3 s polls (today's start); <run>/timeline.txt")
 
 
 if __name__ == "__main__":

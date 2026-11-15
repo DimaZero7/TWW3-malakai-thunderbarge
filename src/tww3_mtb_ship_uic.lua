@@ -82,7 +82,11 @@ function ENGINE.tint_path(path, r, g, b)
     return 'ui/tww3_mtb/tint/' .. stem .. '_' .. hex2(r) .. hex2(g) .. hex2(b) .. '.png'
 end
 -- A window over everything (a building's window, a unit's panel, the crew's choice): the game's RegisterTopMost [файлы: in the game's scripts].
+-- Top-most draws over the game's own modal windows too (run 20261115-065150, ch_lost.png: the crew's choice over a dilemma; our root's layer is
+-- under them by priority): the game's scripts always pair it with RemoveTopMost (lib_core.lua, lib_campaign_manager.lua, lib_infotext.lua), and so
+-- do we: off while the panel is closed and while a window of the game is up (ui.topmost(false), src/tww3_mtb_ship_screen.lua)
 function ENGINE.top_most(uic) pcall(function() uic:RegisterTopMost() end) end
+function ENGINE.top_most_off(uic) pcall(function() uic:RemoveTopMost() end) end
 -- probe 6: the tree's window cuts its children: clipchildren="true" on the component of our layout tree_window (tools/ship_ui.py with_attrs; the
 -- first session had it on the layout's hierarchy node, where the game ignores it, and the tree spilled over the panel). Proven by the probe of 14.11
 -- (item 6a: the holder cuts its children, also after SetDockOffset). false: the binding hides the pictures of the tree that lie wholly outside the
@@ -393,14 +397,33 @@ function Uic.new(layouts, textLayouts)
         self.hoverChildren[#self.hoverChildren + 1] = child
         child:SetVisible(self.hovered == true)
     end
+    -- the top-most ones in the order they were made top-most: registered again in it (env.topmost)
+    local tops, topsOn = {}, true
+    local function make_top(c)
+        if c.topmost then return end
+        c.topmost = true
+        tops[#tops + 1] = c
+        if topsOn then ENGINE.top_most(c.uic) end
+    end
     function C:SetLayer(name)
         self.layer = name
-        if not self.topmost then self.topmost = true; ENGINE.top_most(self.uic) end
+        make_top(self)
         return self
     end
     function C:SetHoverBrighten(k) self.brighten = k end
     function C:SetBlank(on) self.blank = on and true or nil; show(self) end
-    function C:SetTopmost() if not self.topmost then self.topmost = true; ENGINE.top_most(self.uic) end end
+    function C:SetTopmost() make_top(self) end
+    -- every top-most component of the panel off (RemoveTopMost) or on again (RegisterTopMost, in their first order); true when it changed
+    function env.topmost(on)
+        on = on and true or false
+        if on == topsOn then return false end
+        topsOn = on
+        for _, c in ipairs(tops) do
+            if on then ENGINE.top_most(c.uic) else ENGINE.top_most_off(c.uic) end
+        end
+        return true
+    end
+    function env.topmost_on() return topsOn end
     function C:SetClipChildren(on) self.clip = on end
     -- the tree under its window (panel.js pan.clamp): moved by SetDockOffset; at a smaller scale laid out again (hidden meanwhile: one change for the
     -- game to draw); what lies outside the window hidden only when the game does not clip (ENGINE.clips)

@@ -310,6 +310,21 @@ return function(Ship, CM, Fake, VR, CREW, load_crew, X)
         if last.plan[seat] ~= X.malakai.rows[side] or last.plan[X.malakai.helm_seat] ~= X.malakai.helm_crew then
             push(out, 'Malakai: side ' .. side .. ', ' .. seat .. ' ' .. tostring(last.plan[seat]) .. ', helm ' .. tostring(last.plan[X.malakai.helm_seat]))
         end
+        -- and by the MODEL the written rows show (X.models: tools/seat_models.py over the pack's rows), not by their names: his own body with his
+        -- rifle on his seat and nowhere else, a crew dwarf with the wheel at the helm
+        if X.models then
+            local rail, helm = X.models[last.plan[seat] or ''], X.models[last.plan[X.malakai.helm_seat] or '']
+            if not (rail and rail.malakai and rail.rifle and not rail.wheel) then
+                push(out, 'Malakai\'s model: ' .. seat .. ' shows ' .. tostring(rail and rail.variant) .. ', not his own body with his rifle')
+            end
+            if not (helm and helm.known and not helm.malakai and helm.wheel) then
+                push(out, 'the helm\'s model: ' .. X.malakai.helm_seat .. ' shows ' .. tostring(helm and helm.variant) .. ', not a crew dwarf at the wheel')
+            end
+            for s, row in pairs(last.plan) do
+                local m = X.models[row]
+                if s ~= seat and m and m.malakai then push(out, 'a second Malakai: ' .. s .. ' shows ' .. m.variant) end
+            end
+        end
         X.harpoon_bundle = X.harpoon_bundle or (CONF.groups.harpoon or {}).off_bundle
         -- the cargo the battle reads
         local cargo = cargoOf(game)

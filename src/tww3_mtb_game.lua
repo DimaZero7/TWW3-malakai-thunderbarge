@@ -18,6 +18,9 @@
 --                                        opens the game's window: game.cancel_asked(key) while it waits, then CancelAnswered {key, cancelled}
 --   game.dismantle(key), game.dismantling(key), game.dismantle_takes(key)   the Dismantle (after CanDismantle; never the hull); the building
 --                                        stands until the turn ends, then the slot's whole building goes (its lower levels with it)
+--   game.dismantle_refund(key)           the gold the game gives back when the dismantled level goes (DismantleRefundAmount; the data's rule)
+--   game.blocker()                       the game's own moment the panel gives way to: nil, or 'turn' (another faction's), 'battle', 'dilemma',
+--                                        'event', 'panel' (a full-screen panel of the game), 'dialog' (the game's window: dialogue_box)
 --   game.on(event, fn)                   FactionTurnEnd {turn}; BuildingDemolished {key} (at Malakai's next turn start, before FactionTurnStart);
 --                                        FactionTurnStart {turn}; MilitaryForceBuildingCompleteEvent {building} (after it); CommandResult;
 --                                        CancelAnswered
@@ -130,6 +133,23 @@ ASSUMED.TICK, ASSUMED.CROSS = 'button_tick', 'button_cancel'
 -- A Dismantle that the game executes at once after all (not seen: the runs of 03.11, 14.11 and 15.11 show the building until the turn ends): the
 -- slot is read again this long after the command and the building told gone then
 ASSUMED.dismantle_check_ms = 300
+-- What a dismantle gives back (session 15.11, run 20261115-065150: +600 at the turn «Манекен для учебной стрельбы» of 1000 went; the game's data:
+-- campaign_variables building_dismantle_recoup_multiplier_when_full_health 0.6, _when_damaged 0.3, _when_ruined 0.1; the game's settlement panel
+-- reads BuildingContext.DismantleRefundAmount, ui/campaign ui/building_construction_popup.twui.xml). Read on the horde's slot by these expressions
+-- (the first that answers a number); else the data's share of the level's own price, in per cent, rounded down. Not proven: the horde slot's
+-- expression; the level's price or the line's; the rounding.
+ASSUMED.refund_exprs = {'.BuildingContext.DismantleRefundAmount', '.DismantleRefundAmount'}
+ASSUMED.refund_pct = 60
+-- The game's own moments the panel gives way to, as the game's full-screen panels do. Found as the game's scripts find them (data_script.pack):
+-- another faction's turn: cm:is_local_players_turn (lib_campaign_manager.lua; the HUD's buttons go inactive on IsLocalPlayersTurn false,
+-- hud_campaign.twui.xml); a battle: cm:is_processing_battle (PendingBattle .. BattleCompleted), cm:model():pending_battle():is_active(); a dilemma
+-- waiting for its answer: CampaignUI.DoesEventTypeRequireResponse (lib_campaign_intervention.lua); an event: the ui manager's is_event_panel_open
+-- (lib_campaign_ui.lua: its flag and the events panel visible); a modal panel of the game (diplomacy, before and after a battle, a captured
+-- settlement, waiting for the players), each only when it is on the screen (the manager's flags can be stale); the game's window: ASSUMED.dialog.
+-- The game's other full-screen panels are not here: opening one closes ours (PanelOpenedCampaign), and a HUD button opens its panel over them
+-- (the horde's own building browser comes back with every selection of Malakai: it must not shut this panel)
+ASSUMED.DILEMMA = 'faction_event_dilemmaevent_feed_target_dilemma_faction'
+ASSUMED.MODAL_PANELS = {'diplomacy_dropdown', 'popup_pre_battle', 'popup_battle_results', 'settlement_captured', 'waiting_for_players'}
 -- The reads are kept until something changes (a command, the game's events of buildings, points and the turn) and at most this long by
 -- os.clock (s): a change the adapter does not hear (a script's treasury_mod) shows at the latest by then
 ASSUMED.cache_seconds = 0.25
@@ -481,6 +501,31 @@ function Game.new(config)
         end
         return out
     end
+    -- the refund the game gave for a dismantle when it was ordered (the building is gone when the turn's start tells it)
+    local refunds = {}
+    local function slotOf(key)
+        for _, s in ipairs(slots()) do if s.key == key then return s.i end end
+        return nil
+    end
+    local function refundRule(key)
+        local row = levels[key]
+        if not row then return 0 end
+        local v = (tonumber(row.cost) or 0) * ASSUMED.refund_pct
+        return (v - v % 100) / 100
+    end
+    function G.dismantle_refund(key)
+        return cached('refund ' .. key, function()
+            local n = slotOf(key)
+            if n and n > 0 then
+                local id = cqi()
+                for _, e in ipairs(ASSUMED.refund_exprs) do
+                    local v = tonumber(read(id, slot(n) .. e))
+                    if v and v >= 0 then return v end
+                end
+            end
+            return refunds[key] or refundRule(key)
+        end)
+    end
     local marks = {}
     do
         local ok, s = pcall(function() return cm:get_saved_value(SAVE_DISMANTLING) end)
@@ -519,6 +564,7 @@ function Game.new(config)
                 local ok, err = pcall(common.call_context_command, 'CcoCampaignCharacter', id, slot(s.i) .. '.Dismantle')
                 invalidate()
                 if not ok then log('dismantle ' .. key .. ': ' .. tostring(err)); return false end
+                refunds[key] = G.dismantle_refund(key)
                 marks[#marks + 1] = key
                 saveMarks()
                 pcall(function()
@@ -527,7 +573,7 @@ function Game.new(config)
                         if not G.standing(key) and not G.has_building(key) then
                             log('dismantle ' .. key .. ': gone at once (not at the turn end)')
                             dropMark(key)
-                            emit('BuildingDemolished', {key = key})
+                            emit('BuildingDemolished', {key = key, refund = refunds[key] or refundRule(key)})
                         end
                     end, ASSUMED.dismantle_check_ms, 'mtb_ship_dismantle_check')
                 end)
@@ -535,6 +581,27 @@ function Game.new(config)
             end
         end
         return false
+    end
+
+    -- the game's own moment the panel gives way to (ASSUMED above), or nil. Each test guarded: one the game does not answer is skipped
+    local function visible(name)
+        local ok, v = pcall(function() local u = find_uicomponent(core:get_ui_root(), name); return u and u:VisibleFromRoot() end)
+        return ok and v and true or false
+    end
+    function G.blocker()
+        local function try(fn) local ok, v = pcall(fn); return ok and v end
+        if try(function() return cm:is_local_players_turn(true) == false end) then return 'turn' end
+        if try(function() return cm:is_processing_battle() end) or try(function() return cm:model():pending_battle():is_active() end) then return 'battle' end
+        if try(function() return CampaignUI.DoesEventTypeRequireResponse(ASSUMED.DILEMMA) end) then return 'dilemma' end
+        local uim = try(function() return cm:get_campaign_ui_manager() end)
+        if uim then
+            if try(function() return uim:is_event_panel_open() end) then return 'event' end
+            for _, name in ipairs(ASSUMED.MODAL_PANELS) do
+                if try(function() return uim:is_panel_open(name) end) and visible(name) then return 'panel' end
+            end
+        end
+        if ASSUMED.dialog(nil) then return 'dialog' end
+        return nil
     end
 
     function G.on(event, fn)
@@ -561,7 +628,10 @@ function Game.new(config)
         marks = {}
         saveMarks()
         for _, k in ipairs(was) do
-            if not G.standing(k) and not G.has_building(k) then emit('BuildingDemolished', {key = k})
+            if not G.standing(k) and not G.has_building(k) then
+                local back = refunds[k] or refundRule(k)
+                refunds[k] = nil
+                emit('BuildingDemolished', {key = k, refund = back})
             else log('dismantle ' .. k .. ': still standing at the turn start') end
         end
         emit('FactionTurnStart', {turn = G.turn()})

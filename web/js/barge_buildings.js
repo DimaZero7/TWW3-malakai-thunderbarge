@@ -259,7 +259,7 @@ export function makeBuildings(data, game, parts) {
         if (!M.can_demolish(key).ok) return {ok: false, why: M.can_demolish(key).why};
         // GAME: HordeContext.BuildingSlotList.At(n).Dismantle, after its CanDismantle. The building stands until the turn ends (probe 14.11, 8.2): it
         // is «being dismantled» till then (the game's adapter keeps the mark in the save), its crew and what it opens stay; at the turn's start it is
-        // gone (BuildingDemolished). guess: no gold back (no refund seen yet: the session's demolish step reads the treasury around the turn).
+        // gone (BuildingDemolished). The game pays back part of its price then (M.refund).
         const said = demolishSaid(row);
         if (!game.dismantle(row.key)) {
             message = `Снос «${row.name}» не прошёл: игра его не приняла.`;
@@ -274,8 +274,9 @@ export function makeBuildings(data, game, parts) {
     // places it closes, the crew and the orders that go with them. '' when it cannot be demolished
     M.demolish_preview = key => (M.can_demolish(key).ok ? `Снос: ${demolishSaid(M.level(key))}` : '');
     const demolishSaid = row => {
-        const fx = afterDemolish(row);
+        const fx = afterDemolish(row), back = M.refund(row.key);
         let s = goesText(fx.takes) + '.';
+        if (back > 0) s += ` За снос вернётся ${back} золота.`;
         if (fx.places.length) s += ` ${fx.places.length > 1 ? 'Закроются места экипажа' : 'Закроется место экипажа'} ${quoted(fx.places.map(M.place_name))}.`;
         if (fx.said.length) s += ' ' + upper(fx.said.join('; ')) + '.';
         return s;
@@ -306,12 +307,29 @@ export function makeBuildings(data, game, parts) {
         return states.includes('built') ? 'ink' : states.includes('building') ? 'build' : 'pencil';
     };
 
-    M.message = () => message;
+    // The turn's report: what the game's events of the turn's start told (the buildings gone and the gold they gave back, the crew that came or
+    // left, the upkeep, the completions, a crew gone with its building) stays the player's news until the panel has been on the screen with it,
+    // also when the panel was closed when it happened (GAME: the screen marks it read a moment after the panel shows it,
+    // src/tww3_mtb_ship_screen.lua; the page the same, web/js/main.js; the vectors' report_read). Till then a click's line comes after it in the
+    // foot row, not instead of it, and the HUD's button carries the game's mark of something waiting. {turn, text, read}
+    let report = null;
+    M.report = () => (report && !report.read && report.turn === game.turn ? report.text : null);
+    M.report_read = () => { if (report) report.read = true; };
+    // what an event of the game has just said (message) is the report; more: added to a report not read yet (a crew gone after the turn's start)
+    const told = more => {
+        if (!message) return;
+        const r = M.report();
+        if (more && r) message = r + ' ' + message;
+        report = {turn: game.turn, text: message, read: false};
+    };
+    // the foot row: the unread report first, then what the player did since
+    M.message = () => { const r = M.report(); return r && message && message !== r ? r + ' ' + message : r || message; };
     // the foot line through a reload, as the rest of the state (main.js saves it with the game): what happened stays said until something else happens
-    M.message_snapshot = () => ({text: message, turn_line: turnLine});
+    M.message_snapshot = () => ({text: message, turn_line: turnLine, report: report ? {...report} : null});
     M.set_message_silently = s => {
         message = s && typeof s.text === 'string' && s.text ? s.text : null;
         turnLine = s && s.turn_line && typeof s.turn_line.text === 'string' ? {turn: Number(s.turn_line.turn), text: s.turn_line.text} : null;
+        report = s && s.report && typeof s.report.text === 'string' ? {turn: Number(s.report.turn), text: s.report.text, read: !!s.report.read} : null;
     };
 
     // Every level a building needs, all the way down (the level below in its chain, the buildings it requires), the deepest first. For the debug button.
@@ -475,6 +493,7 @@ export function makeBuildings(data, game, parts) {
         const said = dropLocked();
         if (said.length) {
             message = 'Постройки больше нет: ' + said.join('; ') + '.';
+            told(true);
             fire();
         }
         return said.length > 0;
@@ -495,24 +514,30 @@ export function makeBuildings(data, game, parts) {
             if (group.mount) return opensAfter(g, group.mount);
             return Object.keys(group.options).some(o => o !== group.start && opensAfter(g, o));
         };
-        const places = [], said = [];
+        const places = [], said = [], next = {};
+        let orderBack = 0;
         for (const g of Object.keys(data.groups)) {
             const after = placeAfter(g);
             if (M.crew_place(g) && !after) places.push(g);
             const open = o => o === emptyOf(g) || (after && opensAfter(g, o));
             const st = stateOf(g);
-            if (st.order && st.order.option !== emptyOf(g) && !open(st.order.option)) said.push(`заказ на ${nameOf(g, st.order.option)} снимут, ${st.order.paid} золота вернётся`);
+            if (st.order && st.order.option !== emptyOf(g) && !open(st.order.option)) {
+                said.push(`заказ на ${nameOf(g, st.order.option)} снимут, ${st.order.paid} золота вернётся`);
+                orderBack += st.order.paid;
+            }
             if (st.standing !== emptyOf(g) && !open(st.standing)) said.push(`${nameOf(g, st.standing)} сойдут с корабля, найм не вернётся`);
+            // who stands there after the turn's start: the order if it stays open, else the standing crew if it does, else nobody
+            next[g] = st.order && open(st.order.option) ? st.order.option : open(st.standing) ? st.standing : emptyOf(g);
         }
-        return {takes, places, said};
+        return {takes, places, said, next, back: orderBack};
     };
     // A building gone at the end of the turn (GAME: the adapter tells it at Malakai's turn start, from its saved mark, before FactionTurnStart): its
     // crew goes with it, and the turn's line says so: every level that went, the crew places that closed, the crew that left
-    let gone = [];          // [{names, places, said}] told by the turn's line
+    let gone = [];          // [{names, places, said, refund}] told by the turn's line
     const goneText = () => {
         if (!gone.length) return null;
-        const said = gone.flatMap(g => g.said), places = gone.flatMap(g => g.places);
-        return `Снесено: ${gone.map(g => g.names).join(', ')}.` +
+        const said = gone.flatMap(g => g.said), places = gone.flatMap(g => g.places), back = gone.reduce((s, g) => s + g.refund, 0);
+        return `Снесено: ${gone.map(g => g.names).join(', ')}.` + (back > 0 ? ` За снос вернулось ${back} золота.` : '') +
             (places.length ? ` ${places.length > 1 ? 'Закрыты места экипажа' : 'Закрыто место экипажа'} ${quoted(places.map(M.place_name))}.` : '') +
             (said.length ? ' Постройки больше нет: ' + said.join('; ') + '.' : '');
     };
@@ -522,12 +547,13 @@ export function makeBuildings(data, game, parts) {
         // the places it closed: open in the ship of the turn's end, closed now
         const now = shipNow(), was = shipWas || now;
         const places = was.places.filter(g => !now.places.includes(g));
-        gone.push({names: row ? namesOf(takesOf(row)) : `«${ctx.key}»`, places, said});
+        gone.push({names: row ? namesOf(takesOf(row)) : `«${ctx.key}»`, places, said, refund: ctx.refund || 0});
         // the baseline of the turn's news loses what went, and gains nothing: the game has already put this turn's completions in their slots
         // (they are told after FactionTurnStart, run 20261115-012811), so a place they open is still news then
         shipWas = {parts: was.parts.filter(p => now.parts.includes(p)), places: was.places.filter(g => now.places.includes(g)),
                    kinds: (was.kinds || []).filter(k => now.kinds.includes(k))};
         message = goneText();
+        told(false);
         fire();
     });
 
@@ -588,6 +614,7 @@ export function makeBuildings(data, game, parts) {
         if (parts_.length || places.length || kinds.length) unseen = true;
         shipWas = now;
         message = newsText(lost);
+        told(false);
         fire();
     });
     // the ship as it was when the player ended the turn: the turn's news are told against it (a building stood by a script during the turn, which no
@@ -612,17 +639,46 @@ export function makeBuildings(data, game, parts) {
     // The part of the foot line that tells the player what to wait for (M.waiting, at the line's end): the panel never cuts it, it gets a line of its
     // own when the whole does not fit (run 20261115-030121, ss_after_turn: «…Нечего заказать: не хватает…» cut). '' when the line has none
     M.foot_tail = () => {
-        const msg = message || M.first_step() || '', w = M.waiting();
+        const msg = M.message() || M.first_step() || '', w = M.waiting();
         return w && msg.endsWith(w) ? w : '';
     };
     // A crew place that a dismantle ordered this turn closes at the turn's end (it stays open till then): the «Экипаж» row's grey note (M.CLOSING)
     // and the place's tag say so for the whole turn, not only the foot line until the next message. '' when the place stays
     M.CLOSING = 'Закроется в конце хода';
-    M.place_closing = g => {
+    const goingTops = () => {
         const tops = [];
         for (const r of Object.values(levels)) if (game.has_building(r.key) && going(r)) { const t = goingTop(r); if (!tops.includes(t)) tops.push(t); }
+        return tops;
+    };
+    M.place_closing = g => {
+        const tops = goingTops();
         if (!tops.length || !afterDismantles(tops).places.includes(g)) return '';
         return `${M.CLOSING}: снос ${namesOf(tops.flatMap(takesOf))}.`;
+    };
+    // What the game gives back for a dismantle of a level when the building goes at the turn's end (GAME: the adapter reads the slot's
+    // DismantleRefundAmount; the data's rule: campaign_variables building_dismantle_recoup_multiplier_when_full_health 0.6 of the level's
+    // create_cost; run 20261115-065150: +600 for «Манекен для учебной стрельбы» of 1000). 0 when the game says nothing of it
+    M.refund = key => { const row = M.level(key); return row && game.dismantle_refund ? game.dismantle_refund(row.key) || 0 : 0; };
+    // What the turn's end does to the treasury besides the faction's own income, as the game and this model will do it: the gold the dismantles
+    // give back, the orders a dismantle cancels (their hire back), the crew's upkeep at the turn's start (the crew after the dismantles). The
+    // treasury's tooltip. {refund, back, upkeep, net}
+    M.turn_gold = () => {
+        const tops = goingTops();
+        const fx = afterDismantles(tops);
+        const refund = tops.reduce((s, r) => s + M.refund(r.key), 0);
+        const pays = game.crew_pays === undefined || game.crew_pays();
+        const upkeep = !pays ? 0 : tops.length ? Object.keys(data.groups).reduce((s, g) => s + upkeepOf(g, fx.next[g]), 0) : M.crew_upkeep_next();
+        return {refund, back: fx.back, upkeep, net: refund + fx.back - upkeep};
+    };
+    // The game's own moments the panel gives way to, as the game's full-screen panels do (GAME: the adapter's blocker(): another faction's turn,
+    // a battle pending or being fought, a dilemma waiting for its answer, an event message, a panel or a window of the game on the screen; the
+    // page's game: its modal, set by the vectors): the panel cannot be opened then and closes itself when one comes. The reasons in the game's
+    // words where it has them (local_ru: campaign_localised_strings_string_MPC_cannot_construct_not_your_turn, rituals_ritual_status_blocked_pending_battle)
+    M.BLOCKED = {turn: 'Недоступно во время хода другой фракции.', battle: 'Недоступно, пока ведется битва.', dilemma: 'Сначала примите решение по дилемме.',
+                 event: 'Сначала закройте сообщение о событии.', panel: 'Сначала закройте окно игры.', dialog: 'Сначала ответьте в окне игры.'};
+    M.can_open = () => {
+        const kind = game.blocker ? game.blocker() : null;
+        return kind ? {ok: false, kind, why: M.BLOCKED[kind] || M.BLOCKED.panel} : {ok: true};
     };
     M.first_step = () => {
         if (message) return null;
@@ -649,6 +705,7 @@ export function makeBuildings(data, game, parts) {
         message = [goneText(), crewLine, M.waiting()].filter(Boolean).join(' ') || null;
         gone = [];
         turnLine = message ? {turn: game.turn, text: message} : null;
+        told(false);
         fire();
     });
     M.sync_ship();

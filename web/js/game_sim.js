@@ -47,6 +47,12 @@ export class GameSim {
         this.queue = new Map();             // level key -> {turns_left, paid, dev, turn}
         this.dismantles = new Set();        // the keys whose Dismantle was given this turn: they stand until the turn ends
         this.asked = null;                  // the key whose cancel waits for the game's window
+        // the share of a level's price the game gives back when its dismantled building goes (the game's data: campaign_variables
+        // building_dismantle_recoup_multiplier_when_full_health 0.6; run 20261115-065150: +600 for a level of 1000), in per cent
+        this.refundPct = sim.dismantle_refund ?? 60;
+        // a moment of the game the panel gives way to (GAME: the adapter's blocker()): null, or 'turn' | 'battle' | 'dilemma' | 'event' | 'panel' |
+        // 'dialog'. The page has none of them; the vectors set it (modal)
+        this.modal = null;
         this.listeners = {};
         this.levels = {};
         for (const row of data.hull) this.levels[row.key] = row;
@@ -163,8 +169,20 @@ export class GameSim {
     // GAME: the building in a slot: BuildingSlotList.At(n) holds one level of a chain, the higher one once upgraded
     standing(key) { return this.built.has(key); }
 
+    // GAME: the game's own moment that takes the screen (another faction's turn, a battle, a dilemma, an event, its panel or window), or null
+    blocker() { return this.modal; }
+
+    // GAME: what the game gives back when the dismantled level goes: BuildingSlotList.At(n).BuildingContext.DismantleRefundAmount (the adapter;
+    // the data's rule when it does not answer): the share of the level's own price, rounded down. guess: of the level's price, not the line's
+    dismantle_refund(key) {
+        const row = this.levels[key];
+        if (!row) return 0;
+        const v = row.cost * this.refundPct;
+        return (v - v % 100) / 100;
+    }
+
     // GAME: BuildingSlotList.At(n).Dismantle after its CanDismantle (false for the hull; guess: false while its slot has a construction). The
-    // building stands until the turn ends (probe 14.11, 8.2; runs of 03.11). guess: no gold back (DismantleRefundAmount not read)
+    // building stands until the turn ends (probe 14.11, 8.2; runs of 03.11), then the game pays dismantle_refund (run 20261115-065150)
     dismantle(key) {
         if (!this.built.has(key) || this.isHull(key) || this.dismantling(key)) return false;
         const row = this.levels[key];
@@ -253,6 +271,8 @@ export class GameSim {
         }
         this.asked = null;                  // guess: the game's window does not outlive the turn
         const gone = [...this.dismantles].filter(k => this.built.has(k));
+        const refunds = {};
+        for (const k of gone) { refunds[k] = this.dismantle_refund(k); this.gold += refunds[k]; }
         for (const k of gone) this.takeDown(k);
         this.dismantles.clear();
         const done = [];
@@ -269,7 +289,7 @@ export class GameSim {
         }
         this.turn += 1;
         this.gold += this.income;
-        for (const key of gone) this.emit('BuildingDemolished', {key});
+        for (const key of gone) this.emit('BuildingDemolished', {key, refund: refunds[key]});
         this.emit('FactionTurnStart', {turn: this.turn});
         for (const key of done) this.emit('MilitaryForceBuildingCompleteEvent', {building: key});
     }

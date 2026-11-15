@@ -309,7 +309,7 @@ check(`the reason of every locked building names exactly its direct requirements
     check('a window over the foot row when it fits between the title row and it; a taller one right under the title row; no jump at the threshold',
         topF(700, 300) === 816 - 300 && topF(10, 300) === 66 && topF(700, 750) === 66 && topF(700, 751) === 66 && topF(700, 790) === 66 && topF(700, 820) === 900 - 4 - 15 - 820,
         [topF(700, 300), topF(700, 750), topF(700, 751), topF(700, 790), topF(700, 820)]);
-    check('percent close to the number and a decimal comma, as the game\'s Russian texts', gameText('Меткость стрелков барки: +5 %') === 'Меткость стрелков барки: +5%' && gameText('16.6') === '16,6' && gameText('Боезапас +100 % (13 → 26 залпов)') === 'Боезапас +100% (13 → 26 залпов)');
+    check('percent close to the number and a decimal comma, as the game\'s Russian texts', gameText('Меткость стрелков барки: +5 %') === 'Меткость стрелков барки: +5%' && gameText('16.6') === '16,6' && gameText('Боезапас +100 % (с 13 до 26 залпов)') === 'Боезапас +100% (с 13 до 26 залпов)');
 }
 
 // ---- one tier for the page, the Lua and the game: the page locks every level by the tier the mod's tables give it (tree_rows.json tier_engine) ----

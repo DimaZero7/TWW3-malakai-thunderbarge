@@ -97,9 +97,19 @@ async function main() {
         while (logEl.children.length > 12) logEl.lastChild.remove();
         logEl.title = [...logEl.children].map(x => x.textContent).join(String.fromCharCode(10));      // the last lines, the newest first
     };
+    // The turn's report (barge_buildings.js M.report) counts as seen a moment after the panel has shown it, as in the game
+    // (src/tww3_mtb_ship_screen.lua READ_MS): a click in that moment is said after it, a click later replaces it. Off for the layout dumps
+    // (window.MTB_REPORT_READ_MS = 0, tools/tests/ui_dump_export.mjs): a dump is the saved state as it is.
+    const REPORT_READ_MS = window.MTB_REPORT_READ_MS ?? 1000;
+    let reportTimer = null;
+    const readLater = () => {
+        if (reportTimer || !REPORT_READ_MS || !G.M.report()) return;
+        reportTimer = setTimeout(() => { reportTimer = null; if (G.M.report()) { G.M.report_read(); save(); update(); } }, REPORT_READ_MS);
+    };
     const update = () => {
         const {M, panel, game} = G;
         panel.refresh();
+        readLater();
         turnEl.textContent = `Ход ${game.turn}`;
         setParts();
         if (hull) viewer.setVisible(hull, hullShown());

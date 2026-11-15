@@ -5,7 +5,9 @@
 -- NEW_SHIP_PANEL is on (off by default): then the HUD's button opens this panel instead of the old crew panel.
 --
 --   local S = <this file>; S.start(load)    load(name) -> the module script/campaign/tww3_mtb/<name>.lua (src/tww3_mtb_crew_ui.lua ship_module)
---   S.open(), S.close(), S.is_open(), S.toggle()
+--   S.open(), S.close(), S.is_open(), S.toggle()      S.open() -> false, why while the game's own moment is up (S.blocked)
+--   S.blocked()                             why the panel cannot be opened now (the model's words for the game's blocker), nil when it can
+--   S.button_state()                        {inactive, mark, why} for the HUD's button (src/tww3_mtb_crew_ui.lua)
 --   S.destroy()                             the panel's components gone (the next open builds them again)
 --   S.describe()                            the panel as text for the tests: tab, components made, the foot line
 --
@@ -16,7 +18,16 @@ local S = {}
 local LAYOUTS = 'ui/tww3_mtb/'
 local ROOT = 'mtb_ship_screen'
 local ESCAPE = 'mtb_ship_escape'
-local LISTENERS = {'tww3_mtb_ship_click', 'tww3_mtb_ship_hover', 'tww3_mtb_ship_turn_end', 'tww3_mtb_ship_panel', 'tww3_mtb_ship_advice'}
+local LISTENERS = {'tww3_mtb_ship_click', 'tww3_mtb_ship_hover', 'tww3_mtb_ship_turn_end', 'tww3_mtb_ship_panel', 'tww3_mtb_ship_advice',
+                   'tww3_mtb_ship_battle', 'tww3_mtb_ship_dilemma', 'tww3_mtb_ship_incident'}
+local WATCH = 'mtb_ship_screen_watch'           -- the timer that looks for the game's own moments while the panel is open
+local WATCH_MS = 250
+local READ = 'mtb_ship_screen_report_read'      -- the timer after which the turn's report counts as seen
+local READ_MS = 1000
+local function button()
+    local ok, b = pcall(function() return _G.tww3_mtb_crew_ui end)
+    if ok and b and b.refresh_button then pcall(b.refresh_button) end
+end
 
 local function log(text) pcall(function() _G.tww3_mtb_campaign.file_log('[ship screen] ' .. tostring(text)) end) end
 local function guarded(fn) return function(...) local ok, e = pcall(fn, ...); if not ok then log('error: ' .. tostring(e)) end end end
@@ -46,8 +57,9 @@ function S.start(load)
     end
     mods = m
     S.M.on_change(guarded(function()
-        if S.panel and S.shown then S.panel.refresh() end
+        if S.panel and S.shown then S.panel.refresh(); S.read_later() end
         S.save()
+        button()        -- the HUD's mark of the turn's report
     end))
     log('started')
     return true
@@ -64,6 +76,31 @@ function S.save()
 end
 
 function S.is_open() return S.shown == true end
+
+-- why the panel cannot be opened now: the game's own moment (src/tww3_mtb_game.lua blocker) in the model's words; nil when it can
+function S.blocked()
+    if not mods then return nil end
+    local ok, r = pcall(function() return S.M.can_open() end)
+    if ok and r and not r.ok then return r.why end
+    return nil
+end
+-- the HUD's button: inactive (the game's look of a stock button that cannot be used now) with the reason, or the game's mark when the turn's
+-- report waits unread or the ship has something new the player has not looked at
+function S.button_state()
+    local why = S.blocked()
+    local mark = false
+    if mods and not S.shown then pcall(function() mark = S.M.report() ~= nil or S.M.ship_unseen() end) end
+    return {inactive = why ~= nil, why = why, mark = mark and not why}
+end
+-- the turn's report counts as seen a moment after the panel shows it (src/tww3_mtb_ship.lua M.report): a click in the same moment does not
+-- take its place; a click after it does
+function S.read_later()
+    if not (S.shown and S.M.report()) then return end
+    pcall(function() core:get_tm():remove_real_callback(READ) end)
+    core:get_tm():real_callback(guarded(function()
+        if S.shown and S.M.report() then S.M.report_read(); S.save(); log('the turn\'s report seen') end
+    end), READ_MS, READ)
+end
 
 -- the panel's real-time timers (the glows): kept with the panel, running only while it is shown
 local timers = {}
@@ -135,6 +172,9 @@ end
 function S.open()
     if S.shown then return true end
     if not mods then return false, 'not started' end
+    -- as the game's own full-screen panels: not over a dilemma, an event, a battle, another faction's turn, the game's modal panel or window
+    local why = S.blocked()
+    if why then log('not opened: ' .. why); button(); return false, why end
     local t0 = os.clock()
     if S.panel then
         local w, h = root_size()
@@ -158,6 +198,7 @@ function S.open()
     end
     S.shown = true
     if S.reused then timers_on(true) end
+    S.ui.topmost(true)          -- the windows over the panel (src/tww3_mtb_ship_uic.lua): taken off when it closed
     S.build_seconds = os.clock() - t0
     log((S.reused and 'shown again' or 'opened') .. ': ' .. tostring(S.ui.count) .. ' components, ' .. tostring(math.floor(S.build_seconds * 1000 + 0.5) / 1000) .. ' s')
     core:add_listener('tww3_mtb_ship_click', 'ComponentLClickUp', function(context) return S.ui and S.ui.by_id(context.string) ~= nil end, guarded(function(context)
@@ -166,6 +207,23 @@ function S.open()
     core:add_listener('tww3_mtb_ship_hover', 'ComponentMouseOn', function() return S.ui ~= nil end, guarded(function(context) S.hover(context.string) end), true)
     core:add_listener('tww3_mtb_ship_turn_end', 'FactionTurnEnd', function(context) return context:faction():name() == 'wh3_dlc25_dwf_malakai' end, guarded(S.close), true)
     core:add_listener('tww3_mtb_ship_panel', 'PanelOpenedCampaign', function() return S.shown == true end, guarded(S.close), true)
+    -- the game's own moments close it as they close the game's full-screen panels: a battle, a dilemma, an incident (their panels may come a
+    -- moment later or not at all); the rest, and any of them that came without an event, the watch below finds
+    core:add_listener('tww3_mtb_ship_battle', 'PendingBattle', function() return S.shown == true end, guarded(S.close), true)
+    core:add_listener('tww3_mtb_ship_dilemma', 'DilemmaIssuedEvent', function() return S.shown == true end, guarded(S.close), true)
+    core:add_listener('tww3_mtb_ship_incident', 'IncidentOccuredEvent', function() return S.shown == true end, guarded(S.close), true)
+    -- the watch: the game's moment up -> closed; the game's window (the cancel's «Отменить строительство», which the panel waits for) leaves it
+    -- open, but nothing of ours over it: the windows over the panel hidden and taken off the top while the window is up
+    core:get_tm():repeat_real_callback(guarded(function()
+        if not S.shown then return end
+        local kind = S.game.blocker()
+        if kind and kind ~= 'dialog' then log('closed by the game: ' .. kind); S.close(); return end
+        local dialog = kind == 'dialog'
+        if dialog and S.ui.topmost_on() then S.ui.mouse_on(nil) end
+        S.ui.topmost(not dialog)
+    end), WATCH_MS, WATCH)
+    S.read_later()
+    button()
     -- the game's advisor out of the way while the panel is open (src/tww3_mtb_ship_uic.lua ENGINE.hide_advisor), again when it gives new advice
     local E = S.ui.ENGINE
     S.advisor = {restore = E.hide_advisor(), came = false}
@@ -185,6 +243,8 @@ end
 
 local function quiet()
     for _, n in ipairs(LISTENERS) do core:remove_listener(n) end
+    pcall(function() core:get_tm():remove_real_callback(WATCH) end)
+    pcall(function() core:get_tm():remove_real_callback(READ) end)
     pcall(function() cm:release_escape_key_with_callback(ESCAPE) end)
     timers_on(false)
     if S.advisor then local a = S.advisor; S.advisor = nil; a.restore(a.came) end
@@ -200,9 +260,11 @@ function S.close()
     pcall(function()
         S.ui.mouse_on(nil)
         S.panel.reset()
+        S.ui.topmost(false)         -- nothing of ours stays over the game (top-most draws over a hidden root's siblings: not proven otherwise)
         S.root:SetVisible(false)
     end)
     log('closed')
+    button()
 end
 
 -- the components gone: not in the click's own call (the clicked component belongs to them), in the game's next callback

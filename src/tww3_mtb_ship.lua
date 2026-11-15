@@ -479,7 +479,8 @@ function Ship.make(config, game, crewModel)
     function M.demolish(key)
         local row = M.level(key)
         if not M.can_demolish(key).ok then return {ok = false, why = M.can_demolish(key).why} end
-        -- GAME: Dismantle after its CanDismantle; the building stands until the turn ends, then BuildingDemolished. guess: no gold back
+        -- GAME: Dismantle after its CanDismantle; the building stands until the turn ends, then BuildingDemolished; the game pays back part of its
+        -- price then (M.refund)
         local said = demolishSaid(row)
         if not game.dismantle(row.key) then
             message = 'Снос «' .. row.name .. '» не прошёл: игра его не приняла.'
@@ -529,11 +530,36 @@ function Ship.make(config, game, crewModel)
     end
 
     local turnLine = nil
-    function M.message() return message end
-    function M.message_snapshot() return {text = message, turn_line = turnLine and {turn = turnLine.turn, text = turnLine.text} or nil} end
+    -- the turn's report: what the game's events of the turn's start told stays the player's news until the panel has been on the screen with it,
+    -- also when the panel was closed when it happened (the screen marks it read a moment after the panel shows it). Till then a click's line
+    -- comes after it in the foot row, not instead of it, and the HUD's button carries the game's mark. {turn, text, read}
+    local report = nil
+    function M.report()
+        if report and not report.read and report.turn == game.turn() then return report.text end
+        return nil
+    end
+    function M.report_read() if report then report.read = true end end
+    -- what an event of the game has just said (message) is the report; more: added to a report not read yet (a crew gone after the turn's start)
+    local function told(more)
+        if not truthy(message) then return end
+        local r = M.report()
+        if more and r then message = r .. ' ' .. message end
+        report = {turn = game.turn(), text = message, read = false}
+    end
+    -- the foot row: the unread report first, then what the player did since
+    function M.message()
+        local r = M.report()
+        if r and truthy(message) and message ~= r then return r .. ' ' .. message end
+        return r or message
+    end
+    function M.message_snapshot()
+        return {text = message, turn_line = turnLine and {turn = turnLine.turn, text = turnLine.text} or nil,
+                report = report and {turn = report.turn, text = report.text, read = report.read} or nil}
+    end
     function M.set_message_silently(s)
         message = (s and type(s.text) == 'string' and s.text ~= '') and s.text or nil
         turnLine = (s and s.turn_line and type(s.turn_line.text) == 'string') and {turn = tonumber(s.turn_line.turn), text = s.turn_line.text} or nil
+        report = (s and s.report and type(s.report.text) == 'string') and {turn = tonumber(s.report.turn), text = s.report.text, read = truthy(s.report.read) and true or false} or nil
     end
 
     -- every level a building needs, all the way down, the deepest first. It reads only the tree (no game state): kept per key while no extra
@@ -793,6 +819,7 @@ function Ship.make(config, game, crewModel)
         local said = dropLocked()
         if #said > 0 then
             message = 'Постройки больше нет: ' .. join(said, '; ') .. '.'
+            told(true)
             fire()
         end
         return #said > 0
@@ -820,7 +847,7 @@ function Ship.make(config, game, crewModel)
             end
             return false
         end
-        local places, said = {}, {}
+        local places, said, nextOf, orderBack = {}, {}, {}, 0
         for _, g in ipairs(groupOrder) do
             local after = placeAfter(g)
             if M.crew_place(g) and not after then push(places, g) end
@@ -828,16 +855,23 @@ function Ship.make(config, game, crewModel)
             local st = stateOf(g)
             if st.order and st.order.option ~= emptyOf(g) and not open(st.order.option) then
                 push(said, 'заказ на ' .. nameOf(g, st.order.option) .. ' снимут, ' .. num(st.order.paid) .. ' золота вернётся')
+                orderBack = orderBack + st.order.paid
             end
             if st.standing ~= emptyOf(g) and not open(st.standing) then push(said, nameOf(g, st.standing) .. ' сойдут с корабля, найм не вернётся') end
+            -- who stands there after the turn's start: the order if it stays open, else the standing crew if it does, else nobody
+            if st.order and open(st.order.option) then nextOf[g] = st.order.option
+            elseif open(st.standing) then nextOf[g] = st.standing
+            else nextOf[g] = emptyOf(g) end
         end
-        return {takes = takes, places = places, said = said}
+        return {takes = takes, places = places, said = said, next = nextOf, back = orderBack}
     end
     local function afterDemolish(row) return afterDismantles({row}) end
     local quoted
     demolishSaid = function(row)
         local fx = afterDemolish(row)
+        local back = M.refund(row.key)
         local s = goesText(fx.takes) .. '.'
+        if back > 0 then s = s .. ' За снос вернётся ' .. num(back) .. ' золота.' end
         if #fx.places > 0 then
             s = s .. ' ' .. (#fx.places > 1 and 'Закроются места экипажа' or 'Закроется место экипажа') .. ' ' .. quoted(map(fx.places, M.place_name)) .. '.'
         end
@@ -851,12 +885,14 @@ function Ship.make(config, game, crewModel)
     local shipNow
     local function goneText()
         if #gone == 0 then return nil end
-        local said, places = {}, {}
+        local said, places, back = {}, {}, 0
         for _, g in ipairs(gone) do
             for _, x in ipairs(g.said) do push(said, x) end
             for _, x in ipairs(g.places) do push(places, x) end
+            back = back + g.refund
         end
         local s = 'Снесено: ' .. join(map(gone, function(g) return g.names end), ', ') .. '.'
+        if back > 0 then s = s .. ' За снос вернулось ' .. num(back) .. ' золота.' end
         if #places > 0 then
             s = s .. ' ' .. (#places > 1 and 'Закрыты места экипажа' or 'Закрыто место экипажа') .. ' ' .. quoted(map(places, M.place_name)) .. '.'
         end
@@ -870,13 +906,14 @@ function Ship.make(config, game, crewModel)
         local now = shipNow()
         local was = shipWas or now
         local places = filter(was.places, function(g) return not includes(now.places, g) end)
-        push(gone, {names = row and namesOf(takesOf(row)) or ('«' .. ctx.key .. '»'), places = places, said = said})
+        push(gone, {names = row and namesOf(takesOf(row)) or ('«' .. ctx.key .. '»'), places = places, said = said, refund = tonumber(ctx.refund) or 0})
         -- the baseline of the turn's news loses what went, and gains nothing: the game has already put this turn's completions in their slots (they
         -- are told after FactionTurnStart, run 20261115-012811), so a place they open is still news then
         shipWas = {parts = filter(was.parts, function(p) return includes(now.parts, p) end),
                    places = filter(was.places, function(g) return includes(now.places, g) end),
                    kinds = filter(was.kinds or {}, function(k) return includes(now.kinds, k) end)}
         message = goneText()
+        told(false)
         fire()
     end)
 
@@ -973,6 +1010,7 @@ function Ship.make(config, game, crewModel)
         if #parts_ > 0 or #places > 0 or #kinds > 0 then unseen = true end
         shipWas = now
         message = newsText(lost)
+        told(false)
         fire()
     end)
     -- the ship as it was when the player ended the turn: the turn's news are told against it (a script's building of the turn is no news)
@@ -994,14 +1032,14 @@ function Ship.make(config, game, crewModel)
     end
     -- the part of the foot line that tells the player what to wait for (M.waiting, at the line's end): the panel never cuts it; '' when none
     function M.foot_tail()
-        local msg = (truthy(message) and message) or M.first_step() or ''
+        local msg = M.message() or M.first_step() or ''
         local w = M.waiting()
         if w and #msg >= #w and ssub(msg, #msg - #w + 1) == w then return w end
         return ''
     end
     -- a crew place that a dismantle ordered this turn closes at the turn's end: the «Экипаж» row's grey note (M.CLOSING) and the tag say so; '' when it stays
     M.CLOSING = 'Закроется в конце хода'
-    function M.place_closing(g)
+    local function goingTops()
         local tops = {}
         for _, r in ipairs(levelList) do
             if game.has_building(r.key) and going(r) then
@@ -1009,10 +1047,48 @@ function Ship.make(config, game, crewModel)
                 if not includes(tops, t) then push(tops, t) end
             end
         end
+        return tops
+    end
+    function M.place_closing(g)
+        local tops = goingTops()
         if #tops == 0 or not includes(afterDismantles(tops).places, g) then return '' end
         local takes = {}
         for _, t in ipairs(tops) do for _, r in ipairs(takesOf(t)) do push(takes, r) end end
         return M.CLOSING .. ': снос ' .. namesOf(takes) .. '.'
+    end
+    -- what the game gives back for a dismantle of a level when the building goes at the turn's end (the adapter reads the slot's
+    -- DismantleRefundAmount; the data's rule: 0.6 of the level's create_cost); 0 when the game says nothing of it
+    function M.refund(key)
+        local row = M.level(key)
+        if not row or not game.dismantle_refund then return 0 end
+        return tonumber(game.dismantle_refund(row.key)) or 0
+    end
+    -- what the turn's end does to the treasury besides the faction's own income: the dismantles' refunds, the orders a dismantle cancels (their
+    -- hire back), the crew's upkeep at the turn's start (the crew after the dismantles). The treasury's tooltip. {refund, back, upkeep, net}
+    function M.turn_gold()
+        local tops = goingTops()
+        local fx = afterDismantles(tops)
+        local refund = 0
+        for _, r in ipairs(tops) do refund = refund + M.refund(r.key) end
+        local pays = game.crew_pays == nil or game.crew_pays()
+        local upkeep = 0
+        if pays then
+            if #tops > 0 then
+                for _, g in ipairs(groupOrder) do upkeep = upkeep + upkeepOf(g, fx.next[g]) end
+            else
+                upkeep = M.crew_upkeep_next()
+            end
+        end
+        return {refund = refund, back = fx.back, upkeep = upkeep, net = refund + fx.back - upkeep}
+    end
+    -- the game's own moments the panel gives way to, as the game's full-screen panels do (the adapter's blocker()): the panel cannot be opened
+    -- then and closes itself when one comes. The reasons in the game's words where it has them
+    M.BLOCKED = {turn = 'Недоступно во время хода другой фракции.', battle = 'Недоступно, пока ведется битва.', dilemma = 'Сначала примите решение по дилемме.',
+                 event = 'Сначала закройте сообщение о событии.', panel = 'Сначала закройте окно игры.', dialog = 'Сначала ответьте в окне игры.'}
+    function M.can_open()
+        local kind = game.blocker and game.blocker() or nil
+        if kind then return {ok = false, kind = kind, why = M.BLOCKED[kind] or M.BLOCKED.panel} end
+        return {ok = true}
     end
     function M.first_step()
         if truthy(message) then return nil end
@@ -1051,6 +1127,7 @@ function Ship.make(config, game, crewModel)
         message = #parts > 0 and join(parts, ' ') or nil
         gone = {}
         turnLine = message and {turn = game.turn(), text = message} or nil
+        told(false)
         fire()
     end)
     M.sync_ship()
@@ -1203,7 +1280,7 @@ Ship.decode = decode
 
 -- The keys of the save (4.3). mtb_crew_<group>: {standing, order = {option, paid}} (an older save of the mod holds the standing option alone: read so);
 -- mtb_crew_groups: the groups in the order they got a state (the order the turn's news names them in).
-Ship.SAVE_KEYS = {'mtb_crew_groups', 'mtb_crew_chosen', 'mtb_ship_news', 'mtb_ship_unseen', 'mtb_ship_message', 'mtb_ship_turn_line',
+Ship.SAVE_KEYS = {'mtb_crew_groups', 'mtb_crew_chosen', 'mtb_ship_news', 'mtb_ship_unseen', 'mtb_ship_message', 'mtb_ship_turn_line', 'mtb_ship_report',
                   'mtb_malakai_side', 'mtb_malakai_side_chosen', 'mtb_ship_tab', 'mtb_ship_scroll'}
 
 -- view: the panel's own {tab = string | nil, scroll = table | nil}
@@ -1223,6 +1300,7 @@ function Ship.save_state(M, view)
     local msg = M.message_snapshot()
     out.mtb_ship_message = msg.text or ''
     out.mtb_ship_turn_line = msg.turn_line and encode(msg.turn_line) or ''
+    out.mtb_ship_report = msg.report and encode(msg.report) or ''
     out.mtb_malakai_side = M.malakai_side()
     out.mtb_malakai_side_chosen = M.side_hint() and '0' or '1'
     out.mtb_ship_tab = view.tab or ''
@@ -1256,7 +1334,7 @@ function Ship.load_state(M, get)
     M.set_crew_silently(crew)
     M.set_crew_chosen_silently(obj('mtb_crew_chosen') or {})
     M.set_news_silently({news = obj('mtb_ship_news'), unseen = s('mtb_ship_unseen') == '1'})
-    M.set_message_silently({text = s('mtb_ship_message'), turn_line = obj('mtb_ship_turn_line')})
+    M.set_message_silently({text = s('mtb_ship_message'), turn_line = obj('mtb_ship_turn_line'), report = obj('mtb_ship_report')})
     M.sync_ship()
     local tab = s('mtb_ship_tab')
     return {tab = (tab ~= '' and tab) or nil, scroll = obj('mtb_ship_scroll')}
