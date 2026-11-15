@@ -18,11 +18,18 @@ const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf
 
 // The campaigns, made by the page's model (web/js/barge_buildings.js, game_sim.js) as the player's clicks would make them. Short keys: the tree's nodes.
 const CAMPAIGNS = {
-    fresh: {about: 'a new campaign: nothing built, 6000 gold', steps: []},
+    fresh: {about: 'a new campaign: nothing built, 6000 gold, no development points', steps: []},
+    early: {about: 'the first hull ordered and built by the turn: 1 development point, the next hull short of points',
+            steps: [['order', 'airship_hull_1'], ['end_turn']]},
     mid: {about: 'the barge and the first buildings stand; the riflemen in hire came aboard with the turn; one building ordered, a crew order waiting, gold short for most',
-          steps: [['build', 'airship_hull_3'], ['build', 'beer_hall_1'], ['build', 'infantry_workshop_1'], ['build', 'crew_weapons_1'], ['build', 'mtb_nest_1'],
+          steps: [['points', 6], ['build', 'airship_hull_3'], ['build', 'beer_hall_1'], ['build', 'infantry_workshop_1'], ['build', 'crew_weapons_1'], ['build', 'mtb_nest_1'],
                   ['build', 'engineering_workshop_1'], ['gold', 3000], ['crew', 'rifles', 'quarrellers'], ['order', 'support_radius_1'], ['end_turn'],
                   ['order', 'cargo_hold_1'], ['gold', 1200], ['crew', 'rifles', 'pirates']]},
+    dismantling: {about: 'mid, then the nests demolished: it stands, being dismantled, until the turn ends',
+                  steps: 'mid', more: [['demolish', 'mtb_nest_1']]},
+    asked: {about: 'a two-turn building ordered a turn ago; the game asks before such a cancel (sim ask_cancel)', sim: {ask_cancel: true},
+            steps: [['points', 6], ['build', 'airship_hull_3'], ['build', 'beer_hall_1'], ['build', 'engineering_workshop_1'], ['gold', 6000],
+                    ['order', 'engines_1'], ['end_turn']]},
     full: {about: 'every building of the tree stands, a crew at every place, Malakai on the right side',
            steps: [['build_all'], ['gold', 20000], ['crew', 'rifles', 'thunderers'], ['crew', 'cannons', 'organ'], ['crew', 'bombs', 'fire'], ['crew', 'cupolas', 'axes'],
                    ['crew', 'harpoon', 'on'], ['end_turn'], ['side', 'right']]},
@@ -39,6 +46,10 @@ const STATES = [
     ['mid_tree_raze', 'mid', [['click', {slot: 'engineering_workshop_1'}]]],
     ['mid_ship', 'mid', [['click', 'mtb_tab_ship']]],
     ['mid_ship_pick', 'mid', [['click', 'mtb_tab_ship'], ['click', 'mtb_crew_area_rifles']]],
+    ['early_tree', 'early', []],
+    ['early_tree_short', 'early', [['hover', {slot: 'airship_hull_2'}]]],
+    ['dismantling_tree', 'dismantling', [['click', {slot: 'mtb_nest_1'}], ['hover', {slot: 'mtb_nest_1'}]]],
+    ['asked_tree', 'asked', [['click', {slot: 'engines_1'}], ['hover', {slot: 'engines_1'}]]],
     ['full_tree', 'full', []],
     ['full_tree_info', 'full', [['hover', {slot: 'mtb_guns_3'}]]],
     ['full_ship', 'full', [['click', 'mtb_tab_ship']]],
@@ -68,7 +79,8 @@ try {
         await b.eval('localStorage.clear(); 1');
         await b.reload();
         await ready();
-        const steps = CAMPAIGNS[campaign].steps;
+        const C = CAMPAIGNS[campaign];
+        const steps = typeof C.steps === 'string' ? [...CAMPAIGNS[C.steps].steps, ...(C.more || [])] : C.steps;
         await b.eval(`(() => {
             const M = mtb.M, game = mtb.game, key = s => M.prefix + s;
             for (const st of ${JSON.stringify(steps)}) {
@@ -77,7 +89,9 @@ try {
                 else if (what === 'build_all') { for (const v of mtb.panel.view.tree) M.debug_build_to(v.node.key); }
                 else if (what === 'gold') game.gold = a;
                 else if (what === 'crew') M.set_crew(a, c);
-                else if (what === 'order') { if (!M.order(key(a))) throw new Error('not ordered: ' + a); }
+                else if (what === 'order') { const r = M.order(key(a)); if (!r.ok) throw new Error('not ordered: ' + a + ': ' + (r.why || '')); }
+                else if (what === 'points') game.dev = a;
+                else if (what === 'demolish') { const r = M.demolish(key(a)); if (!r.ok) throw new Error('not demolished: ' + a + ': ' + (r.why || '')); }
                 else if (what === 'end_turn') game.end_turn();
                 else if (what === 'side') M.set_malakai_side(a);
             }
@@ -87,6 +101,8 @@ try {
         await b.eval(`localStorage.setItem('mtb_panel_tab', 'tree'); for (const k of Object.keys(localStorage)) if (k.startsWith('mtb_panel_pan_')) localStorage.removeItem(k); 1`);
         await b.reload();
         await ready();
+        // what the page's save does not keep: the game's own window before a cancel (the Lua side reads the dump's sim)
+        if (C.sim && C.sim.ask_cancel) await b.eval('mtb.game.askCancel = true; 1');
         const snapshot = await b.eval(`JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith('mtb_web_state_'))))`);
         // the view acted on: ids of the components as the Lua names them; a slot by its node
         const resolved = [];
@@ -111,7 +127,7 @@ try {
         })()`);
         const errors = b.errors.splice(0);
         if (errors.length) { failed++; console.log(`FAIL ${name}: the page's console: ${errors.join(' | ').slice(0, 800)}`); }
-        const file = {name, campaign, about: CAMPAIGNS[campaign].about, root: [1600, 900], snapshot, actions: resolved, ...out};
+        const file = {name, campaign, about: C.about, sim: C.sim || {}, root: [1600, 900], snapshot, actions: resolved, ...out};
         writeFileSync(join(OUT, name + '.json'), JSON.stringify(file));
         made[name] = out.components.length;
         console.log(`${name}: ${out.components.length} components, ${Object.keys(out.measures).length} measures`);

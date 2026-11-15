@@ -58,7 +58,7 @@ for (const [g, spec] of Object.entries(crewOptions.groups)) {
 }
 const gameEffects = Object.fromEntries((catalog.game_effects || []).map(g => [g.key, g]));
 const ctx = {groups, gameEffects};
-const page = T.gameData(design, {prefix: P, groups, hull: [], chains: [], tree_tiers: port.tiers});
+const page = T.gameData(design, {prefix: P, groups, hull: [], chains: [], tree_tiers: port.tiers, tree_points: port.development_points, stock_levels: facts.levels});
 const pageRow = Object.fromEntries(page.tree_rows.map(r => [r.node, r]));
 const hullTier = T.hullTiers(design);      // node id -> N for airship_hull_N
 
@@ -104,17 +104,8 @@ const engineTier = id => tierOf[id];
 // the page's game data was made with the same rule: the tier it locks by is the tier the game checks
 for (const r of page.tree_rows) if (r.tier !== tierOf[r.node]) errors.push(`${r.node}: the page locks by tier ${r.tier}, the game by ${tierOf[r.node]}`);
 
-// ---- В2: development points ----
-function devPoints(id) {
-    const n = node[id], mode = port.development_points.mode;
-    if (mode === 'zero') return 0;
-    if (mode === 'tree') return Number.isInteger(n.dev) ? n.dev : 0;
-    const stock = n.mod_key && facts.levels[P + n.mod_key];
-    if (id in hullTier) return stock ? stock.dev : 0;
-    if (lineOf[id].level !== 0) return 0;
-    if (stock && stock.level === 0) return stock.dev;
-    return port.development_points.first_level_by_tier[String(engineTier(id))] ?? 1;
-}
+// ---- В2: development points: the page's own rule (tree_model.mjs gameData, devOf), the same the panel's model locks a level by ----
+const devPoints = id => pageRow[id].dev;
 
 // ---- crew: what a level opens (own and new on it), the parts the current Lua knows as a group ----
 const partGroups = port.rules.part_groups || {};

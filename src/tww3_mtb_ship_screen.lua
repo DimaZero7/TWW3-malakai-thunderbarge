@@ -6,29 +6,47 @@
 --
 --   local S = <this file>; S.start(load)    load(name) -> the module script/campaign/tww3_mtb/<name>.lua (src/tww3_mtb_crew_ui.lua ship_module)
 --   S.open(), S.close(), S.is_open(), S.toggle()
+--   S.destroy()                             the panel's components gone (the next open builds them again)
 --   S.describe()                            the panel as text for the tests: tab, components made, the foot line
+--
+-- The panel is built once and kept: closing hides it, opening shows it again and refreshes it (the first session: building it took 3 s each time,
+-- runs/20261114-230723-ship_panel). It is built anew only when the game's root changed its size (another resolution or UI scale).
 
 local S = {}
 local LAYOUTS = 'ui/tww3_mtb/'
 local ROOT = 'mtb_ship_screen'
 local ESCAPE = 'mtb_ship_escape'
-local TIMERS = {}
+local LISTENERS = {'tww3_mtb_ship_click', 'tww3_mtb_ship_hover', 'tww3_mtb_ship_turn_end', 'tww3_mtb_ship_panel', 'tww3_mtb_ship_advice'}
 
 local function log(text) pcall(function() _G.tww3_mtb_campaign.file_log('[ship screen] ' .. tostring(text)) end) end
 local function guarded(fn) return function(...) local ok, e = pcall(fn, ...); if not ok then log('error: ' .. tostring(e)) end end end
 
 local mods = nil
--- the logic for the whole session: the turn's news and the foot line are kept while the panel is closed
+local NAMES = {Ship = 'tww3_mtb_ship', CM = 'tww3_mtb_crew_model', config = 'tww3_mtb_ship_config', cfg = 'tww3_mtb_ship_ui_config',
+               UI = 'tww3_mtb_ship_ui', Uic = 'tww3_mtb_ship_uic', Game = 'tww3_mtb_game'}
+-- the logic for the whole session: the turn's news and the foot line are kept while the panel is closed. The modules are this screen's only after
+-- everything started: a failed start leaves nothing behind, and the next call tries again.
 function S.start(load)
     if mods then return true end
-    mods = {Ship = load('tww3_mtb_ship'), CM = load('tww3_mtb_crew_model'), config = load('tww3_mtb_ship_config'), cfg = load('tww3_mtb_ship_ui_config'),
-            UI = load('tww3_mtb_ship_ui'), Uic = load('tww3_mtb_ship_uic'), Game = load('tww3_mtb_game')}
-    for k, v in pairs(mods) do if v == nil then log('module missing: ' .. k); mods = nil; return false end end
-    S.game = mods.Game.new(mods.config)
-    S.M = mods.Ship.make(mods.config, S.game, mods.CM)
-    S.keep = mods.Game.load(mods.Ship, S.M) or {}
+    local m = {}
+    for k, name in pairs(NAMES) do
+        m[k] = load(name)
+        if m[k] == nil then log('module missing: ' .. name); return false end
+    end
+    local ok, err = pcall(function()
+        local game = m.Game.new(m.config)
+        local M = m.Ship.make(m.config, game, m.CM)
+        local keep = m.Game.load(m.Ship, M) or {}
+        S.game, S.M, S.keep = game, M, keep
+    end)
+    if not ok then
+        S.game, S.M, S.keep = nil, nil, nil
+        log('start failed: ' .. tostring(err))
+        return false
+    end
+    mods = m
     S.M.on_change(guarded(function()
-        if S.panel then S.panel.refresh() end
+        if S.panel and S.shown then S.panel.refresh() end
         S.save()
     end))
     log('started')
@@ -45,26 +63,37 @@ function S.save()
     mods.Game.save(mods.Ship, S.M, S.keep)
 end
 
-function S.is_open() return S.panel ~= nil end
+function S.is_open() return S.shown == true end
 
+-- the panel's real-time timers (the glows): kept with the panel, running only while it is shown
+local timers = {}
 local function host()
-    local tm = core:get_tm()
     return {
-        every = function(ms, fn, name) TIMERS[#TIMERS + 1] = name; tm:repeat_real_callback(guarded(fn), ms, name) end,
-        after = function(ms, fn, name) tm:real_callback(guarded(fn), ms, name) end,
+        every = function(ms, fn, name)
+            local t = {ms = ms, fn = guarded(fn), name = name}
+            timers[#timers + 1] = t
+            core:get_tm():repeat_real_callback(t.fn, ms, name)
+        end,
+        after = function(ms, fn, name) core:get_tm():real_callback(guarded(fn), ms, name) end,
         clear_tooltip = function() end,
     }
+end
+local function timers_on(on)
+    local tm = core:get_tm()
+    for _, t in ipairs(timers) do
+        if on then tm:repeat_real_callback(t.fn, t.ms, t.name) else pcall(function() tm:remove_real_callback(t.name) end) end
+    end
 end
 
 -- The game's events on our components, as the listeners of S.open run them (exported for the tests, tools/tests/ship_session.lua: a click
 -- there is this same function)
 function S.click(id)
-    if not S.ui then return end
+    if not (S.ui and S.shown) then return end
     if id == 'mtb_ship_close' then S.close(); return end
     local c = S.ui.by_id(id)
     if c then S.panel.click(c, S.ui.ENGINE.mouse_along()) end
 end
-function S.hover(id) if S.ui then S.ui.mouse_on(id) end end
+function S.hover(id) if S.ui and S.shown then S.ui.mouse_on(id) end end
 
 -- the error of a failed build with its stack, when the game's Lua has debug.traceback (the census: it has)
 local function traced(e)
@@ -72,11 +101,15 @@ local function traced(e)
     return ok and t or tostring(e)
 end
 
-function S.open()
-    if S.panel then return true end
-    if not mods then return false, 'not started' end
+local function root_size()
+    local ok, w, h = pcall(function() local r = core:get_ui_root(); return r:Width(), r:Height() end)
+    if ok then return w, h end
+    return nil, nil
+end
+
+local function build()
     S.failed_ui = nil
-    local t0 = os.clock()
+    timers = {}
     local ok, err = xpcall(function()
         S.ui = mods.Uic.new(LAYOUTS, mods.cfg.text)
         S.root = S.ui.root(ROOT)
@@ -87,24 +120,60 @@ function S.open()
         S.panel.view.root:SetOpacity(150)
         S.panel.view.onTab = function() S.save() end
         S.panel.view.onSeen = function() S.save() end
-        S.panel.refresh()
     end, traced)
-    S.build_seconds = os.clock() - t0
     if not ok then
         log('build failed: ' .. tostring(err))
         S.failed_ui = S.ui      -- the components made before the failure, for the tests' diagnosis
-        S.close()
+        S.destroy()
         return false, err
     end
-    log('opened: ' .. tostring(S.ui.count) .. ' components')
+    log('built: ' .. tostring(S.ui.count) .. ' components')
+    return true
+end
+
+function S.open()
+    if S.shown then return true end
+    if not mods then return false, 'not started' end
+    local t0 = os.clock()
+    if S.panel then
+        local w, h = root_size()
+        local size = S.ui.root_size
+        if w and size and (w ~= size[1] or h ~= size[2]) then log('the game root is now ' .. w .. ' x ' .. h .. ': the panel built anew'); S.destroy() end
+    end
+    S.reused = S.panel ~= nil
+    if not S.panel then
+        local ok, err = build()
+        if not ok then S.build_seconds = os.clock() - t0; return false, err end
+    end
+    local ok, err = xpcall(function()
+        S.root:SetVisible(true)
+        S.panel.refresh()
+    end, traced)
+    if not ok then
+        log('show failed: ' .. tostring(err))
+        S.destroy()
+        S.build_seconds = os.clock() - t0
+        return false, err
+    end
+    S.shown = true
+    if S.reused then timers_on(true) end
+    S.build_seconds = os.clock() - t0
+    log((S.reused and 'shown again' or 'opened') .. ': ' .. tostring(S.ui.count) .. ' components, ' .. tostring(math.floor(S.build_seconds * 1000 + 0.5) / 1000) .. ' s')
     core:add_listener('tww3_mtb_ship_click', 'ComponentLClickUp', function(context) return S.ui and S.ui.by_id(context.string) ~= nil end, guarded(function(context)
         S.click(context.string)
     end), true)
     core:add_listener('tww3_mtb_ship_hover', 'ComponentMouseOn', function() return S.ui ~= nil end, guarded(function(context) S.hover(context.string) end), true)
     core:add_listener('tww3_mtb_ship_turn_end', 'FactionTurnEnd', function(context) return context:faction():name() == 'wh3_dlc25_dwf_malakai' end, guarded(S.close), true)
-    core:add_listener('tww3_mtb_ship_panel', 'PanelOpenedCampaign', function() return S.panel ~= nil end, guarded(S.close), true)
+    core:add_listener('tww3_mtb_ship_panel', 'PanelOpenedCampaign', function() return S.shown == true end, guarded(S.close), true)
+    -- the game's advisor out of the way while the panel is open (src/tww3_mtb_ship_uic.lua ENGINE.hide_advisor), again when it gives new advice
+    local E = S.ui.ENGINE
+    S.advisor = {restore = E.hide_advisor(), came = false}
+    core:add_listener('tww3_mtb_ship_advice', 'AdviceIssued', function() return S.shown == true end, guarded(function()
+        S.advisor.came = true
+        E.hide_advisor()
+    end), true)
     local function onEscape()
-        if not S.panel then return end
+        if not S.shown then return end
         if S.panel.escape() then cm:steal_escape_key_with_callback(ESCAPE, onEscape) else S.close() end
     end
     S.on_escape = onEscape      -- the key's callback, for the tests (no key can be pressed for them)
@@ -112,27 +181,44 @@ function S.open()
     return true
 end
 
-function S.close()
-    local root = S.root
-    S.save()
-    S.panel, S.ui, S.root = nil, nil, nil
-    for _, n in ipairs({'tww3_mtb_ship_click', 'tww3_mtb_ship_hover', 'tww3_mtb_ship_turn_end', 'tww3_mtb_ship_panel'}) do core:remove_listener(n) end
+local function quiet()
+    for _, n in ipairs(LISTENERS) do core:remove_listener(n) end
     pcall(function() cm:release_escape_key_with_callback(ESCAPE) end)
-    for _, name in ipairs(TIMERS) do pcall(function() core:get_tm():remove_real_callback(name) end) end
-    TIMERS = {}
-    if root then
-        pcall(function() root.uic:SetVisible(false) end)
-        -- not in the click's own call: the clicked component belongs to it
-        core:get_tm():real_callback(function() pcall(function() root.uic:Destroy() end) end, 1, 'mtb_ship_screen_destroy')
-    end
+    timers_on(false)
+    if S.advisor then local a = S.advisor; S.advisor = nil; a.restore(a.came) end
+end
+
+-- closed: hidden and kept, its hover windows and choices gone
+function S.close()
+    if not S.shown then return end
+    S.save()
+    S.shown = false
+    quiet()
+    pcall(function()
+        S.ui.mouse_on(nil)
+        S.panel.reset()
+        S.root:SetVisible(false)
+    end)
     log('closed')
 end
 
-function S.toggle() if S.panel then S.close(); return true end return S.open() end
+-- the components gone: not in the click's own call (the clicked component belongs to them), in the game's next callback
+function S.destroy()
+    if S.shown then S.save(); S.shown = false; quiet() end
+    local root = S.root
+    S.panel, S.ui, S.root = nil, nil, nil
+    timers = {}
+    if root then
+        pcall(function() root.uic:SetVisible(false) end)
+        core:get_tm():real_callback(function() pcall(function() root.uic:Destroy() end) end, 1, 'mtb_ship_screen_destroy')
+    end
+end
+
+function S.toggle() if S.shown then S.close(); return true end return S.open() end
 
 function S.describe()
-    local v = S.panel and S.panel.view
-    return {open = tostring(v ~= nil), tab = v and v.tab or '', components = S.ui and S.ui.count or 0, message = v and v.message:GetStateText() or ''}
+    local v = S.shown and S.panel and S.panel.view
+    return {open = tostring(v and true or false), tab = v and v.tab or '', components = S.ui and S.ui.count or 0, message = v and v.message:GetStateText() or ''}
 end
 
 return S

@@ -64,7 +64,7 @@ async function walk(scale) {
         };
         const pick = async (g, k) => { await clickId('mtb_crew_area_' + g); await clickId(`mtb_crew_card_pick_${g}:${k}`); await clickId('mtb_crew_close_' + g); };
         await button('#build_all');
-        await b.eval('mtb.game.gold = 100000; 1');         // the debug field's gold: a dozen hires in a row
+        await b.eval('mtb.game.gold = 100000; mtb.game.dev = 1000; 1');         // the debug field's gold: a dozen hires in a row; points enough (ingame_walk tests them)
         await sleep(600);
         check(`${tag} nothing of the crew on the model before a choice (the lookouts stand in the nests)`, JSON.stringify(Object.entries(await crew3d()).filter(([k, v]) => v !== 'hidden' && k !== 'lookouts_on' && !k.startsWith('malakai'))) === '[]', await crew3d());
         // every gun, each by the clicks of the choice and the turn, seen from the port's view beside the drawing
@@ -131,6 +131,7 @@ async function walk(scale) {
             await b.eval(`(() => { const p = mtb.panel.view.pan, v = mtb.panel.view.tree[${i}]; p.x = p.w / 2 - v.button.x - 37; p.y = p.h / 2 - v.button.y - 37; p.clamp(); })()`);
             await clickId('mtb_tree_node_' + i);
             await clickId('mtb_ship_demolish');
+            await button('#end_turn');        // the game takes it at the end of the turn; the next level down after that
         }
         check(`${tag} the nests demolished: nobody in them on the model`, Object.entries(await crew3d()).every(([k, v]) => !(k.startsWith('cupolas_') || k === 'lookouts_on') || v === 'hidden'), await crew3d());
         // «К месту экипажа»: off by default; on, a click on a tag turns the view to its place
@@ -258,7 +259,7 @@ async function stages() {
         await b.reload();
         await b.until('!!(window.mtb && mtb.M && mtb.panel)', 15000);
         await sleep(1500);
-        await b.eval('mtb.game.gold = 200000; mtb.panel.refresh(); 1');
+        await b.eval('mtb.game.gold = 200000; mtb.game.dev = 1000; mtb.panel.refresh(); 1');      // gold and development points enough for the stages
         const comp = id => b.eval(`(() => { const e = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height}; })()`);
         // the panel's two tabs (web/js/panel.js): the tree's slots on «Постройки», the drawing and its crew on «Корабль»; a check of the drawing looks at it shown
         const tabFor = id => /^(mtb_tree_node_|mtb_ship_demolish|mtb_tree_fit|tree_window|mtb_army_card_|mtb_crew_card_(?!pick_))/.test(id) ? 'tree' : /^(mtb_crew_|mtb_side_|scheme|plan_ship)/.test(id) ? 'ship' : null;
@@ -325,7 +326,7 @@ async function stages() {
         for (const part of parts) {
             const key = openers[part][0];
             if (!key) continue;
-            await b.eval(`(() => { for (const k of mtb.M.needs_all('${key}')) if (k !== '${key}') mtb.game.debug_complete(k); mtb.game.gold = 200000; mtb.panel.refresh(); return 1; })()`);
+            await b.eval(`(() => { for (const k of mtb.M.needs_all('${key}')) if (k !== '${key}') mtb.game.debug_complete(k); mtb.game.gold = 200000; mtb.game.dev = 1000; mtb.panel.refresh(); return 1; })()`);
             await order(key);
             await same(`«${part}» ordered`, part === 'balloon_shields');
             const turns = await b.eval(`mtb.game.under_construction('${key}') || 0`);
@@ -333,6 +334,7 @@ async function stages() {
             await same(`«${part}» built`, part === 'balloon_shields');
             if ((await b.eval(`mtb.M.can_demolish('${key}')`)).ok) {
                 await demolish(key);
+                await button('#end_turn');        // the game takes a demolished building at the end of the turn (probe 14.11)
                 await same(`«${part}» demolished`, false);
             }
         }
@@ -348,8 +350,12 @@ async function stages() {
         await same('everything built, a crew everywhere', true);
         const refuse = await b.eval(`mtb.M.can_demolish(mtb.M.prefix + 'airship_hull_5')`);
         check('stages: the page refuses to take the hull from under its buildings', !refuse.ok, refuse);
-        await b.eval(`(() => { const g = mtb.game; for (let n = 5; n >= 2; n--) g.dismantle(mtb.M.prefix + 'airship_hull_' + n); return 1; })()`);
-        await button('#end_turn');
+        // the game has no dismantle for the hull (CanDismantle false; game_sim refuses it too): a lost settlement or a script stands in, the hull's
+        // levels marked to go at the end of the turn as a dismantle would, one level a turn (the page's demolish steps one level down)
+        for (let n = 5; n >= 2; n--) {
+            await b.eval(`mtb.game.dismantles.add(mtb.M.prefix + 'airship_hull_${n}'); 1`);
+            await button('#end_turn');
+        }
         await sleep(1500);
         const s3 = await same('the hull taken down under its details and crew', true);
         check('stages, no hull: no crew stands any more, nothing on the model', !s3.crew.length && !s3.crew3d.length && !s3.model.some(m => m.startsWith('part_'))

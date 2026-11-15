@@ -49,4 +49,7 @@ export const TEXT = {
     // the count of the units folded into the plate «+N» over a slot of the tree (the card's number, larger)
     text_card_more: {size: 16, colour: '#FFF8D7', bold: true, align: 'center', nowrap: true, cat: 'body_12', pt: 12},
     text_green: {size: 16, line: 20, colour: '#9BD36A', valign: 'top', cat: 'body_12', pt: 12},
+    // the development points a level costs, on the teal round by its slot (building_frame.twui.xml, dev_points > dy_num_points_required): header_14
+    // centred in the game's light colour with its black outline (text_outline_t0), red when the horde has too few
+    text_points: {size: 18.67, colour: '#FFF8D7', align: 'center', nowrap: true, font: 'header', outline: true, cat: 'header_14', pt: 14},
 };

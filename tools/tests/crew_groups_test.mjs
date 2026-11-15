@@ -20,7 +20,7 @@ let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? 'ok   ' : 'FAIL ') + name + (ok ? '' : '  ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)))); };
 
 function fresh(gold = 100000) {
-    const game = new GameSim(levels, {...sim, gold, built: stage.built || sim.built, demolish: stage.demolish_mode});
+    const game = new GameSim(levels, {...sim, dev_points: 1000, gold, built: stage.built || sim.built, demolish: stage.demolish_mode});
     const M = makeBuildings(levels, game, stage.parts);
     for (const a of stage.crew_areas || []) if (a.words) M.words[a.group] = a.words;
     return {game, M};
@@ -115,16 +115,26 @@ const opt = (g, k) => data.groups[g].options[k];
         M.set_crew('cannons', only.key); ledger -= only.hire; game.end_turn(); ledger -= only.upkeep;
         check(`«${only.name}» stands`, M.crew('cannons') === only.key && game.treasury() === ledger);
         const r = M.demolish(top.key);
-        check(`demolish «${top.name}»: «${only.name}» leave for nothing`, r.ok && M.crew('cannons') === data.groups.cannons.mount && game.treasury() === ledger, M.message());
+        check(`demolish «${top.name}» ordered: it stands till the turn ends, «${only.name}» with it`, r.ok && M.status(top.key).state === 'dismantling' && M.crew('cannons') === only.key, M.message());
+        game.end_turn(); ledger -= M.crew_upkeep();
+        check(`the turn ended: «${top.name}» gone, «${only.name}» left for nothing`, M.crew('cannons') === data.groups.cannons.mount && game.treasury() === ledger && /Снесено: «/.test(M.message()), M.message());
     } else check('the guns\' top level opens a kind of its own', false, line.map(r => r.key));
-    // the bombs' place: an order waits, its mount goes (the whole line down) -> the order back, the place gone
-    const k = M.crew_options('bombs').find(o => !o.empty).key;
-    M.set_crew('bombs', k); ledger -= opt('bombs', k).hire;
-    const hatches = levels.tree_rows.filter(r => openersOf('bombs', data.groups.bombs.mount).includes(r.key)).sort((a, b) => b.line_level - a.line_level);
+    // the bombs' place: its mount's line taken down a level a turn (the stage's rule step_down) to its last level; then an order waits and the last
+    // level goes -> the order back, the place gone
+    const hatches = levels.tree_rows.filter(r => openersOf('bombs', data.groups.bombs.mount).includes(r.key));
+    const standingHatch = () => hatches.find(r => game.standing(r.key));
     let ok = true;
-    for (const r of hatches) { const d = M.demolish(r.key); ok = ok && d.ok; }
-    ledger += opt('bombs', k).hire;
-    check('the hatches demolished level by level', ok, M.message());
+    for (let i = 0; i < 6 && standingHatch() && hatches.filter(r => game.has_building(r.key)).length > 1; i++) {
+        ok = ok && M.demolish(standingHatch().key).ok;
+        game.end_turn(); ledger -= M.crew_upkeep();
+    }
+    const k = (M.crew_options('bombs').find(o => !o.empty && o.unlocked) || {}).key;
+    if (k) { M.set_crew('bombs', k); ledger -= opt('bombs', k).hire; }
+    ok = ok && !!standingHatch() && M.demolish(standingHatch().key).ok;
+    game.end_turn();
+    if (k) ledger += opt('bombs', k).hire;
+    ledger -= M.crew_upkeep();
+    check('the hatches demolished level by level, a turn each', ok && !!k, M.message());
     check('without the hatches: no place, the order back with its gold', !M.crew_place('bombs') && M.crew_order('bombs') === null && game.treasury() === ledger, {place: M.crew_place('bombs'), order: M.crew_order('bombs'), gold: game.treasury(), ledger});
     check('the other groups untouched', M.crew_place('cannons') && M.crew_place('cupolas'));
 }
@@ -192,8 +202,11 @@ const opt = (g, k) => data.groups[g].options[k];
     M.set_crew('cannons', M.crew_options('cannons').find(o => !o.empty).key);
     game.end_turn();
     check('carrier: with the barge the places and the details are there', M.crew_place('cannons') && M.stage('pub') === 'ink' && M.crew('cannons') !== 'empty');
-    for (let n = 5; n >= 2; n--) game.dismantle(data.prefix + 'airship_hull_' + n);
-    check('carrier: the hull gone, every place and detail goes, the crew leaves', ['rifles', ...groups, 'harpoon'].every(g => !M.crew_place(g)) && M.stage('pub') === 'none' && M.crew('cannons') === 'empty');
+    // the hull is not dismantled in the game (CanDismantle = false): neither the panel nor the game takes it from under the crew
+    const hull = data.prefix + 'airship_hull_5';
+    check('carrier: the hull cannot be demolished, the panel says why', !M.can_demolish(hull).ok && /Корпус не сносится/.test(M.can_demolish(hull).why) && !game.dismantle(hull), M.can_demolish(hull).why);
+    game.end_turn();
+    check('carrier: the places and the details stay with the hull', M.crew_place('cannons') && M.stage('pub') === 'ink');
 }
 
 // 8. the ammunition in volleys a seat, as the mod's Lua counts it: the group's whole times the bonus, rounded, shared by the seats

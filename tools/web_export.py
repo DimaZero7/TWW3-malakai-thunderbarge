@@ -69,7 +69,10 @@ GAME_UI = ["ui/skins/default/panel_back_border.png", "ui/skins/default/panel_bac
            "ui/skins/default/icon_entity_small.png", "ui/skins/default/parchment_divider_2.png", "ui/skins/default/bar_back.png",
            "ui/skins/default/icon_stat_damage.png",
            "ui/skins/default/modifier_icon_armour_piercing.png",
-           "ui/skins/default/frame_text.png"]      # the plate of a recruitment card's cost
+           "ui/skins/default/frame_text.png",       # the plate of a recruitment card's cost
+           # the horde's development points (building_frame.twui.xml, dev_points: the teal round with the number by a slot; the icon the game's texts
+           # put before «избыток населения», [[img:icon_pop_surplus]])
+           "ui/skins/default/unit_cat_holder_round_fill.png", "ui/skins/default/icon_pop_surplus.png"]
 GAME_UI += [f"ui/skins/default/constructing_{i}.png" for i in range(1, 13)]
 # The airship screen's tabs, the tree's scroll bars and the demolish button over a built slot, as the game's panels have them:
 # tab_square_medium_text (204 x 46, the tabs of full screen panels), parchment_slider_* (building_browser.twui.xml: hslider; the info docker's vslider),
@@ -275,7 +278,13 @@ def crew_data(stock, t=None, unit_pictures=None):
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}
     return {"prefix": prefix, "ammo_mod": {prefix + k: v for k, v in config["ammo_mod"].items()}, "groups": groups,
             "art": json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8")),
-            "tree_tiers": json.loads((REPO / "data" / "tree_port.json").read_text(encoding="utf-8"))["tiers"]}
+            "tree_tiers": json.loads((REPO / "data" / "tree_port.json").read_text(encoding="utf-8"))["tiers"],
+            # the rule of the development points a level costs (В2): the page's model locks by the same points as the game (tree_model.gameData)
+            "tree_points": json.loads((REPO / "data" / "tree_port.json").read_text(encoding="utf-8"))["development_points"],
+            # the game's own levels of the barge (not the mod's): their points, for the rule's «a node standing for a stock level» (tools/tree_export.mjs
+            # reads the same from build/tree/game_facts.json)
+            "stock_levels": {r["level_name"]: {"dev": r["development_point_cost"], "level": r["level"]} for r in stock["building_levels"]
+                             if r["level_name"].startswith(prefix)}}
 
 
 def export_data():
@@ -339,7 +348,7 @@ def export_data():
             chains.append({"key": chain, "levels": [level_of(r) for r in chain_rows if r["visible_in_ui"]]})
     data = {"_about": "Made by tools/web_export.py from data/crew_options.json and the game's tables through the mod's own build functions. Do not edit.",
             "prefix": prefix, "ammo_mod": crew["ammo_mod"], "hull": [level_of(r) for r in hull], "chains": chains, "groups": crew["groups"], "auto_active": [prefix + s for s in config["auto_active"]],
-            "levels": levels, "art": crew["art"], "tree_tiers": crew["tree_tiers"]}
+            "levels": levels, "art": crew["art"], "tree_tiers": crew["tree_tiers"], "tree_points": crew["tree_points"], "stock_levels": crew["stock_levels"]}
     OUT.mkdir(parents=True, exist_ok=True)
     for path, blob in game_files(sorted(set(unit_pictures))).items():
         target = OUT / "game" / path

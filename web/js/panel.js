@@ -129,6 +129,14 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}, keep
     image(frame, 'gold_icon', 'ui/skins/default/icon_treasury.png', 22, 18, 26, 26);
     view.gold = text(frame, 'gold', 'text_head', 54, 14, 160, 34, '');
     view.gold.SetTooltipText('Казна фракции', true);
+    // the horde's development points beside it (HordeContext.DevelopmentPoints): the icon the game's texts put before the word
+    // ([[img:icon_pop_surplus]]) and the number in the treasury's size; placed after the treasury's number by refresh(); none when the game does not say.
+    // The tooltip in the game's words (population_surplus_tooltip_horde: «Текущий избыток населения орды»), the word itself the model's M.POINTS_NOM
+    const pointsTip = 'Текущий ' + M.POINTS_NOM;
+    view.pointsIcon = image(frame, 'points_icon', 'ui/skins/default/icon_pop_surplus.png', 0, 18, 26, 26);
+    view.pointsIcon.SetTooltipText(pointsTip, true);
+    view.points = text(frame, 'points', 'text_head', 0, 14, 60, 34, '');
+    view.points.SetTooltipText(pointsTip, true);
     view.tabs = {};
     [['ship', 'Корабль'], ['tree', 'Постройки']].forEach(([k, label], i) => { view.tabs[k] = makeButton(frame, TAB + k, tabs_x + i * (tab_w + tab_gap), 11, tab_w, 44, label); });
     // «Корабль» after a building changed the ship, until the player looks at it: a soft warm glow round the tab's own plate (the same glow as a new
@@ -476,6 +484,7 @@ function makeCrewArea(view, M, data, art, blueprint, flags, sheet, frame, scale,
     //   the kind that stands  the army panel's card of a unit one has: the men over the green bar, the frame of the selected card
     //   a kind not opened     the locked state: grey, the padlock
     const slot_y = pad + 32 + 4, slot_h = UNIT_H + 4 + 42;
+    crew.slotAt = {x: pad, y: slot_y, w: slot_w};       // refreshCrewArea puts the kinds in M.crew_options' order again
     const clips = Object.fromEntries((blueprint.crew_cards || []).filter(c => c.group === g).map(c => [c.option, c]));
     crew.slots = options.map((o, i) => {
         const hit = make(pick, CREW_PICK + g + ':' + o.key, 'hit_area');
@@ -1106,6 +1115,18 @@ function makeFileTree(frame, view, M, area, keep) {
         v.costRed = image(v.cost, 'red', D + 'red_text_banner_shadow.png', 0, 0, 62, 20);
         image(v.cost, 'coins', D + 'icon_treasury.png', 4, 2, 16, 16);
         v.costText = text(v.cost, 'value', 'text_line', 22, 0, 40, 20, '');
+        // The development points a level costs, as the game's slot shows them (building_frame.twui.xml, dev_points: the teal round of a unit's category,
+        // unit_cat_holder_round.png with unit_cat_holder_round_fill.png coloured #2CC7AF over it, the number in header_14 with its outline, red when the horde
+        // has too few; shown while the level is neither built nor under construction). The game puts it on the slot's left edge (-23, 18); here 26
+        // across, at -12, 28: between the padlock (to 27 down) and the level's numeral (from 54), and 2 units clear of a lane of links left of the slot
+        // (16 left of it). Not greyed with a locked slot (the game's is a sibling of the slot's button too); it takes no mouse: the slot's window says it.
+        // The game's order: the round holder (its copper rim) under, the fill over it (34 x 34 with the disc 3..31, light grey multiplied by #2CC7AF:
+        // drawn here as that product, 35, 158, 139, a picture coloured in advance in the game).
+        v.dev = image(holder, TREE + 'dev_' + i, D + 'unit_cat_holder_round.png', nx - 12, ny + 28, 26, 26);
+        image(v.dev, 'fill', D + 'unit_cat_holder_round_fill.png', 0, 0, 26, 26).SetImageColour(35, 158, 139, 255);
+        v.devText = text(v.dev, 'value', 'text_points', 0, 0, 26, 26, '');
+        v.devText.SetPassive();
+        v.dev.SetPassive();
         v.info = makeInfoTip(frame, 'building_information_' + i);
         b.AddHoverChild(v.info.tip);
         return v;
@@ -1252,12 +1273,12 @@ function makeFileTree(frame, view, M, area, keep) {
     // a node's box with what belongs to it: its unit cards above and right, its cost banner under it
     const box = v => ({l: v.button.x - 14, t: v.button.y - 24, r: v.button.x + NODE + 20, b: v.button.y + NODE + 24});
     const centre = (x, y) => { pan.x = pan.w / 2 - x * pan.z; pan.y = pan.h / 2 - y * pan.z; pan.clamp(); };
-    // the game's size, at what can be done now: the slots under construction and those that can be ordered (short of gold too), else what stands
+    // the game's size, at what can be done now: the slots under construction and those that can be ordered (short of gold or of points too), else what stands
     // highest, else the root of the tree; when they are taller than the window, the lowest of them (the next step up from the built part) at its foot
     pan.home = () => {
         pan.z = 1;
         const st = v => M.status(v.node.key);
-        let now = view.tree.filter(v => ['building', 'open'].includes(st(v).state) || st(v).poor);
+        let now = view.tree.filter(v => ['building', 'open'].includes(st(v).state) || st(v).poor || st(v).short);
         if (!now.length) now = view.tree.filter(v => st(v).state === 'built');
         if (!now.length) now = view.tree.slice(-1);
         if (!now.length) { pan.clamp(); return; }
@@ -1452,7 +1473,10 @@ function placeInfo(view, v) {
 //   under construction  the clock-wipe and the turns banner with the turns left (a click cancels it, the gold comes back);
 //   can be ordered      colour #FFFFFFB4 (a little see-through), the cost banner under it (a click orders it);
 //   short of gold       the same, the cost banner red with the game's dark shadow;
-//   locked       greyscale and #FFFFFF80, the padlock; why, in red in the building window on hover.
+//   short of points     the same, the number on the teal round of the points red (the game's dev_points);
+//   locked       greyscale and #FFFFFF80, the padlock; why, in red in the building window on hover;
+//   being dismantled    as built (the check), in the locked slot's grey; a click says why it cannot be touched; no demolish button;
+//   a cancel asked      under construction, the turns banner dimmed until the player answers the game's own window.
 function refreshTree(view, M) {
     // the small unit cards: their marks and their panels
     for (const c of view.crew || []) {
@@ -1467,10 +1491,13 @@ function refreshTree(view, M) {
     placeTips(view);
     for (const v of view.tree) {
         const st = M.status(v.node.key);
-        const poor = st.state === 'locked' && st.poor;
-        const greyed = (st.state === 'locked' && !poor) || st.state === 'unknown';
-        const built = st.state === 'built', building = st.state === 'building';
-        if (built) v.button.SetImageColour(255, 255, 255, 255);
+        // short of gold or of development points: the slot as one that can be ordered, its price red (the game's slot is not greyed for a price)
+        const poor = st.state === 'locked' && (st.poor || st.short);
+        // being dismantled: the building stands till the turn ends, drawn as built (the icon, the frame, the check) in the locked slot's dimming
+        const going = st.state === 'dismantling';
+        const greyed = (st.state === 'locked' && !poor) || st.state === 'unknown' || going;
+        const built = st.state === 'built' || going, building = st.state === 'building';
+        if (built && !going) v.button.SetImageColour(255, 255, 255, 255);
         else if (greyed) v.button.SetImageColour(255, 255, 255, 0x80);
         else v.button.SetImageColour(255, 255, 255, 0xB4);
         v.button.ShaderTechniqueSet(greyed ? 'set_greyscale_t0' : 'normal_t0');
@@ -1480,23 +1507,33 @@ function refreshTree(view, M) {
         v.hover.SetVisible(false); v.hoverSelected.SetVisible(false);
         v.button.SetHoverChild(selected ? v.hoverSelected : v.hover);
         v.check.SetVisible(built);
-        v.padlock.SetVisible(greyed);
+        v.padlock.SetVisible(greyed && !going);
         v.constructing.SetVisible(building);
         v.turnsBanner.SetVisible(building);
+        // a cancel that waits for the game's own window: the construction goes on, its banner dimmed until the player answers there
+        v.turnsBanner.SetImageColour(255, 255, 255, building && st.asked ? 0x80 : 255);
         v.turns.SetVisible(building);
         v.turns.SetStateText(building ? String(st.turns) : '');
         if (v.level) v.level.SetVisible(!building);        // the turns banner takes the slot's foot while it is built
         const row = M.level(v.node.key);
+        // the price as the game takes it (M.cost: CreateCost; M.dev: DevelopmentPointCost); the gold red when the treasury cannot pay it
+        const cost = row ? M.cost(v.node.key) : 0, dev = row ? M.dev(v.node.key) : 0;
+        const goldShort = poor && M.game.treasury() < cost;
         v.cost.SetVisible(!!row && !built && !building);
-        v.costRed.SetVisible(poor);
-        v.costText.SetStateText(row ? (poor ? `[[col:red]]${row.cost}[[/col]]` : String(row.cost)) : '');
+        v.costRed.SetVisible(goldShort);
+        v.costText.SetStateText(row ? (goldShort ? `[[col:red]]${cost}[[/col]]` : String(cost)) : '');
+        // the points by the slot, as the game's: a level that costs some, neither built nor under construction; red when the horde has too few
+        v.dev.SetVisible(!!row && dev > 0 && !built && !building);
+        v.devText.SetStateText(dev > 0 ? (st.short ? `[[col:red]]${dev}[[/col]]` : String(dev)) : '');
         // The building information window: what the game writes about a building, and at its foot, red, why it cannot be built now (M.reason:
         // the same sentence the foot row gives after a refused click)
         const card = view.cards[v.node.key];
         const reason = M.reason(v.node.key);
-        // what a click does, in the game's short words, with the time the slot itself does not show
-        const note = st.state === 'open' ? `Щелчок — заказать: ${row.cost} золота, ${turnsText(row.turns)}.`
-            : building ? `Строится, осталось ${turnsText(st.turns)}. Щелчок — отменить заказ, ${row.cost} золота вернутся.` : '';
+        // what a click does, in the game's short words, with the time the slot itself does not show; the price in gold and in points
+        const price = `${cost} золота${dev > 0 ? ` и ${dev} ед. ${M.POINTS}` : ''}`;
+        const note = st.state === 'open' ? `Щелчок — заказать: ${price}, ${turnsText(row.turns)}.`
+            : building && st.asked ? `Строится, осталось ${turnsText(st.turns)}. Отмена ждёт вашего ответа в окне игры.`
+            : building ? `Строится, осталось ${turnsText(st.turns)}. Щелчок — отменить заказ, ${price} вернутся.` : '';
         // filled when it is shown (under the mouse now, or when the mouse comes onto the slot): 41 windows measured at every change cost the page
         v.info.content = {...fileInfo(view, v.node.row, card, reason), note};
         v.info.dirty = true;
@@ -1550,6 +1587,8 @@ function refreshCrewArea(view, M, c) {
     // with the turns); every other kind its hire, red when the treasury cannot pay it.
     for (const slot of c.slots) {
         const o = options.find(x => x.key === slot.key), will = M.crew_preview(g, o.key);
+        // the kinds in the order M.crew_options gives now (a building that came to stand changes it): the window is made once and kept (in the game too: hidden on close, shown again)
+        at(slot.hit, c.slotAt.x + options.indexOf(o) * c.slotAt.w, c.slotAt.y);
         slot.selected.SetVisible(o.key === now);
         slot.padlock.SetVisible(!o.unlocked);
         slot.turnsBanner.SetVisible(o.key === order);
@@ -1623,6 +1662,14 @@ function escape(view) {
 
 function refresh(view, M) {
     view.gold.SetStateText(M.game.treasury() < 0 ? `[[col:red]]${M.game.treasury()}[[/col]]` : String(M.game.treasury()));      // the game's treasury may be in debt
+    // the points 18 after the treasury's number (made after the treasury's box, they lie over its empty right part and take the mouse there)
+    const goldW = Math.max(1, view.gold.TextDimensions()[0]);
+    const points = M.points();
+    view.pointsIcon.SetVisible(points !== null);
+    view.points.SetVisible(points !== null);
+    view.points.SetStateText(points !== null ? String(points) : '');
+    at(view.pointsIcon, 54 + goldW + 18, 18);
+    at(view.points, 54 + goldW + 18 + 32, 14);
     const ship = view.tab === 'ship';
     for (const [k, t] of Object.entries(view.tabs)) {
         const on = k === view.tab, hovered = t.button.hovered;
@@ -1711,7 +1758,7 @@ function clickSlot(view, M, v) {
         if (st.state === 'open') M.order(key);
         else if (st.state === 'building') M.cancel(key);
         else if (st.state === 'built' && view.demolishShown && was !== key) view.options = key;
-        else if (st.state === 'locked' || st.state === 'unknown') { M.refuse(key); denySlot(view, v); }      // why, in the foot row
+        else if (st.state === 'locked' || st.state === 'unknown' || st.state === 'dismantling') { M.refuse(key); denySlot(view, v); }      // why, in the foot row
         view.pan.show(v);
     }
     if (view.onSelect) view.onSelect();

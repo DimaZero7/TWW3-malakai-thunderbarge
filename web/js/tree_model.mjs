@@ -726,13 +726,29 @@ export function gameData(design, data) {
     // the tier a level is locked by: the game's (engineTiers over the mod's rule, data.tree_tiers), so the page never offers what the game refuses;
     // data without the rule (a test's own): the author's tier as it is
     const engine = data.tree_tiers ? engineTiers(design, data.tree_tiers).tier : null;
+    // the development points a level costs in the game (data/tree_port.json development_points, В2; the page has the rule in build/web/data.json
+    // tree_points, tools/tree_export.mjs writes the same as the rows' development_point_cost): mode zero none; tree the node's own dev; stock: a hull
+    // level its stock level's points, a higher level of a line none, a first level its stock level's points when it stands for a stock first level,
+    // else the points of its engine tier. data without the rule (a test's own): none.
+    const hullIds = hullTiers(design);
+    const stockLevels = data.stock_levels || Object.fromEntries([...(data.hull || []), ...(data.chains || []).flatMap(c => c.levels)].map(r => [r.key, r]));
+    const devOf = n => {
+        const rule = data.tree_points;
+        if (!rule || rule.mode === 'zero') return 0;
+        if (rule.mode === 'tree') return Number.isInteger(n.dev) ? n.dev : 0;
+        const stock = n.mod_key ? stockLevels[prefix + n.mod_key] : null;
+        if (n.id in hullIds) return stock ? stock.dev || 0 : 0;
+        if (chainOf[n.id].level !== 0) return 0;
+        if (stock && stock.level === 0) return stock.dev || 0;
+        return (rule.first_level_by_tier || {})[String(engine ? engine[n.id] : n.tier || 0)] ?? 1;
+    };
     const rows = design.nodes.map(n => {
         const f = resolve(design, n.id).full, effects = f.effects.map(x => x.e), fresh = newOnLevel(design, n.id);
         const cards = oneCardPerUnit(fresh.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]), fresh.units.map(x => x.u), crewUnitOf(data.groups));
         return {
             key: keyOf[n.id], short: keyOf[n.id].slice(prefix.length), chain: chainOf[n.id].chain, level: chainOf[n.id].level, line_level: levelOf(design, n.id),
             in_line: !!n.prev || design.nodes.some(m => m.prev === n.id), name: label(n), game_name: null, text: n.description,
-            cost: n.cost, turns: n.turns, dev: 0, tier: engine ? engine[n.id] : n.tier || 0, tier_own: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
+            cost: n.cost, turns: n.turns, dev: devOf(n), tier: engine ? engine[n.id] : n.tier || 0, tier_own: n.tier || 0, requires: n.requires.map(p => keyOf[p]).filter(Boolean),
             icon: null, icon_path: n.icon, lines: effects.map(e => e.text), effects, unlocks: f.crew.map(x => x.c).filter(c => data.groups[c.group] && data.groups[c.group].options[c.option]),
             units: f.units.map(x => x.u), parts: f.parts.map(x => x.p), own_effects: n.effects,
             // what the slot shows as its cards: only what this level brings new in its line (newOnLevel), one card a unit (oneCardPerUnit: a crew

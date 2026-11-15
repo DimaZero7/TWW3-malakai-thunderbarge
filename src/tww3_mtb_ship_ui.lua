@@ -418,11 +418,50 @@ function UI.make_panel(env)
         return card
     end
 
+    -- ---------------- windows made on first use ----------------
+    -- The windows under the mouse (a building's, a unit's panel and the line under it) and the crew's choices are made the first time they are
+    -- needed, not with the panel: they are two thirds of its components and most of its texts (runs/20261114-230723-ship_panel: 3794 components,
+    -- 3.2 s to open). Until then a stand-in takes the calls the panel makes on a hidden window. env.lazy = false (or panel.build_all()) makes them
+    -- all at once, as the page does (tools/ui_layout_check.py compares them with the page's).
+    local lazy = env.lazy ~= false
+    local function standIn()
+        local s = {visible = false, stand_in = true, x = 0, y = 0, w = 0, h = 0, children = {}}
+        function s.Visible() return false end
+        function s.SetVisible() end
+        function s.Width() return 0 end
+        function s.Height() return 0 end
+        return s
+    end
+    -- a window of a unit made by build(into) on first use: its set(dyn) kept until then and applied, hooked to the owner's hover when made,
+    -- then placed by placed(info)
+    local function lazyInfo(build, placed)
+        local info = {lazy = true, panel = standIn(), state = standIn()}
+        function info.set(dyn) info.dyn = dyn end
+        function info.place() end
+        function info.hook(owner)
+            info.owner = owner
+            local before = owner.on_enter
+            owner.on_enter = function() info.ensure(); if before then before() end end
+        end
+        function info.ensure()
+            if not info.lazy then return info end
+            info.lazy = nil
+            local dyn, owner = info.dyn, info.owner
+            build(info)
+            if dyn and info.set then info.set(dyn) end
+            if owner then owner:SetHoverChild(info.panel); owner:AddHoverChild(info.state) end
+            if placed then placed(info) end
+            return info
+        end
+        return info
+    end
+
     -- ---------------- the game's building information window ----------------
-    local function makeInfoTip(parent, id)
+    local function makeInfoTip(parent, id, into)
         local tip = make(parent, id, 'tooltip_frame')
         size(tip, K.INFO_W, 100)
-        local t = {tip = tip, w = K.INFO_W, effects = {}, units = {}, id = id}
+        local t = into or {}
+        t.tip, t.w, t.effects, t.units, t.id = tip, K.INFO_W, {}, {}, id
         t.title = text(tip, 'dy_title', 'text_info_title', 10, 1 + 2, K.INFO_W - 20, 38, '')
         t.hbar = make(tip, 'hbar', 'separator_skull')
         size(t.hbar, 380, 14)
@@ -533,11 +572,12 @@ function UI.make_panel(env)
         if v == floor(v) then return str(v) end
         return (string.gsub(str(round(v * 100) / 100), '%.', ',', 1))
     end
-    local function unitInfo(parent, id, spec)
+    local function unitInfo(parent, id, spec, into)
         local Wd, o = K.UNIT_INFO_W, spec.option
         local n, group = o.numbers or {}, spec.group_data
         local panel = make(parent, id, 'unit_parchment')
-        local info = {panel = panel, spec = spec}
+        local info = into or {}
+        info.panel, info.spec = panel, spec
         text(panel, 'tx_unit-type', 'text_unit_title', 12, 1 + 4, Wd - 24, 30, o.name)
         local hbar = make(panel, 'hbar', 'separator_skull')
         size(hbar, Wd - 20, 8)
@@ -695,10 +735,11 @@ function UI.make_panel(env)
     local CASTE = {melee_infantry = 'Пехота ближнего боя', missile_infantry = 'Стрелковая пехота', warmachine = 'Боевая машина'}
     local armyList = {}
     for _, x in pairs(data.army_units) do push(armyList, x) end
-    local function armyInfo(parent, id, u, building)
+    local function armyInfo(parent, id, u, building, into)
         local Wd, st = K.UNIT_INFO_W, u.stats
         local panel = make(parent, id, 'unit_parchment')
-        local info = {panel = panel}
+        local info = into or {}
+        info.panel = panel
         text(panel, 'tx_unit-type', 'text_unit_title', 12, 1 + 4, Wd - 24, 30, u.name)
         local hbar = make(panel, 'hbar', 'separator_skull')
         size(hbar, Wd - 20, 8)
@@ -795,6 +836,7 @@ function UI.make_panel(env)
 
     -- ---------------- a crew group's place on the drawing (panel.js makeCrewArea) ----------------
     local frame          -- the panel's frame: the windows of the crew's cards are its children
+    local placeUnitInfo
     local function makeCrewArea(sheet, spec, a)
         local g = spec.group
         local group, cbox = data.groups[g], a.area
@@ -853,7 +895,10 @@ function UI.make_panel(env)
         areaC:SetHoverChild(crew.hover)
         local emptyKey = group.mount or group.start
         for _, key in ipairs(group.option_order) do if key ~= emptyKey and has('crew_' .. g .. '_' .. key) then crew.layers[key] = lay('crew_' .. g .. '_' .. key) end end
-        -- the choice
+        -- the choice: made when the place is first opened (crew.buildPick)
+        crew.slots = {}
+        function crew.buildPick()
+        if crew.pick then return end
         local options = crewOptions(g)
         local ppad, slot_w = 26, 106
         local ph = ppad + 32 + 4 + K.UNIT_H + 4 + 42 + 24 + 26
@@ -872,6 +917,7 @@ function UI.make_panel(env)
         local cross = image(pick, K.CREW_CLOSE .. g, K.D .. 'icon_cross.png', pw - ppad - 24, ppad - 2, 22, 22)
         cross:SetInteractive(true)
         local slot_y, slot_h = ppad + 32 + 4, K.UNIT_H + 4 + 42
+        crew.slotAt = {x = ppad, y = slot_y, w = slot_w}       -- refreshCrewArea puts the kinds in M.crew_options' order again
         local clips = {}
         for _, c in ipairs(blueprint.crew_cards) do if c.group == g then clips[c.option] = c end end
         crew.slots = map(options, function(o, i)
@@ -893,7 +939,8 @@ function UI.make_panel(env)
             for _, c in ipairs({card, slot.name}) do c:SetPassive() end
             if not o.empty then
                 local clip = clips[o.key] or {}
-                slot.info = unitInfo(frame, 'crew_pick_info_' .. g .. '_' .. o.key, {option = o, group_data = group, text = clip.text or o.about or '', area = spec})
+                local id, ispec = 'crew_pick_info_' .. g .. '_' .. o.key, {option = o, group_data = group, text = clip.text or o.about or '', area = spec}
+                slot.info = lazy and lazyInfo(function(into) unitInfo(frame, id, ispec, into) end, function() placeUnitInfo(crew, slot) end) or unitInfo(frame, id, ispec)
                 slot.info.hook(hit)
             end
             return slot
@@ -903,6 +950,8 @@ function UI.make_panel(env)
         size(edge, pw, ph)
         at(edge, 0, 0)
         pick:SetVisible(false)
+        end
+        if not lazy then crew.buildPick() end
         return crew
     end
     local function openArea()
@@ -993,8 +1042,24 @@ function UI.make_panel(env)
             v.costRed = image(v.cost, 'red', K.D .. 'red_text_banner_shadow.png', 0, 0, 62, 20)
             image(v.cost, 'coins', K.D .. 'icon_treasury.png', 4, 2, 16, 16)
             v.costText = text(v.cost, 'value', 'text_line', 22, 0, 40, 20, '')
-            v.info = makeInfoTip(frame, 'building_information_' .. i)
-            b:AddHoverChild(v.info.tip)
+            -- the development points a level costs: the game's teal round by the slot (panel.js; building_frame.twui.xml dev_points)
+            v.dev = image(holder, K.TREE .. 'dev_' .. i, K.D .. 'unit_cat_holder_round.png', nx - 12, ny + 28, 26, 26)
+            image(v.dev, 'fill', K.D .. 'unit_cat_holder_round_fill.png', 0, 0, 26, 26):SetImageColour(35, 158, 139, 255)
+            v.devText = text(v.dev, 'value', 'text_points', 0, 0, 26, 26, '')
+            v.devText:SetPassive()
+            v.dev:SetPassive()
+            if lazy then
+                v.info = {lazy = true, tip = standIn()}
+                function v.info.build()
+                    if not v.info.lazy then return end
+                    v.info.lazy = nil
+                    makeInfoTip(frame, 'building_information_' .. i, v.info)
+                    b:AddHoverChild(v.info.tip)
+                end
+            else
+                v.info = makeInfoTip(frame, 'building_information_' .. i)
+                b:AddHoverChild(v.info.tip)
+            end
             return v
         end)
         -- the crew a building opens: small unit cards beside its slot, as the game's building browser places them
@@ -1015,17 +1080,23 @@ function UI.make_panel(env)
                     local waiting = image(card, 'waiting', K.D .. 'icon_hourglass.png', K.CARD_W - 15, K.CARD_H - 17, 16, 16)
                     local standing = image(card, 'standing', K.D .. 'icon_check_green.png', K.CARD_W - 16, K.CARD_H - 15, 17, 15)
                     local clip = clips[item.group .. ':' .. item.option] or {}
-                    local info = unitInfo(frame, 'crew_info_' .. r.id .. '_' .. item.option, {option = od, group_data = gd, text = clip.text or od.about or '',
-                        area = find(blueprint.crew_areas, function(a) return a.group == item.group end), army_building = item.army and r.name or nil})
-                    info.hook(card)
-                    push(view.crew, {card = card, info = info, tip = info.panel, building = r.key, group = item.group, option = item.option, alsoArmy = item.army or nil,
-                                     waiting = waiting, standing = standing, v = v, cardY = cy})
+                    local id, ispec = 'crew_info_' .. r.id .. '_' .. item.option, {option = od, group_data = gd, text = clip.text or od.about or '',
+                        area = find(blueprint.crew_areas, function(a) return a.group == item.group end), army_building = item.army and r.name or nil}
+                    local entry = {card = card, building = r.key, group = item.group, option = item.option, alsoArmy = item.army or nil,
+                                   waiting = waiting, standing = standing, v = v, cardY = cy}
+                    entry.info = lazy and lazyInfo(function(into) unitInfo(frame, id, ispec, into) end, function(i) entry.tip = i.panel; placeTips() end) or unitInfo(frame, id, ispec)
+                    entry.tip = entry.info.panel
+                    entry.info.hook(card)
+                    push(view.crew, entry)
                 else
                     local u = data.army_units[item.unit]
                     local card = slotUnitCard(holder, 'mtb_army_card_' .. r.id .. '_' .. u.key, cx, cy, u.card, nil, false)
-                    local info = armyInfo(frame, 'army_info_' .. r.id .. '_' .. u.key, u, r.name)
-                    info.hook(card)
-                    push(view.crew, {card = card, info = info, tip = info.panel, building = r.key, army = u.key, v = v, cardY = cy})
+                    local id = 'army_info_' .. r.id .. '_' .. u.key
+                    local entry = {card = card, building = r.key, army = u.key, v = v, cardY = cy}
+                    entry.info = lazy and lazyInfo(function(into) armyInfo(frame, id, u, r.name, into) end, function(i) entry.tip = i.panel; placeTips() end) or armyInfo(frame, id, u, r.name)
+                    entry.tip = entry.info.panel
+                    entry.info.hook(card)
+                    push(view.crew, entry)
                 end
             end
             if #r.folded > 0 then
@@ -1114,7 +1185,7 @@ function UI.make_panel(env)
         function pan.home()
             pan.z = 1
             local function st(v) return M.status(v.node.key) end
-            local now = filter(view.tree, function(v) local s = st(v); return s.state == 'building' or s.state == 'open' or s.poor end)
+            local now = filter(view.tree, function(v) local s = st(v); return s.state == 'building' or s.state == 'open' or s.poor or s.short end)
             if #now == 0 then now = filter(view.tree, function(v) return st(v).state == 'built' end) end
             if #now == 0 and #view.tree > 0 then now = {view.tree[#view.tree]} end
             if #now == 0 then pan.clamp(); return end
@@ -1231,6 +1302,7 @@ function UI.make_panel(env)
     end
 
     function fillInfo(v)
+        if v.info.lazy then v.info.build() end
         if not v.info.dirty then return end
         v.info.dirty = false
         local room = v.info.tip.parent.parent:Height() - 8
@@ -1275,10 +1347,12 @@ function UI.make_panel(env)
         placeTips()
         for _, v in ipairs(view.tree) do
             local st = M.status(v.node.key)
-            local poor = st.state == 'locked' and st.poor
-            local greyed = (st.state == 'locked' and not poor) or st.state == 'unknown'
-            local built, building = st.state == 'built', st.state == 'building'
-            if built then v.button:SetImageColour(255, 255, 255, 255)
+            -- short of gold or of points: as a slot that can be ordered, its price red; being dismantled: as built, in the locked slot's grey
+            local poor = st.state == 'locked' and (st.poor or st.short) and true or false
+            local going = st.state == 'dismantling'
+            local greyed = (st.state == 'locked' and not poor) or st.state == 'unknown' or going
+            local built, building = st.state == 'built' or going, st.state == 'building'
+            if built and not going then v.button:SetImageColour(255, 255, 255, 255)
             elseif greyed then v.button:SetImageColour(255, 255, 255, 0x80)
             else v.button:SetImageColour(255, 255, 255, 0xB4) end
             v.button:ShaderTechniqueSet(greyed and 'set_greyscale_t0' or 'normal_t0')
@@ -1288,20 +1362,30 @@ function UI.make_panel(env)
             v.hover:SetVisible(false); v.hoverSelected:SetVisible(false)
             v.button:SetHoverChild(selected and v.hoverSelected or v.hover)
             v.check:SetVisible(built)
-            v.padlock:SetVisible(greyed)
+            v.padlock:SetVisible(greyed and not going)
             v.constructing:SetVisible(false)        -- question V5: no clock-wipe in the game
             v.turnsBanner:SetVisible(building)
+            -- a cancel that waits for the game's own window: the banner dimmed until the player answers there
+            v.turnsBanner:SetImageColour(255, 255, 255, (building and st.asked) and 0x80 or 255)
             v.turns:SetVisible(building)
             v.turns:SetStateText(building and str(st.turns) or '')
             if v.level then v.level:SetVisible(not building) end
             local row = M.level(v.node.key)
+            -- the price as the game takes it (M.cost, M.dev); the gold red when the treasury cannot pay it
+            local cost, dev = row and M.cost(v.node.key) or 0, row and M.dev(v.node.key) or 0
+            local goldShort = poor and M.game.treasury() < cost
             v.cost:SetVisible(row ~= nil and not built and not building)
-            v.costRed:SetVisible(poor and true or false)
-            v.costText:SetStateText(row and (poor and ('[[col:red]]' .. str(row.cost) .. '[[/col]]') or str(row.cost)) or '')
+            v.costRed:SetVisible(goldShort)
+            v.costText:SetStateText(row and (goldShort and ('[[col:red]]' .. str(cost) .. '[[/col]]') or str(cost)) or '')
+            -- the points by the slot, as the game's: red when the horde has too few
+            v.dev:SetVisible(row ~= nil and dev > 0 and not built and not building)
+            v.devText:SetStateText(dev > 0 and (st.short and ('[[col:red]]' .. str(dev) .. '[[/col]]') or str(dev)) or '')
             local reason = M.reason(v.node.key)
+            local price = str(cost) .. ' золота' .. (dev > 0 and (' и ' .. str(dev) .. ' ед. ' .. M.POINTS) or '')
             local note = ''
-            if st.state == 'open' then note = 'Щелчок — заказать: ' .. str(row.cost) .. ' золота, ' .. turnsText(row.turns) .. '.'
-            elseif building then note = 'Строится, осталось ' .. turnsText(st.turns) .. '. Щелчок — отменить заказ, ' .. str(row.cost) .. ' золота вернутся.' end
+            if st.state == 'open' then note = 'Щелчок — заказать: ' .. price .. ', ' .. turnsText(row.turns) .. '.'
+            elseif building and st.asked then note = 'Строится, осталось ' .. turnsText(st.turns) .. '. Отмена ждёт вашего ответа в окне игры.'
+            elseif building then note = 'Строится, осталось ' .. turnsText(st.turns) .. '. Щелчок — отменить заказ, ' .. price .. ' вернутся.' end
             local i = v.node.row.info
             v.info.content = {title = i.title, chain = '', description = i.description, effects = i.effects, opens = i.opens, army = i.army, reason = reason, note = note}
             v.info.dirty = true
@@ -1323,7 +1407,7 @@ function UI.make_panel(env)
     end
 
     -- the unit's panel beside the choice (panel.js placeUnitInfo)
-    local function placeUnitInfo(c, slot)
+    function placeUnitInfo(c, slot)
         local frm = slot.info.panel.parent
         local F = {w = frm:Width(), h = frm:Height()}
         local px, py = view.sheet.x + c.pick.x, view.sheet.y + c.pick.y
@@ -1345,7 +1429,8 @@ function UI.make_panel(env)
         local shown, now, order, options, standing, ordered, nobody = st.place, st.now, st.order, st.options, st.standing, st.ordered, st.nobody
         c.area:SetVisible(shown)
         if not shown then c.open = false end
-        c.pick:SetVisible(shown and c.open)
+        if shown and c.open then c.buildPick() end
+        if c.pick then c.pick:SetVisible(shown and c.open) end
         paintCrewLayers({empty = c.empty, layers = c.layers, sketches = c.sketches}, g, c.spec.hides_part and view.layers[c.spec.hides_part])
         local tag = ordered and 'wait' or (nobody and 'plus' or 'swap')
         local fresh = shown and includes(M.news_places(), g)
@@ -1362,8 +1447,11 @@ function UI.make_panel(env)
         end
         c.area:SetTooltipText(tip, true)
         for _, slot in ipairs(c.slots) do
-            local o = find(options, function(x) return x.key == slot.key end)
+            local o, idx = nil, 0
+            for n, x in ipairs(options) do if x.key == slot.key then o, idx = x, n - 1 end end
             local will = M.crew_preview(g, o.key)
+            -- the kinds in the order M.crew_options gives now: the window is built once and kept, and a building that came to stand changes the order
+            at(slot.hit, c.slotAt.x + idx * c.slotAt.w, c.slotAt.y)
             slot.selected:SetVisible(o.key == now)
             slot.padlock:SetVisible(not o.unlocked)
             slot.turnsBanner:SetVisible(o.key == order)
@@ -1384,9 +1472,10 @@ function UI.make_panel(env)
                 local dyn = unitDyn(g, o.key, o)
                 if will.bad then dyn.reason = will.text elseif will.kind == 'cancelled' then dyn.state = will.text end
                 slot.info.set(dyn)
-                placeUnitInfo(c, slot)
+                if not slot.info.lazy then placeUnitInfo(c, slot) end
             end
         end
+        if not c.foot then return end
         local upkeep, nextU = M.crew_upkeep(), M.crew_upkeep_next()
         c.foot:SetStateText('Содержание экипажа: ' .. str(upkeep) .. ' за ход' .. (nextU ~= upkeep and (' → ' .. str(nextU)) or ''))
     end
@@ -1412,8 +1501,17 @@ function UI.make_panel(env)
     end
 
     local function refresh()
+        for _, g in ipairs(view.area_order) do local a = view.crewAreas[g]; if a.open then a.buildPick() end end
         local gold = M.game.treasury()
         view.gold:SetStateText(gold < 0 and ('[[col:red]]' .. str(gold) .. '[[/col]]') or str(gold))
+        -- the points 18 after the treasury's number (made after the treasury's box, they lie over its empty right part)
+        local goldW = max(1, width(view.gold))
+        local points = M.points()
+        view.pointsIcon:SetVisible(points ~= nil)
+        view.points:SetVisible(points ~= nil)
+        view.points:SetStateText(points ~= nil and str(points) or '')
+        at(view.pointsIcon, 54 + goldW + 18, 18)
+        at(view.points, 54 + goldW + 18 + 32, 14)
         local ship = view.tab == 'ship'
         for _, k in ipairs({'ship', 'tree'}) do
             local t = view.tabs[k]
@@ -1504,7 +1602,7 @@ function UI.make_panel(env)
             if st.state == 'open' then M.order(key)
             elseif st.state == 'building' then M.cancel(key)
             elseif st.state == 'built' and view.demolishShown and was ~= key then view.options = key
-            elseif st.state == 'locked' or st.state == 'unknown' then M.refuse(key); denySlot(v) end
+            elseif st.state == 'locked' or st.state == 'unknown' or st.state == 'dismantling' then M.refuse(key); denySlot(v) end
             view.pan.show(v)
         end
         if view.onSelect then view.onSelect() end
@@ -1595,6 +1693,12 @@ function UI.make_panel(env)
     image(frame, 'gold_icon', K.D .. 'icon_treasury.png', 22, 18, 26, 26)
     view.gold = text(frame, 'gold', 'text_head', 54, 14, 160, 34, '')
     view.gold:SetTooltipText('Казна фракции', true)
+    -- the horde's development points beside it (panel.js): the icon of the game's texts and the number, placed after the treasury by refresh()
+    local pointsTip = 'Текущий ' .. M.POINTS_NOM
+    view.pointsIcon = image(frame, 'points_icon', K.D .. 'icon_pop_surplus.png', 0, 18, 26, 26)
+    view.pointsIcon:SetTooltipText(pointsTip, true)
+    view.points = text(frame, 'points', 'text_head', 0, 14, 60, 34, '')
+    view.points:SetTooltipText(pointsTip, true)
     view.tabs = {}
     for i, pair in ipairs({{'ship', 'Корабль'}, {'tree', 'Постройки'}}) do
         view.tabs[pair[1]] = makeButton(frame, K.TAB .. pair[1], tabs_x + (i - 1) * (tab_w + tab_gap), 11, tab_w, 44, pair[2])
@@ -1700,7 +1804,24 @@ function UI.make_panel(env)
 
     view.root = backdrop
     view.scale = scale
-    return {view = view, refresh = refresh, click = click, escape = function() local done = escape(); if done then refresh() end return done end}
+    -- every window made on first use made now, as the page makes them with the panel (the caller refreshes after)
+    local function buildAll()
+        for _, v in ipairs(view.tree or {}) do if v.info.lazy then v.info.build() end end
+        for _, c in ipairs(view.crew or {}) do if c.info.lazy then c.info.ensure() end end
+        for _, g in ipairs(view.area_order) do
+            local a = view.crewAreas[g]
+            a.buildPick()
+            for _, slot in ipairs(a.slots) do if slot.info and slot.info.lazy then slot.info.ensure() end end
+        end
+    end
+    -- the panel closed and kept to be shown again (src/tww3_mtb_ship_screen.lua): what a click opened goes, as when it was made anew
+    local function reset()
+        for _, g in ipairs(view.area_order) do view.crewAreas[g].open = false end
+        view.options = nil
+        view.hoverSlot = nil
+    end
+    return {view = view, refresh = refresh, click = click, escape = function() local done = escape(); if done then refresh() end return done end,
+            build_all = buildAll, reset = reset}
 end
 
 return UI

@@ -60,6 +60,7 @@ async function walk(scale) {
         const settle = async () => { await sleep(300); await b.until(`[...document.querySelectorAll('#screen img')].filter(i => i.offsetParent !== null).every(i => i.complete)`, 15000).catch(() => {}); await sleep(250); };
 
         await button('#build_all');
+        await b.eval('mtb.game.dev = 1000; mtb.panel.refresh(); 1');        // development points enough: this walk is about the crews, not the points (ingame_walk)
         await settle();
         let ledger = await gold();
         for (const g of GROUPS) {
@@ -165,6 +166,11 @@ async function walk(scale) {
             await b.eval(`(() => { const p = mtb.panel.view.pan, v = mtb.panel.view.tree[${i}]; p.x = p.w / 2 - v.button.x - 37; p.y = p.h / 2 - v.button.y - 37; p.clamp(); })()`);
             await clickId('mtb_tree_node_' + i);
             await clickId('mtb_ship_demolish');
+            // the game takes a demolished building at the end of the turn (probe 14.11): the next level down only after it; the turn's upkeep of
+            // what stands then (the nests' crew is gone with the building before the turn's start)
+            await button('#end_turn');
+            await settle();
+            ledger -= await b.eval('mtb.M.crew_upkeep()');
         }
         check(`${tag} the nests demolished: their place, its crew and the lookouts are gone, nothing paid back`, !(await shown('mtb_crew_area_cupolas')) && !(await layerShown('lookouts_ink'))
             && await b.eval(`mtb.M.crew('cupolas')`) === 'empty' && await gold() === ledger, {msg: await b.eval('mtb.M.message()'), gold: await gold(), ledger});

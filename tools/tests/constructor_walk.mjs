@@ -639,6 +639,7 @@ try {
     const gold = async v => { const q2 = await debugRect(b, `.gold_quick[data-gold="${v}"]`); await b.click(q2.x, q2.y); };
     const status = name => b.eval(`(() => { const v = ${gm}.tree.find(v => v.node.name === ${JSON.stringify(name)}); return mtb.M.status(v.node.key); })()`);
     await gold(6000);
+    await b.eval('mtb.game.dev = 100; mtb.panel.refresh(); 1');      // development points enough: here the constructor's tree is played, the points are ingame_walk's
     await order('Заготовка под корабль'); await endTurn();
     check('game: the first hull built', (await status('Заготовка под корабль')).state === 'built');
     await order('Прочный корпус'); await endTurn();
@@ -729,7 +730,7 @@ async function walkCaps() {
     const selectInGame = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(150); return n; };
     const buildTo = async name => { await selectInGame(name); const r = await debugRect(b, '#build_to'); await b.click(r.x, r.y); await sleep(200); };
     // «Сбросить» reloads the page: the address still says ?mode=constructor, so the game is chosen again
-    const resetGame = async () => { const r = await debugRect(b, '#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
+    const resetGame = async () => { const r = await debugRect(b, '#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); await b.eval('mtb.game.dev = 100; mtb.panel.refresh(); 1'); };
     const visibleText = id => b.eval(`(() => { const t = [...document.querySelectorAll('#screen [data-id="${id}"]')].find(x => x.offsetParent !== null); return t ? t.textContent : ''; })()`);
     const infoText = () => b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); return t ? [...t.querySelectorAll('[data-id]')].filter(x => x.offsetParent !== null && x.querySelector('.t')).map(x => x.textContent).join(' | ') : ''; })()`);
 
@@ -1052,7 +1053,7 @@ async function walkChains() {
     };
     const selectInGame = async name => { const n = await inSight(name); await b.click(n.x, n.y); await sleep(150); };
     const buildTo = async name => { await selectInGame(name); const r = await debugRect(b, '#build_to'); await b.click(r.x, r.y); await sleep(250); };
-    const resetGame = async () => { const r = await debugRect(b, '#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); };
+    const resetGame = async () => { const r = await debugRect(b, '#reset_all'); await b.click(r.x, r.y); await sleep(500); await b.until('!!(window.mtb && mtb.panel && mtb.panel.view.tree && mtb.editor)', 15000).catch(() => {}); await sleep(800); if (await b.eval('document.body.dataset.mode') !== 'game') await toGame(); await b.eval('mtb.game.dev = 100; mtb.panel.refresh(); 1'); };
     const infoText = () => b.eval(`(() => { const t = [...document.querySelectorAll('#screen .tooltip_frame')].find(x => x.offsetParent !== null); return t ? [...t.querySelectorAll('[data-id]')].filter(x => x.offsetParent !== null && x.querySelector('.t')).map(x => x.textContent).join(' | ') : ''; })()`);
     const ammoOf = () => b.eval(`(async () => { const FX = await import('/js/effects_model.mjs'), C = await import('/js/crew_model.mjs'); const L = mtb.panel.view.data; return FX.crewBonuses(C.crewSources(L, k => mtb.game.has_building(k), k => mtb.game.standing(k)), 'rifles').ammo; })()`);
     const btnIn = async (sel, label) => { const r = await at(`[...document.querySelectorAll(${JSON.stringify(sel)})].find(x => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(label)}))`); if (!r) throw new Error('no ' + label); await b.click(r.x, r.y); await sleep(220); };
@@ -1238,6 +1239,7 @@ async function walkChains() {
     await selectInGame('Таверна');
     const dem = await gameComp('mtb_ship_demolish');
     await b.click(dem.x, dem.y); await sleep(250);
+    { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(250); }      // the game takes it at the end of the turn (probe 14.11)
     a = await ammoOf();
     const firstKey = await b.eval(`mtb.panel.view.tree.find(t => t.node.name === 'Пивной чертог').node.key`);
     check('chains: game: II demolished: I stands again and its set acts (+12 %), the pirates open', a.pct === 12 && await b.eval(`mtb.game.standing(${JSON.stringify(firstKey)})`) && await pir(), a);

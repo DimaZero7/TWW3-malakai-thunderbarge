@@ -138,6 +138,7 @@ local function panel_state(keys)
     out.foot = v.message and v.message:GetStateText() or nil
     out.foot_tooltip = v.message and v.message.tooltip or nil
     out.gold_text = v.gold and v.gold:GetStateText() or nil
+    out.points_text = (v.points and v.points.visible) and v.points:GetStateText() or nil
     out.mark = v.tabMark and v.tabMark.visible or nil
     out.raze = v.raze and v.raze.visible or nil
     out.fit_label = v.fitBtn and v.fitBtn.label:GetStateText() or nil
@@ -152,6 +153,10 @@ local function panel_state(keys)
     local l = level_state(k)
     if t then l.node = n; l.check = t.check.visible; l.turns_banner = t.turnsBanner.visible; l.turns_text = t.turns:GetStateText(); l.cost_visible = t.cost.visible
       l.info_visible = t.info.tip.visible
+      l.padlock = t.padlock.visible
+      l.dev_visible = t.dev and t.dev.visible or nil
+      l.dev_text = t.devText and t.devText:GetStateText() or nil
+      l.cost_text = t.costText:GetStateText()
     end
     out.levels[k] = l
   end
@@ -320,8 +325,7 @@ end
 --   engine.measure_text  'game' (the module's: TextDimensions, the characters when it gives 0) | 'chars' (never the game's measure)
 --   engine.tint          'auto' (the module's: SetCurrentStateImageColour, else the alpha) | 'opacity' (the alpha only)
 --   assumed.queue_completions   boolean
---   assumed.construction        'record_first' (the module's: BuildingLevelRecordContext.Key first) | 'level_first' (BuildingLevelContext.Key first)
---   assumed.after_dismantle_ms  the delay before the adapter reads the slot again after its Dismantle (the module's: 200)
+--   assumed.dismantle_check_ms  the delay before the adapter reads the slot again after its Dismantle (a dismantle the game executes at once)
 function I.configure(a)
   local s = screen()
   local mods = s and s.modules and s.modules()
@@ -338,31 +342,65 @@ function I.configure(a)
     E.measure_text = function(_, text, size, w) return own({TextDimensions = function() return 0 end}, text, size, w) end
     set['engine.measure_text'] = 'chars'
   elseif e.measure_text == 'game' and T.own_measure then E.measure_text = T.own_measure; set['engine.measure_text'] = 'game' end
+  -- the calls into the game's UIComponent counted by method (ENGINE.profile: read before the first open, when the wrapper is made)
+  if e.profile ~= nil then E.profile = e.profile and true or false; set['engine.profile'] = E.profile end
   if e.tint == 'opacity' then E.tint = function(uic, r, g, b, al) pcall(function() uic:SetCurrentStateImageOpacity(0, al) end) end; set['engine.tint'] = 'opacity' end
   if as.queue_completions ~= nil then A.queue_completions = as.queue_completions and true or false; set['assumed.queue_completions'] = A.queue_completions end
-  if as.construction == 'level_first' then
-    A.construction = function(cqi, n)
-      local base = 'MilitaryForceContext.HordeContext.BuildingSlotList.At(' .. n .. ').ConstructionItemContext'
-      local okv, valid = pcall(common.get_context_value, 'CcoCampaignCharacter', cqi, 'IsContextValid(' .. base .. ')')
-      if not okv or not valid then return nil end
-      local key
-      for _, x in ipairs({'.BuildingLevelContext.Key', '.BuildingLevelRecordContext.Key'}) do
-        local ok, v = pcall(common.get_context_value, 'CcoCampaignCharacter', cqi, base .. x)
-        if ok and type(v) == 'string' and v ~= '' then key = v; break end
-      end
-      local okt, turns = pcall(common.get_context_value, 'CcoCampaignCharacter', cqi, base .. '.TurnsToCompletion')
-      if not key then return nil end
-      return {key = key, turns = (okt and tonumber(turns)) or 1}
-    end
-    set['assumed.construction'] = 'level_first'
-  end
-  if as.after_dismantle_ms then
-    local ms = as.after_dismantle_ms
-    A.after_dismantle = function(fn) core:get_tm():real_callback(fn, ms, 'mtb_ship_dismantled') end
-    set['assumed.after_dismantle_ms'] = ms
-  end
-  return {set = set, engine_now = {clips = E.clips, wheel = E.wheel, building_frame = E.building_frame, scale_by_layout = E.scale_by_layout},
+  if as.dismantle_check_ms then A.dismantle_check_ms = as.dismantle_check_ms; set['assumed.dismantle_check_ms'] = A.dismantle_check_ms end
+  return {set = set, engine_now = {clips = E.clips, wheel = E.wheel, building_frame = E.building_frame, scale_by_layout = E.scale_by_layout, profile = E.profile},
     assumed_now = {queue_completions = A.queue_completions}}
+end
+
+-- ENGINE.profile's table of the wrapper (calls and seconds by method of the game's UIComponent), copied; the difference from a copy taken before
+local function profile_now()
+  local s = screen()
+  local P = s and s.ui and s.ui.profile
+  if not P then return nil end
+  local out = {calls = {}, seconds = {}}
+  for k, n in pairs(P.calls) do out.calls[k] = n end
+  for k, n in pairs(P.seconds) do out.seconds[k] = n end
+  return out
+end
+local function profile_since(before)
+  local now = profile_now()
+  if not now then return nil end
+  local out = {calls = {}, seconds = {}, total_calls = 0, total_seconds = 0}
+  for k, n in pairs(now.calls) do
+    local d = n - ((before and before.calls[k]) or 0)
+    if d > 0 then
+      out.calls[k] = d
+      out.seconds[k] = now.seconds[k] - ((before and before.seconds[k]) or 0)
+      out.total_calls = out.total_calls + d
+      out.total_seconds = out.total_seconds + out.seconds[k]
+    end
+  end
+  return out
+end
+function I.profile_mark() T.profile_mark = profile_now(); return {on = T.profile_mark ~= nil} end
+function I.profile_read() return {profile = profile_since(T.profile_mark), on = T.profile_mark ~= nil} end
+
+-- the mod log's line of the wrapper about Resize(w, h, false) (src/tww3_mtb_ship_uic.lua: written once, at the first resize of a parent with
+-- children) and the answer it keeps (ENGINE.children_keep)
+function I.resize_log()
+  local s = screen()
+  local mods = s and s.modules and s.modules()
+  local lines = {}
+  local okf, f = pcall(function() return io.open('tww3_mtb_log.txt', 'r') end)
+  if okf and f then
+    for line in f:lines() do if sfind(line, 'Resize(', 1, true) then lines[#lines + 1] = ssub(line, 1, 400) end end
+    f:close()
+  end
+  return {children_keep = mods and mods.Uic.ENGINE.children_keep, lines = lines, log_read = (okf and f ~= nil) and true or false}
+end
+
+-- every window made at once (the panel's own build_all), as the page makes them: the dumps compare against the page's
+function I.build_all()
+  local s = screen()
+  if not (s and s.panel and s.panel.build_all) then return {built = false} end
+  local before = s.ui.count
+  s.panel.build_all()
+  s.panel.refresh()
+  return {built = true, made = s.ui.count - before, count = s.ui.count}
 end
 
 function I.open()
@@ -370,7 +408,8 @@ function I.open()
   if not s then error('no screen loaded') end
   local t0 = clock()
   local ok, err = s.open()
-  local out = {ok = ok, err = err and flat(err) or nil, seconds = clock() - t0, build_seconds = s.build_seconds, root = root_info(), how = T.how}
+  local out = {ok = ok, err = err and flat(err) or nil, seconds = clock() - t0, build_seconds = s.build_seconds, root = root_info(), how = T.how, reused = s.reused,
+    profile = profile_since(nil)}
   if ok then
     out.count = s.ui.count
     out.measured = s.ui.ENGINE.measured       -- the texts the layout measured by the game's TextDimensions / by the characters / empty
@@ -416,9 +455,22 @@ end
 function I.dump_begin(a)
   local s = screen()
   if not (s and s.ui and s.root) then error('the panel is not open') end
+  -- every window made first, as the page's dumps have them (a.build_all false: as the game has them now)
+  local made = nil
+  if a.build_all ~= false and s.panel and s.panel.build_all then local n = s.ui.count; s.panel.build_all(); s.panel.refresh(); made = s.ui.count - n end
   local t0 = clock()
   T.rows = s.ui.dump(s.root, a.live ~= false)
-  return {rows = #T.rows, seconds = clock() - t0, root = root_info(), state = panel_state(a.keys)}
+  -- only the rows of some components (a.only: a path ends with one of them or lies under it): a slot's look, cheap to fetch
+  if a.only and #a.only > 0 then
+    local keep = {}
+    for _, r in ipairs(T.rows) do
+      for _, p in ipairs(a.only) do
+        if ssub(r.path, -#p) == p or sfind(r.path, p .. '/', 1, true) then keep[#keep + 1] = r; break end
+      end
+    end
+    T.rows = keep
+  end
+  return {rows = #T.rows, seconds = clock() - t0, root = root_info(), state = panel_state(a.keys), made_by_build_all = made}
 end
 function I.dump_page(a)
   local out = {}
@@ -444,7 +496,7 @@ function I.nodes()
   if not v then      -- the panel closed: the levels of the config, without their components
     for _, row in ipairs(mod('tww3_mtb_ship_config').levels) do
       local st = s.M.status(row.key)
-      out[#out + 1] = {index = -1, key = row.key, name = row.name, cost = row.cost, turns = row.turns, state = st.state, poor = st.poor, chain = row.chain,
+      out[#out + 1] = {index = -1, key = row.key, name = row.name, cost = row.cost, turns = row.turns, state = st.state, poor = st.poor, short = st.short, dev = row.dev, chain = row.chain,
         hull = sfind(row.key, 'airship_hull_', 1, true) ~= nil, requires = row.requires}
     end
     return {nodes = out, closed = true}
@@ -452,7 +504,7 @@ function I.nodes()
   for i, t in ipairs(v and v.tree or {}) do
     local row = s.M.level(t.node.key) or {}
     local st = s.M.status(t.node.key)
-    out[#out + 1] = {index = i - 1, key = t.node.key, name = row.name, cost = row.cost, turns = row.turns, state = st.state, poor = st.poor, chain = row.chain,
+    out[#out + 1] = {index = i - 1, key = t.node.key, name = row.name, cost = row.cost, turns = row.turns, state = st.state, poor = st.poor, short = st.short, dev = row.dev, chain = row.chain,
       hull = sfind(t.node.key, 'airship_hull_', 1, true) ~= nil, requires = row.requires}
   end
   return {nodes = out}
@@ -471,7 +523,15 @@ function I.snapshot(a)
     local okr, r = pcall(PP.slot_read, sl.i)
     if okr and r.item == true then queue[#queue + 1] = {key = r.item_level or r.item_level2, turns_left = r.turns, slot = sl.i} end
   end
-  return {turn = s.game.turn(), gold = s.game.treasury(), built = built, queue = queue, saved = Ship.save_state(s.M, keep), keep = keep, root = root_info(),
+  -- the horde's development points and the adapter's marks of a building being dismantled (src/tww3_mtb_game.lua), for the offline panel
+  local dismantles, asked = {}, nil
+  for _, row in ipairs(mod('tww3_mtb_ship_config').levels) do
+    if s.game.dismantling and s.game.dismantling(row.key) then dismantles[#dismantles + 1] = row.key end
+    if s.game.cancel_asked and s.game.cancel_asked(row.key) then asked = row.key end
+  end
+  for _, q in ipairs(queue) do q.dev = s.M.level(q.key) and s.M.dev(q.key) or 0 end
+  return {turn = s.game.turn(), gold = s.game.treasury(), dev = s.game.development_points and s.game.development_points() or nil, dismantles = dismantles, asked = asked,
+    built = built, queue = queue, saved = Ship.save_state(s.M, keep), keep = keep, root = root_info(),
     hovered = s.ui and s.ui.hovered and s.ui.hovered.id or nil}
 end
 
@@ -497,6 +557,16 @@ function I.hover(a)
   local v = view()
   for _, t in ipairs(v and v.tree or {}) do
     if t.info.tip.visible then out.info = {node = t.node.key, x = t.info.tip.x, y = t.info.tip.y, w = t.info.tip.w, h = t.info.tip.h} end
+  end
+  -- the lit links of the slot under the mouse: the pieces shown, the rings of what it needs and of what it opens
+  if v and v.litPool then
+    local lit, ins, outs = 0, 0, 0
+    for _, p in ipairs(v.litPool) do if p.visible then lit = lit + 1 end end
+    for _, t in ipairs(v.tree or {}) do
+      if t.markIn.visible then ins = ins + 1 end
+      if t.markOut.visible then outs = outs + 1 end
+    end
+    out.links = {lit = lit, needed = ins, opened = outs}
   end
   for _, cr in ipairs(v and v.crew or {}) do
     if cr.info.panel.visible then out.unit = {group = cr.group, option = cr.option, x = cr.info.panel.x, y = cr.info.panel.y, w = cr.info.panel.w, h = cr.info.panel.h} end
@@ -533,12 +603,16 @@ end
 function I.closed()
   local s = screen()
   local found = find_uicomponent(core:get_ui_root(), ROOT_ID)
-  return {is_open = s and s.is_open() or false, root_left = found and true or false, keep = s and s.keep}
+  -- the panel is built once and hidden when closed (its root stays: docs/tools-and-work-plan.md); left on the screen it must not be
+  local okv, vis = pcall(function() return found and found:VisibleFromRoot() end)
+  return {is_open = s and s.is_open() or false, root_left = found and true or false, root_visible = okv and vis == true, keep = s and s.keep}
 end
 function I.reopen()
   local s = screen()
+  local before = profile_now()
   local ok, err = s.open()
-  return {ok = ok, err = err and flat(err) or nil, build_seconds = s.build_seconds, state = panel_state()}
+  -- shown again (S.reused: the panel kept from the last open) or built anew, its seconds and the calls into the game's UIComponent it took
+  return {ok = ok, err = err and flat(err) or nil, build_seconds = s.build_seconds, reused = s.reused, profile = profile_since(before), state = panel_state()}
 end
 
 -- Esc: the callback the panel stole the key with
@@ -632,11 +706,97 @@ local function dialog()
   if not db then return nil end
   return db, find_uicomponent(db, 'button_tick'), find_uicomponent(db, 'button_cancel')
 end
+-- present: a component of that name exists; open: it is on the screen (VisibleFromRoot). Session 14.11: a dialogue_box was present while no window
+-- was on the screen, and the demolish step was skipped for it: only an open one counts. Its text by the children names the game's dialogs use.
 function I.dialog()
   local db, tick, cancel = dialog()
-  if not db then return {present = false} end
+  if not db then return {present = false, open = false} end
   local okv, vis = pcall(function() return db:VisibleFromRoot() end)
-  return {present = true, visible = okv and vis or nil, tick = tick and true or false, cancel = cancel and true or false}
+  local okw, own = pcall(function() return db:Visible() end)
+  local text
+  for _, name in ipairs({'DY_text', 'dy_text', 'text', 'tx_text'}) do
+    local okt, t = pcall(function() local c = find_uicomponent(db, name); return c and c:GetStateText() end)
+    if okt and type(t) == 'string' and t ~= '' then text = flat(t); break end
+  end
+  return {present = true, open = okv and vis == true, visible_from_root = okv and tostring(vis) or ('ERR ' .. flat(vis)), visible = okw and tostring(own) or nil,
+    text = text, tick = tick and true or false, cancel = cancel and true or false}
+end
+-- The advisor (the game's own panel top left: «Начнем же!...»): dismissed by the game's own function before a picture
+function I.advisor_off()
+  local ok, err = pcall(function() cm:dismiss_advice() end)
+  return {dismissed = ok, err = (not ok) and flat(err) or nil}
+end
+
+-- ---------------------------------------------------------------- what can refuse an order ----------------------------------------------------------------
+local function rkey(key) return 'DatabaseRecordContext("CcoBuildingLevelRecord", "' .. key .. '")' end
+local function v(r) if type(r) == 'table' then return r.v end return nil end
+local function selected()
+  local ok, s = pcall(function() return cm:get_campaign_ui_manager():get_char_selected() end)
+  return ok and tostring(s) or ('ERR ' .. flat(s))
+end
+local function points() return v(PP.char('MilitaryForceContext.HordeContext.DevelopmentPoints')) end
+-- everything the game reads about an order of key into slot n (n: the adapter's slot when the screen is loaded, else the first empty), and the
+-- force around it: gold, points, the hull's level, the slot, the selection
+function I.gates(a)
+  local s = screen()
+  local n = a.slot
+  if n == nil and s and s.game and s.game.slot_for then n = s.game.slot_for(a.key) end
+  if n == nil then n = PP.first_empty() end
+  local R = rkey(a.key)
+  local out = {key = a.key, slot = n, gold = cm:get_faction(FACTION):treasury(), points = points(), selected = selected(),
+    hull_level = v(PP.char('MilitaryForceContext.HordeContext.PrimarySlotContext.BuildingContext.BuildingLevelRecordContext.Level')),
+    cost = v(PP.char(R .. '.CreateCost(this)')), dev = v(PP.char(R .. '.DevelopmentPointCost(this)')),
+    enough = v(PP.char(R .. '.HasEnoughDevelopmentPoints(this)')), afford = v(PP.char(R .. '.CanAfford(this)')),
+    locked_by_level = v(PP.char(R .. '.IsLockedByLevel(this)')), requirement = v(PP.char(R .. '.PrimarySlotBuildingLevelRequirement'))}
+  if n then
+    local S = 'MilitaryForceContext.HordeContext.BuildingSlotList.At(' .. n .. ')'
+    out.active = v(PP.char(R .. '.IsActiveForBuildingBrowser(' .. S .. ')'))
+    out.time = v(PP.char(R .. '.CreateTime(' .. S .. ')'))
+    out.slot_empty = v(PP.char(S .. '.IsEmpty'))
+    out.slot_can_upgrade = v(PP.char(S .. '.CanUpgrade'))
+    local okr, r = pcall(PP.slot_read, n)
+    out.slot_construction = okr and r.item or nil
+  end
+  if s and s.M and s.M.level(a.key) then
+    local st = s.M.status(a.key)
+    out.panel = {state = st.state, why = st.why, short = st.short, poor = st.poor, dev = s.M.dev(a.key), points = s.M.points(), cost = s.M.cost(a.key)}
+  end
+  return out
+end
+-- points and gold given by script, as the probe's setup (cm:add_development_points_to_horde, cm:treasury_mod: probe 14.11 setup, 50 points taken)
+function I.give(a)
+  local before = {points = points(), gold = cm:get_faction(FACTION):treasury()}
+  local okd, ed = true, nil
+  if (a.dev or 0) > 0 then okd, ed = pcall(function() cm:add_development_points_to_horde(PP.malakai():military_force(), a.dev) end) end
+  if (a.gold or 0) > 0 then cm:treasury_mod(FACTION, a.gold) end
+  return {before = before, after = {points = points(), gold = cm:get_faction(FACTION):treasury()}, dev_call = okd, dev_err = (not okd) and flat(ed) or nil}
+end
+function I.points() return {points = points(), gold = cm:get_faction(FACTION):treasury()} end
+-- The panel's verdict on every building against the game's own: the module's status and the game's IsActiveForBuildingBrowser on the slot the
+-- adapter would order it into, with the gates when they disagree. open vs active true, short vs HasEnoughDevelopmentPoints false, poor vs
+-- CanAfford false, locked vs active false: agree; open and active false: the panel offers what the game refuses.
+function I.agree()
+  local s = screen()
+  if not (s and s.M) then error('no screen loaded') end
+  local out, bad = {}, {}
+  for _, row in ipairs(mod('tww3_mtb_ship_config').levels) do
+    local st = s.M.status(row.key)
+    local n = s.game.slot_for(row.key)
+    local R = rkey(row.key)
+    local active = n and v(PP.char(R .. '.IsActiveForBuildingBrowser(MilitaryForceContext.HordeContext.BuildingSlotList.At(' .. n .. '))')) or nil
+    local rec = {key = row.key, state = st.state, why = st.why, slot = n, active = active}
+    local agree
+    if st.state == 'open' then agree = active == true
+    elseif st.state == 'locked' then agree = active ~= true
+    else agree = true end       -- built, building, dismantling: the browser's answer is about another level
+    if not agree then
+      local g = I.gates({key = row.key, slot = n})
+      rec.gates = {enough = g.enough, afford = g.afford, locked_by_level = g.locked_by_level, dev = g.dev, points = g.points, slot_empty = g.slot_empty}
+      bad[#bad + 1] = rec
+    end
+    out[#out + 1] = rec
+  end
+  return {rows = out, disagree = bad, points = points(), gold = cm:get_faction(FACTION):treasury()}
 end
 function I.dialog_answer(a)
   local db, tick, cancel = dialog()
@@ -727,6 +887,17 @@ function I.stand(a)
 end
 
 -- whether the panel would let a level be demolished, against the game's own CanDismantle on its slot (no command is given)
+-- a slot's box on the root (the panel's frame, the tree's window, its pan and zoom: panel.js slotOnFrame), for a close-up of the picture
+function I.slot_box(a)
+  local v = view()
+  local t = v and v.tree and v.tree[a.index + 1]
+  if not t then return {missing = a.index} end
+  local p = v.pan
+  local x = v.frame.x + v.pane.x + p.win.x + p.x + t.button.x * p.z
+  local y = v.frame.y + v.pane.y + p.win.y + p.y + t.button.y * p.z
+  return {x = x, y = y, w = 74 * p.z, h = 74 * p.z, key = t.node.key, root = root_info()}
+end
+
 function I.can_demolish(a)
   local s = screen()
   local d = s.M.can_demolish(a.key)

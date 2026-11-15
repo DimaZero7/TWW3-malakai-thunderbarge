@@ -52,10 +52,11 @@ DEFAULT_LIMIT = 3600
 END_TURN_LIMIT = pp.END_TURN_LIMIT       # the probe's item 12 budget: the same turn end, the same limit
 PAGE = 250                               # rows of a dump per remote call
 # Per step: seconds before the step is cut off (the next one goes on). The open builds ~3800 components (probe item 8 times 1500).
-BUDGET = {"census": 60, "smoke": 120, "requirement": 120, "load": 150, "configure": 30, "frames_closed": 30, "open": 240, "frames_open": 30, "diag": 90,
+BUDGET = {"census": 60, "smoke": 120, "gates_fresh": 60, "requirement": 150, "agree": 120, "agree_after_turn": 120, "load": 150, "configure": 30, "frames_closed": 30, "open": 240, "frames_open": 30, "diag": 90,
           "dump_fresh_tree": 300, "dump_fresh_tree_info": 300, "dump_fresh_ship": 300, "order": 60, "cancel": 60, "order_again": 60, "tabs": 60, "info": 60,
           "unit": 60, "picker": 90, "scroll": 90, "close_reopen": 120, "escape": 60, "save": 60, "opacity": 30, "fit": 120, "demolish": 90, "order_long": 60,
-          "turn": END_TURN_LIMIT + 120, "dump_after_turn": 300, "cancel_previous": 90, "save_final": 60, "simulated": 30, "finish": 60, "battle_orders": 900}
+          "turn": END_TURN_LIMIT + 120, "dump_after_turn": 300, "cancel_previous": 120, "save_final": 60, "simulated": 30, "finish": 60, "battle_orders": 900,
+          "resize_log": 30, "points": 120, "hover_shots": 90}
 RISKY = {"fit": "«Всё дерево»: the binding lays ~3000 components out again at the scale (ENGINE.scale_by_layout): CPU, not bindings",
          "demolish": "the game's Dismantle command on a slot (game state; the building stands until the turn ends)",
          "turn": "the turn end by script (the probe's item 12 way, hard limit END_TURN_LIMIT); cm.treasury_mod and pay_upkeep wrapped during it",
@@ -69,13 +70,14 @@ RISKY = {"fit": "«Всё дерево»: the binding lays ~3000 components out 
 #   engine.wheel          item 6b the game's list template scrolls by the wheel in our layout: True (not used by the panel yet) | False
 #   engine.building_frame item 9  the template fills itself from SetContextObject: True (an experiment, not used by the panel) | False
 #   engine.tint           (no item) SetCurrentStateImageColour raises: 'opacity' | it answers: 'auto'
+#   engine.profile        (no item) the calls into the game's UIComponent counted and timed by method (src/tww3_mtb_ship_uic.lua): the open, the
+#                         reopen and «Всё дерево» say which call makes them slow. On by default for the session; False: no cost at all
 #   assumed.queue_completions  item 12 completions come BEFORE our FactionTurnStart: True | always after it: False (either way the page's order)
-#   assumed.construction  item 12/3 slot reads: item_level (BuildingLevelRecordContext.Key) answers: 'record_first' | only item_level2: 'level_first'
-#   assumed.after_dismantle_ms item 12 the slot is empty right after Dismantle: 200 | it empties a moment later: that delay | only at the next turn: keep
-#                         200 (the panel then says «Снесено» while the game still shows it: a finding of this session's step demolish)
+#   assumed.dismantle_check_ms  the adapter reads the slot again this long after its Dismantle (a dismantle the game would execute at once; the runs
+#                         show it at the turn's end: the module then says «сносится» until the turn start)
 #   session.click / session.hover  item 5 SimulateLClick / SimulateMouseOn reach the panel's listeners: 'simulate' | not: 'direct' (the listener's own function)
-OPTIONS = {"engine.measure_text": None, "engine.clips": None, "engine.wheel": None, "engine.building_frame": None, "engine.tint": None,
-           "assumed.queue_completions": None, "assumed.construction": None, "assumed.after_dismantle_ms": None,
+OPTIONS = {"engine.measure_text": None, "engine.clips": None, "engine.wheel": None, "engine.building_frame": None, "engine.tint": None, "engine.profile": True,
+           "assumed.queue_completions": None, "assumed.dismantle_check_ms": None,
            "session.click": "direct", "session.hover": "direct"}
 DIAG_IMAGES = ["ui/skins/default/icon_cross.png", "ui/skins/default/building_frame_hover.png", "ui/skins/wh_main_dwf_dwarfs/panel_title_large.png",
                "ui/skins/default/slider_vertical_mid.png", "ui/tww3_mtb/web/tree_line.png", "ui/tww3_mtb/backdrop.png"]
@@ -174,6 +176,8 @@ def make_config(options=None):
     cfg = {"made": datetime.now().isoformat(timespec="seconds"), "layouts": layouts, "images": DIAG_IMAGES, "page_states": index["states"],
            "pack": str(PACK), "options": options or dict(OPTIONS), "user_ui_scale": None}
     cfg["req_test"] = requirement_keys()
+    conf = json.loads((REPO / "build" / "tree" / "ship_config.json").read_text(encoding="utf-8"))
+    cfg["nest_key"] = next((r["key"] for r in conf["levels"] if r["name"] == "Вороньи гнёзда" and r["level"] == 0), None)
     try:        # the user's ui_scale (read only; run_game.py keeps it, the game clamps it at small roots)
         import run_battle as rb
         prefs = rb.PREFS.read_bytes().decode("latin-1") if rb.PREFS.exists() else ""
@@ -208,6 +212,7 @@ class ShipSession(pp.Probe):
         self.shots = {}
         self.key = None
         self.abort = None
+        self.gifts = []            # points and gold given by script (ensure), told in the summary
 
     def sleep(self, seconds):
         if self.fake:
@@ -230,12 +235,19 @@ class ShipSession(pp.Probe):
         except (TypeError, ValueError):
             return {"ok": False, "err": "not JSON", "raw": str(row.get("result"))[:2000], "item": name}
 
-    def shoot(self, name):
-        """A picture of the game window and the root it was taken at."""
+    def shoot(self, name, crop=None):
+        """A picture of the game window and the root it was taken at; the game's advisor dismissed first (it covers the panel's top left corner).
+        crop: a box in root units ({x, y, w, h}) the analysis cuts out at the picture's full resolution (<name>_crop.png): a close-up."""
+        if not getattr(self, "advisor_gone", False):
+            a = self.data("advisor_off")
+            self.advisor_gone = bool(a.get("dismissed"))
+            self.advisor = a
         root = self.data("root")
         screen = root.get("screen") or [None, None]
         scale = round(screen[0] / root["w"], 4) if screen[0] and root.get("w") else None     # the UI scale as the game applies it: pixels per root unit
         self.shots[name] = {"root": root, "ui_scale_effective": scale, "user_ui_scale": self.cfg.get("user_ui_scale"), "time": time.strftime("%H:%M:%S")}
+        if crop:
+            self.shots[name]["crop"] = crop
         self.shot(name)
         (self.dir / "shots.json").write_text(json.dumps(self.shots, ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -344,6 +356,15 @@ class ShipSession(pp.Probe):
             args = dict(args, way=(self.cfg.get("options") or OPTIONS).get(f"session.{name}") or "direct")
         return super().data(name, args, wait)
 
+    @staticmethod
+    def profile_text(p, n=6):
+        """The heaviest calls into the game's UIComponent of a profile (ENGINE.profile): method calls / seconds."""
+        if not p:
+            return "no profile (ENGINE.profile off)"
+        top = sorted((p.get("seconds") or {}).items(), key=lambda kv: -kv[1])[:n]
+        return (f"{p.get('total_calls')} calls, {p.get('total_seconds', 0):.3f} s in the game's UIComponent; heaviest: "
+                + ", ".join(f"{k} {p['calls'].get(k)} / {v:.3f} s" for k, v in top))
+
     def sopen(self):
         d = self.data("open", {}, 200)
         if not d.get("ok"):
@@ -356,11 +377,14 @@ class ShipSession(pp.Probe):
         status = "ok" if not m.get("chars") else "differs"
         return status, (f"opened by {d.get('how')}: {d.get('count')} components in {d.get('build_seconds', 0):.2f} s cpu ({d.get('seconds', 0):.2f} s with the call); "
                         f"root {d.get('root')}; texts measured by the game's TextDimensions {m.get('game')}, by the characters {m.get('chars')} "
-                        f"(0 measured: the layout used the estimate), empty {m.get('empty')}; tab {d['state'].get('tab')}; foot «{d['state'].get('foot')}»"), d
+                        f"(0 measured: the layout used the estimate), empty {m.get('empty')}; tab {d['state'].get('tab')}; foot «{d['state'].get('foot')}»; "
+                        f"header points «{d['state'].get('points_text')}»; reused {d.get('reused')}; PROFILE: {self.profile_text(d.get('profile'))}"), d
 
     # -- b. a dump, paged, written to the run folder
-    def dump(self, name, keys=None):
-        head = self.data("dump_begin", {"live": True, "keys": keys or []}, 120)
+    def dump(self, name, keys=None, only=None, look=None):
+        """The live panel's rows (every window made first: the panel's build_all, as the page's dumps); only: the rows of some components
+        (a slot's look); look: what the analysis compares them with (the page's state and its slot)."""
+        head = self.data("dump_begin", {"live": True, "keys": keys or [], "only": only or []}, 120)
         rows = []
         while len(rows) < head["rows"]:
             page = self.data("dump_page", {"from": len(rows) + 1, "n": PAGE}, 60)
@@ -368,7 +392,8 @@ class ShipSession(pp.Probe):
                 break
             rows += page["rows"]
         snap = self.data("snapshot", {}, 30)
-        out = {"name": name, "root": head.get("root"), "state": head.get("state"), "snapshot": snap, "components": rows, "seconds": head.get("seconds")}
+        out = {"name": name, "root": head.get("root"), "state": head.get("state"), "snapshot": snap, "components": rows, "seconds": head.get("seconds"),
+               "made_by_build_all": head.get("made_by_build_all"), "only": only or None, "look": look}
         (self.dir / f"dump_{name}.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
         return out
 
@@ -383,12 +408,79 @@ class ShipSession(pp.Probe):
                 {"rows": len(d["components"]), "root": d["root"], "file": f"dump_{name}.json"}
         return fn
 
+    # -- the wrapper's line about Resize(w, h, false) in the mod's log, and the answer it keeps
+    def sresize_log(self):
+        d = self.data("resize_log")
+        lines = d.get("lines") or []
+        return ("ok" if lines else "info"), (f"ENGINE.children_keep {d.get('children_keep')} (true: Resize(w, h, false) keeps the children's sizes; false: the wrapper "
+                                             f"gives them back after each resize); the mod log read {d.get('log_read')}; its lines: {lines[-3:] or 'none'}"), d
+
+    def slot_look(self, name, node, page_state, title):
+        """A slot's look as the game draws it: a close-up picture, its building window, and its components dumped for the analysis to compare
+        with the page's slot in the same state (page_state: build/ui_dump/<state>.json, its slot the one its actions hover)."""
+        i = node["index"]
+        box = self.data("slot_box", {"index": i})
+        crop = {"x": box.get("x", 0) - 60, "y": box.get("y", 0) - 50, "w": (box.get("w") or 74) + 200, "h": (box.get("h") or 74) + 110} if "x" in box else None
+        self.data("hover", {"id": "frame"})
+        self.sleep(0.4)
+        self.shoot(f"ss_{name}", crop)
+        h = self.data("hover", {"id": f"mtb_tree_node_{i}", "keys": [node["key"]]})
+        self.sleep(0.6)
+        self.shoot(f"ss_{name}_info")
+        only = [f"mtb_tree_node_{i}", f"mtb_tree_node_dev_{i}", f"mtb_tree_node_cost_{i}", f"building_information_{i}", "frame/points", "frame/points_icon", "frame/gold"]
+        self.dump(name, keys=[node["key"]], only=only, look={"index": i, "key": node["key"], "page": page_state, "title": title})
+        self.data("hover", {"id": "frame"})
+        return h
+
+    # -- the development points: the header's number, a slot's teal round (red when short), its window's reason (the page's early_tree_short)
+    def spoints(self):
+        nodes = self.data("nodes")["nodes"]
+        st = self.data("state", {"keys": [n["key"] for n in nodes]})
+        short = [n for n in nodes if n.get("short")]
+        rounds = [n for n in nodes if (st["levels"].get(n["key"]) or {}).get("dev_visible")]
+        target = (short or rounds or [None])[0]
+        root = self.data("root")
+        fx, fy = (root["w"] - min(root["w"] - 40, 1560)) / 2, (root["h"] - min(root["h"] - 30, 870)) / 2      # the panel's frame (panel.js makePanel)
+        self.shoot("ss_points_header", {"x": fx, "y": fy, "w": 600, "h": 70})
+        if not target:
+            return "info", f"header points «{st.get('points_text')}»; no slot shows a round of points (none costs any, or all stand)", {"state": st}
+        h = self.slot_look("points_short" if target in short else "points_round", target, "early_tree_short", "a slot short of development points" if target in short else "a slot that costs points")
+        lv = (h.get("state") or {}).get("levels", {}).get(target["key"]) or {}
+        lv = lv or (self.data("state", {"keys": [target["key"]]})["levels"].get(target["key"]) or {})
+        answer = (f"header points «{st.get('points_text')}» (the game's DevelopmentPoints {(self.data('points') or {}).get('points')}); {len(short)} slots short of points, "
+                  f"{len(rounds)} with a round; {target['name']} ({target['key'].removeprefix(pp.PREFIX)}): round {lv.get('dev_visible')} «{lv.get('dev_text')}», price «{lv.get('cost_text')}», "
+                  f"padlock {lv.get('padlock')}; its window {h.get('info') or 'NOT shown'}; pictures ss_points_short*.png / ss_points_round*.png")
+        return ("ok" if lv.get("dev_visible") and h.get("info") else "differs"), answer, {"state": st, "target": target, "hover": h}
+
+    # -- the windows under the mouse in the game's own drawing: a slot with links (lit links, rings), a locked slot close up
+    def shover_shots(self):
+        nodes = self.data("nodes")["nodes"]
+        linked = [n for n in nodes if n.get("requires")] or nodes
+        out = {}
+        a = linked[min(len(linked) - 1, 3)]
+        out["links"] = self.data("hover", {"id": f"mtb_tree_node_{a['index']}", "keys": [a["key"]]})
+        self.sleep(0.6)
+        self.shoot("ss_hover_links")
+        self.data("hover", {"id": "frame"})
+        locked = [n for n in nodes if n["state"] == "locked" and not n.get("short") and not n.get("poor")]
+        if locked:
+            n = locked[0]
+            box = self.data("slot_box", {"index": n["index"]})
+            out["locked"] = self.data("hover", {"id": f"mtb_tree_node_{n['index']}", "keys": [n["key"]]})
+            self.sleep(0.6)
+            self.shoot("ss_hover_locked", {"x": box["x"] - 60, "y": box["y"] - 50, "w": box["w"] + 520, "h": box["h"] + 260} if "x" in box else None)
+            self.data("hover", {"id": "frame"})
+        lk = (out["links"] or {}).get("links") or {}
+        return ("ok" if lk.get("lit") else "differs"), (f"{a['name']}: lit pieces {lk.get('lit')}, rings needed {lk.get('needed')} / opened {lk.get('opened')}, window "
+                                                        f"{'shown' if out['links'].get('info') else 'NOT shown'}; locked {locked[0]['name'] if locked else 'none'}: window "
+                                                        f"{'shown' if (out.get('locked') or {}).get('info') else 'NOT shown'}; ss_hover_links.png, ss_hover_locked.png (+ _crop)"), out
+
     # -- d. behaviour
     def pick_key(self):
         """The first open building of the tree that is not the hull (the hull cannot be demolished in the game: CanDismantle false), one turn
         long if there is one (it must complete in the session's one turn); else the first open one."""
         nodes = self.data("nodes")["nodes"]
-        opened = [n for n in nodes if n["state"] == "open"]
+        opened = [n for n in nodes if n["state"] == "open" or n.get("short")]       # short of points only: the step gives them (ensure)
         # not the hull, nor what rests on the chain this session demolishes (the beer hall of the requirement test)
         avoid = set(self.cfg.get("req_test", {}).get("chain_keys") or [])
         side = [n for n in opened if not n.get("hull") and not avoid & set(n.get("requires") or []) and n["key"] not in avoid]
@@ -408,6 +500,36 @@ class ShipSession(pp.Probe):
         self.sleep(1.5)
         return self.data("state", {"keys": keys}), "direct (the simulated click did nothing)"
 
+    def ensure(self, key, label):
+        """What the game reads before an order of key (the adapter's slot): gold, development points, its gates. Points or gold short: the
+        difference given by script, as the probe's setup does (the session of 14.11 had 0 points and every order was refused), and said so.
+        -> (gates, text)"""
+        g = self.data("gates", {"key": key})
+        have, need = g.get("points"), g.get("dev") or 0
+        short_dev = need - (have or 0) if need else 0
+        short_gold = (g.get("cost") or 0) - (g.get("gold") or 0)
+        text = f"before: points {have}, the level asks {need}; gold {g.get('gold')}, cost {g.get('cost')}; IsActive {g.get('active')} (enough {g.get('enough')}, afford {g.get('afford')}, locked by level {g.get('locked_by_level')}); selected {g.get('selected')}; the panel {(g.get('panel') or {}).get('state')}"
+        if short_dev > 0 or short_gold > 0:
+            gave = self.data("give", {"dev": max(0, short_dev), "gold": max(0, short_gold) + (1000 if short_gold > 0 else 0)})
+            self.gifts.append({"step": label, "key": key, **gave})
+            g2 = self.data("gates", {"key": key})
+            text += (f"; SHORT, given by script: points {gave['before'].get('points')} -> {gave['after'].get('points')}, gold {gave['before'].get('gold')} -> "
+                     f"{gave['after'].get('gold')}; now IsActive {g2.get('active')}, the panel {(g2.get('panel') or {}).get('state')}")
+            g = dict(g2, given=gave, before=g)
+        return g, text
+
+    def control(self, key, slot):
+        """The probe's own order helper (worked in run 20261114-222543), same building, same slot, right after the adapter's refused one: taken
+        here and not there isolates the adapter. Cancelled at once when taken."""
+        o = self.data("pp", {"item": "order", "args": {"key": key, "slot": slot, "way": "own"}})
+        self.sleep(1.5)
+        chk = self.data("pp", {"item": "check", "args": {"key": key, "slot": slot, "gold_before": o.get("gold_before")}})
+        out = {"order": o, "check": chk, "taken": chk.get("accepted")}
+        if chk.get("accepted"):
+            out["cancel"] = self.data("pp", {"item": "cancel", "args": {"key": key, "slot": slot}})
+            self.sleep(1.5)
+        return out
+
     def record(self, what, key, before, after):
         self.actions.append({"do": what, "key": key, "gold_before": (before.get("treasury") or {}).get("game"),
                              "got": {k: after.get(k) for k in ("message", "first_step", "unseen", "news", "foot", "mark", "crew_upkeep", "turn")},
@@ -423,6 +545,7 @@ class ShipSession(pp.Probe):
                     return "failed", f"no node open to order (poor: {[n['name'] for n in poor[:5]]})", {"nodes": nodes[:20]}
                 self.key, self.node = pick["key"], pick
             k = self.key
+            gates, gtext = self.ensure(k, label)
             cost = self.data("cost", {"key": k})
             before = self.data("state", {"keys": [k]})
             after, way = self.click_sim(f"mtb_tree_node_{self.node['index']}", [k], lambda st: st["levels"][k]["status"].get("state") == "building")
@@ -436,8 +559,13 @@ class ShipSession(pp.Probe):
                       f"game construction (slot re-read) {lv.get('construction')}; paid {paid} (the tree says {self.node.get('cost')}, the game's CreateCost {game_cost}, "
                       f"CreateTime {(cost.get('time') or {}).get('v')}); treasury game {after['treasury'].get('game')} adapter {after['treasury'].get('adapter')}; "
                       f"message «{after.get('message')}»; foot «{after.get('foot')}»")
+            ctrl = None
+            if not ok:
+                ctrl = self.control(k, gates.get("slot"))
+                answer += (f"; CONTROL by the probe's helper, same building, slot {gates.get('slot')}: {'TAKEN (the adapter differs)' if ctrl.get('taken') else 'refused too (the game refuses it: see the gates)'}")
+            answer = gtext + "; " + answer
             status = "ok" if ok and same_t and paid == self.node.get("cost") else ("differs" if ok else "failed")
-            return status, answer, {"before": before, "way": way, "cost": cost, "after": after}
+            return status, answer, {"before": before, "way": way, "cost": cost, "after": after, "gates": gates, "control": ctrl}
         return fn
 
     def scancel(self):
@@ -526,14 +654,22 @@ class ShipSession(pp.Probe):
         return ("ok" if moved or not bars else "differs"), f"bars {bars}; pan before {before.get('pan')}; after each click {[(s['id'], s['pan']) for s in steps]}", {"steps": steps}
 
     def sfit(self):
+        self.data("profile_mark")
         r = self.data("click", {"id": "mtb_tree_fit"}, 120)
+        prof = self.data("profile_read").get("profile")
         self.sleep(1.0)
         self.shoot("ss_whole_tree")
+        # a slot's building window over the whole tree made smaller (the window keeps the game's size)
+        h = self.data("hover", {"id": "mtb_tree_node_0"})
+        self.sleep(0.6)
+        self.shoot("ss_whole_tree_hover")
+        self.data("hover", {"id": "frame"})
         r2 = self.data("click", {"id": "mtb_tree_fit"}, 120)
         a, b = r["state"], r2["state"]
         ok = (a.get("pan") or {}).get("z", 1) < 1 and (b.get("pan") or {}).get("z") == 1
-        return ("ok" if ok else "differs"), (f"«Всё дерево»: z {(a.get('pan') or {}).get('z')} label «{a.get('fit_label')}» in {r.get('seconds', 0):.2f} s; "
-                                             f"«Вблизи»: z {(b.get('pan') or {}).get('z')} label «{b.get('fit_label')}» in {r2.get('seconds', 0):.2f} s"), {"fit": r, "back": r2}
+        return ("ok" if ok else "differs"), (f"«Всё дерево»: z {(a.get('pan') or {}).get('z')} label «{a.get('fit_label')}» in {r.get('seconds', 0):.2f} s "
+                                             f"(PROFILE: {self.profile_text(prof)}); hover there: window {h.get('info') or 'NOT shown'}; "
+                                             f"«Вблизи»: z {(b.get('pan') or {}).get('z')} label «{b.get('fit_label')}» in {r2.get('seconds', 0):.2f} s"), {"fit": r, "profile": prof, "hover": h, "back": r2}
 
     def sclose(self):
         before = self.data("state")
@@ -543,9 +679,10 @@ class ShipSession(pp.Probe):
         r = self.data("reopen", {}, 200)
         self.sleep(0.8)
         after = r.get("state") or {}
-        ok = not c.get("is_open") and not c.get("root_left") and r.get("ok") and after.get("tab") == before.get("tab") and after.get("pan") == before.get("pan")
-        return ("ok" if ok else "differs"), (f"after the cross: open {c.get('is_open')}, our root left {c.get('root_left')}; reopened {r.get('ok')} in "
-                                             f"{r.get('build_seconds', 0):.2f} s; tab {before.get('tab')} -> {after.get('tab')}, pan {before.get('pan')} -> {after.get('pan')}"), {"closed": c, "reopen": r}
+        ok = not c.get("is_open") and not c.get("root_visible") and r.get("ok") and after.get("tab") == before.get("tab") and after.get("pan") == before.get("pan") and r.get("reused")
+        return ("ok" if ok else "differs"), (f"after the cross: open {c.get('is_open')}, our root left {c.get('root_left')} (on the screen {c.get('root_visible')}); reopened {r.get('ok')} in "
+                                             f"{r.get('build_seconds', 0):.2f} s, shown again without a rebuild (S.reused) {r.get('reused')}; tab {before.get('tab')} -> {after.get('tab')}, "
+                                             f"pan {before.get('pan')} -> {after.get('pan')}; PROFILE of the reopen: {self.profile_text(r.get('profile'))}"), {"closed": c, "reopen": r}
 
     def sescape(self):
         e = self.data("escape", {})
@@ -590,6 +727,13 @@ class ShipSession(pp.Probe):
         pending = [i for i in range(1, start["num_items"]) if self.data("pp", {"item": "slot_read", "args": {"slot": i}}).get("item")]
         if pending:
             return "skipped", f"a construction is pending in slots {pending}: no script add on a busy force (probe 14.11, item 1)", start
+        # the session of 14.11 read IsActive False in every state: HasEnoughDevelopmentPoints was False (0 points, the store asks 2) while gold, tier
+        # and slot were right. Points first (the probe's setup gave 50), so that the only thing left to decide the read is the requirement.
+        # Script-stood buildings do not spoil the read on an idle force: the probe stood the hatches' parents so and the order was taken (222543 item 1).
+        g0 = self.data("gates", {"key": rq["store"]})
+        out["points_at_start"] = {"points": g0.get("points"), "store_asks": g0.get("dev"), "gold": g0.get("gold")}
+        need = max(0, (g0.get("dev") or 2) - (g0.get("points") or 0))
+        out["given"] = self.data("give", {"dev": need, "gold": 0 if (g0.get("gold") or 0) >= 10000 else 10000}) if need else None
         a0 = read("hull_1_only")
         if start["slots"][0] != rq["hull2"]:
             out["add_hull"] = self.data("pp", {"item": "add", "args": {"keys": [rq["hull2"]]}})
@@ -614,17 +758,48 @@ class ShipSession(pp.Probe):
                 order["after_cancel"] = self.data("pp", {"item": "slot_read", "args": {"slot": n}})
                 order["gold_after_cancel"] = self.data("pp", {"item": "slots"}).get("gold")
         out["order"] = order
+        out["points_after"] = self.data("points")
+        g1 = {x["expr"].split(").", 1)[-1]: (x.get("r") or {}).get("v") for x in (out.get("beer_1") or {}).get("reads") or [] if x["expr"].startswith("char ")}
         if a1 is not True:
-            verdict = f"INCONCLUSIVE: with beer hall I standing the store is not active either ({a1}): something else blocks it (see reads)"
+            verdict = (f"INCONCLUSIVE: with beer hall I standing the store is not active either ({a1}): something else blocks it: HasEnoughDevelopmentPoints "
+                       f"{g1.get('HasEnoughDevelopmentPoints(this)')}, CanAfford {g1.get('CanAfford(this)')}, IsLockedByLevel {g1.get('IsLockedByLevel(this)')}")
         elif a2 is True:
             verdict = "II SATISFIES the requirement on I (active with II standing)"
         else:
             verdict = f"ONLY LEVEL I satisfies it: active with I, {a2} with II (port-to-game.md 8.3 options (б)/(в))"
-        answer = (f"[REQUIREMENT II vs I] {verdict}; the real order with II standing {'TAKEN' if order.get('taken') else 'REFUSED'} (slot re-read "
+        pts = out["points_at_start"]
+        answer = (f"points at the start {pts['points']} (the store asks {pts['store_asks']})"
+                  + (f", {need} given by script ({out['given']['before'].get('points')} -> {out['given']['after'].get('points')})" if out.get("given") else "")
+                  + f"; points after the order and its cancel {out['points_after'].get('points')}; "
+                  f"[REQUIREMENT II vs I] {verdict}; the real order with II standing {'TAKEN' if order.get('taken') else 'REFUSED'} (slot re-read "
                   f"{(order.get('check') or {}).get('item_level')}); IsActive with hull I only {a0}, hull II {a_h}, beer I {a1}, beer II {a2}; "
                   f"beer II replaced I in its slot: {replaced}; the order cancelled in the same turn: {bool(order.get('cancel'))}")
         status = "info" if "INCONCLUSIVE" not in verdict else "differs"
         return status, answer, out
+
+    # -- the fresh campaign: what refuses an order before anything is done (points, gold, tier, the slot), read only
+    def sgates_fresh(self):
+        rq = self.cfg.get("req_test") or {}
+        keys = [k for k in (rq.get("store"), rq.get("beer1"), rq.get("hull2"), self.cfg.get("nest_key")) if k]
+        rows = {k.removeprefix(pp.PREFIX): self.data("gates", {"key": k}) for k in keys}
+        pts = next(iter(rows.values()), {}).get("points")
+        answer = f"points {pts}, gold {next(iter(rows.values()), {}).get('gold')}, hull level {next(iter(rows.values()), {}).get('hull_level')}; " + "; ".join(
+            f"{k}: asks {r.get('dev')} points / {r.get('cost')} gold, IsActive {r.get('active')} (enough {r.get('enough')}, afford {r.get('afford')}, "
+            f"locked by level {r.get('locked_by_level')}), slot {r.get('slot')}" for k, r in rows.items())
+        return "info", answer, rows
+
+    # -- the panel's verdict on every building against the game's IsActiveForBuildingBrowser
+    def sagree(self, label):
+        def fn():
+            d = self.data("agree", {}, 90)
+            bad = d.get("disagree") or []
+            states = {}
+            for r in d.get("rows") or []:
+                states[r["state"]] = states.get(r["state"], 0) + 1
+            answer = (f"{label}: points {d.get('points')}, gold {d.get('gold')}; the panel's states {states}; disagreements {len(bad)}: " +
+                      ("; ".join(f"{r['key'].removeprefix(pp.PREFIX)} panel {r['state']} ({r.get('why') or ''}) vs game {r.get('active')} {r.get('gates')}" for r in bad[:8]) or "none"))
+            return ("ok" if not bad else "differs"), answer, d
+        return fn
 
     # -- cheap engine facts
     def sopacity(self):
@@ -662,8 +837,10 @@ class ShipSession(pp.Probe):
         if not node or st["levels"][k]["status"].get("state") != "built":
             return "skipped", f"{k} not standing (the requirement step did not stand it): nothing to demolish", {**out, "state": st}
         dlg = self.data("dialog")
-        if dlg.get("present"):
-            return "skipped", "a dialog of the game is open: the dismantle is issued only with none (probe 14.11, 8.2)", dlg
+        out["dialog"] = dlg
+        if dlg.get("open"):
+            return "skipped", f"a window of the game is open on the screen ({dlg.get('text')}): the dismantle is issued only with none (probe 14.11, 8.2)", out
+        # session 14.11 stopped here for a dialogue_box that was present but not on the screen (VisibleFromRoot {dlg.get('visible_from_root')})
         slot = st["levels"][k].get("model_slot")
         can = self.data("dismantle_read", {"key": k, "slot": slot})
         sel = self.data("click", {"id": f"mtb_tree_node_{node['index']}", "keys": [k]})
@@ -683,34 +860,44 @@ class ShipSession(pp.Probe):
             hull_txt = (f"hull {self.key.removeprefix(pp.PREFIX)}: the panel allows its demolish {hull.get('panel_ok')}, the game's CanDismantle {hull.get('game_can')}"
                         + (" (BUG: the panel offers what the game refuses)" if hull.get("panel_ok") and (hull.get("game_can") or {}).get("v") is False else "") + "; ")
         # observations only: the panel's dismantle state is being changed («being dismantled until the turn ends»)
+        state = read["state"]["levels"][k]["status"].get("state")
+        # the slot being dismantled as the game draws it (the page's dismantling_tree), and a click on it: refused with the reason
+        look = {}
+        if state == "dismantling":
+            look["hover"] = self.slot_look("dismantling", node, "dismantling_tree", "a slot being dismantled")
+            look["click"] = self.data("click", {"id": f"mtb_tree_node_{node['index']}", "keys": [k]})
         answer = (hull_txt + f"{k.removeprefix(pp.PREFIX)} (slot {slot}): CanDismantle before {can.get('can')}; round button shown; after it the panel says "
-                  f"«{read['state'].get('message')}», status {read['state']['levels'][k]['status'].get('state')}; the game: slot model {read.get('model_slot')}, "
-                  f"IsDismantling {read.get('dismantling')}, building {read.get('building')}; the turn step reads the slot at the turn start")
-        return "info", answer, {**out, "can": can, "select": sel, "click": r, "read": read}
+                  f"«{read['state'].get('message')}», status {state} (expected dismantling); the game: slot model {read.get('model_slot')}, "
+                  f"IsDismantling {read.get('dismantling')}, building {read.get('building')}; a dialogue_box present {dlg.get('present')} (on the screen {dlg.get('open')}, "
+                  f"{dlg.get('text')}); the turn step reads the slot at the turn start; a click on it then: «{((look.get('click') or {}).get('state') or {}).get('message')}»; "
+                  f"pictures ss_dismantling*.png")
+        return ("ok" if state == "dismantling" else "differs"), answer, {**out, "can": can, "select": sel, "click": r, "read": read, "look": look}
 
     # -- an order of two turns or more, left for the turn: cancelled after it (the game's confirmation window)
     def sorder_long(self):
         nodes = self.data("nodes")["nodes"]
         avoid = set((self.cfg.get("req_test") or {}).get("chain_keys") or [])
         mine = {n["chain"] for n in nodes if n["key"] == self.key}
-        cands = [n for n in nodes if n["state"] == "open" and (n.get("turns") or 0) >= 2 and not n.get("hull") and n["chain"] not in mine
+        cands = [n for n in nodes if (n["state"] == "open" or n.get("short")) and (n.get("turns") or 0) >= 2 and not n.get("hull") and n["chain"] not in mine
                  and not avoid & set(n.get("requires") or []) and n["key"] not in avoid]
         if not cands:
             self.long = None
             return "info", "no building of two turns or more is open: the cancel of an earlier turn's order cannot be tested", {}
         n = cands[0]
+        gates, gtext = self.ensure(n["key"], "order_long")
         before = self.data("state", {"keys": [n["key"]]})
         after, way = self.click_sim(f"mtb_tree_node_{n['index']}", [n["key"]], lambda st: st["levels"][n["key"]]["status"].get("state") == "building")
         self.record("order", n["key"], before, after)
         self.long = n if after["levels"][n["key"]]["status"].get("state") == "building" else None
-        return ("ok" if self.long else "failed"), (f"{n['name']} ({n['turns']} turns) by {way}: status {after['levels'][n['key']]['status'].get('state')}, "
-                                                   f"slot re-read {after['levels'][n['key']].get('construction')}"), after
+        return ("ok" if self.long else "failed"), (gtext + f"; {n['name']} ({n['turns']} turns) by {way}: status {after['levels'][n['key']]['status'].get('state')}, "
+                                                   f"slot re-read {after['levels'][n['key']].get('construction')}; message «{after.get('message')}»"), {**after, "gates": gates}
 
     # -- e. one turn: the events as the panel sees them, the upkeep, the dismantle's end
     def sturn(self):
         k = self.key
         keys = [x for x in (k, (getattr(self, "dismantled", None) or {}).get("key"), (getattr(self, "long", None) or {}).get("key")) if x]
         before = self.data("state", {"keys": keys})
+        pts_before = self.data("points")
         self.data("money_on")
         self.data("watch_on", {"keys": keys})
         mark = time.time()
@@ -727,6 +914,7 @@ class ShipSession(pp.Probe):
         r = self.data("reopen", {}, 200)
         self.sleep(1.0)
         after = self.data("state", {"keys": keys})
+        pts_after = self.data("points")
         self.record("end_turn", k, before, after)
         calls = money.get("calls") or []
         new = [c for c in calls if c.get("what") == "cm:treasury_mod" and "tww3_mtb_game" in str(c.get("stack"))]
@@ -753,9 +941,11 @@ class ShipSession(pp.Probe):
                   f"reopened {r.get('ok')}; {k and k.removeprefix(pp.PREFIX)} now {lv.get('status', {}).get('state')} (model slot {lv.get('model_slot')}); "
                   f"mark {after.get('mark')}, unseen {after.get('unseen')}; message «{after.get('message')}»; events in order, with the panel's status of the order "
                   f"right after each: {seen}; upkeep: {upkeep} (new model's treasury_mod {[c.get('amount') for c in new]}, old pay_upkeep deltas "
-                  f"{[c.get('delta') for c in old]}, old treasury_mod {[c.get('amount') for c in old_tm]}; new model's upkeep {before.get('crew_upkeep')})" + dis_txt)
+                  f"{[c.get('delta') for c in old]}, old treasury_mod {[c.get('amount') for c in old_tm]}; new model's upkeep {before.get('crew_upkeep')})" + dis_txt +
+                  f"; DEVELOPMENT POINTS of the turn (the page's dev_income guess): {pts_before.get('points')} -> {pts_after.get('points')}, "
+                  f"MilitaryForceDevelopmentPointChange events {sum(1 for e in evs if e['event'] == 'MilitaryForceDevelopmentPointChange')}")
         status = "ok" if back and lv.get("status", {}).get("state") == "built" and upkeep != "BOTH charge" else ("differs" if back else "failed")
-        return status, answer, {"before": before, "after": after, "money": money, "watch": watch, "closed": closed, "reopen": r}
+        return status, answer, {"before": before, "after": after, "money": money, "watch": watch, "closed": closed, "reopen": r, "points": [pts_before, pts_after]}
 
     # -- the cancel of an earlier turn's order: the game asks; the window is answered by script (test only) and must be gone afterwards
     def scancel_previous(self):
@@ -767,29 +957,34 @@ class ShipSession(pp.Probe):
         if before["levels"][k]["status"].get("state") != "building":
             return "info", f"{k} is no longer under construction after the turn ({before['levels'][k]['status']})", before
         self.data("watch_on", {"keys": [k]})
+        pts0 = self.data("points")
         self.data("click", {"id": f"mtb_tree_node_{n['index']}", "keys": [k], "way": "direct"})
         self.sleep(1.5)
         asked = self.data("state", {"keys": [k]})
         dlg = self.data("dialog")
         self.shoot("ss_cancel_dialog")
+        if asked["levels"][k]["status"].get("asked"):
+            self.dump("asked", keys=[k], only=[f"mtb_tree_node_{n['index']}", f"mtb_tree_node_dev_{n['index']}", f"mtb_tree_node_cost_{n['index']}", "frame/message"],
+                      look={"index": n["index"], "key": k, "page": "asked_tree", "title": "a cancel waiting for the game's window"})
         answered, after = None, asked
-        if dlg.get("present"):
+        if dlg.get("open"):
             answered = self.data("dialog_answer", {"button": "tick"})
-            self.sleep(1.5)
+            self.sleep(2.0)          # the adapter reads the slot every 250 ms until the window closes (src/tww3_mtb_game.lua cancel_construction)
             after = self.data("state", {"keys": [k]})
-        gone = not self.data("dialog").get("present")
+        gone = not self.data("dialog").get("open")
         ev = self.data("watch_read").get("events")
         self.data("watch_off")
         if not gone:
             self.data("dialog_answer", {"button": "cancel"})
             self.sleep(1.0)
-            gone = not self.data("dialog").get("present")
+            gone = not self.data("dialog").get("open")
+        pts1 = self.data("points")
         self.record("cancel", k, before, after)
         g0, g1, g2 = before["treasury"].get("game"), asked["treasury"].get("game"), after["treasury"].get("game")
-        answer = (f"{n['name']}: after the panel's click: dialog {'OPEN' if dlg.get('present') else 'none'} (tick {dlg.get('tick')}), the panel says «{asked.get('message')}» "
-                  f"while its status is {asked['levels'][k]['status'].get('state')}; gold {g0} -> {g1} before the answer -> {g2} after the tick (paid {n.get('cost')}); "
-                  f"status now {after['levels'][k]['status'].get('state')}, slot {after['levels'][k].get('construction')}; events {[e['event'] for e in ev or []]}; "
-                  f"no dialog left afterwards: {gone}")
+        answer = (f"{n['name']}: after the panel's click: dialog {'OPEN' if dlg.get('open') else 'none'} ({dlg.get('text')}; tick {dlg.get('tick')}), the panel says «{asked.get('message')}» "
+                  f"while its status is {asked['levels'][k]['status']} (expected building, asked); gold {g0} -> {g1} before the answer -> {g2} after the tick (paid {n.get('cost')}); "
+                  f"points {pts0.get('points')} -> {pts1.get('points')}; the panel after the answer «{after.get('message')}», status {after['levels'][k]['status'].get('state')}, "
+                  f"slot {after['levels'][k].get('construction')}; events {[e['event'] for e in ev or []]}; no window left afterwards: {gone}")
         refunded = g2 is not None and g1 is not None and g2 - g1 == n.get("cost")
         return ("ok" if gone and refunded else "info"), answer, {"before": before, "asked": asked, "dialog": dlg, "answered": answered, "after": after, "events": ev}
 
@@ -805,6 +1000,7 @@ class ShipSession(pp.Probe):
         res = {"key": k}
 
         def attempt(label):
+            res[label + "_gates"], res[label + "_ensure"] = self.ensure(k, "battle_orders_" + label)
             fe = self.data("pp", {"item": "first_empty"})
             n = fe.get("slot")
             o = self.data("pp", {"item": "order", "args": {"key": k, "slot": n, "way": "own"}})
@@ -823,8 +1019,9 @@ class ShipSession(pp.Probe):
         if res["battle"] != "back on the map":
             return "info", f"control before: {'taken' if before else 'REFUSED'}; no battle: {res['battle']}", res
         after = attempt("after")
-        return "info", (f"[ORDER AFTER A BATTLE] {k.removeprefix(pp.PREFIX)} into an empty slot: before the battle {'taken' if before else 'REFUSED'}, "
-                        f"right after it {'taken' if after else 'REFUSED'} (slot re-read; each cancelled in its turn)"), res
+        return "info", (f"[ORDER AFTER A BATTLE] {k.removeprefix(pp.PREFIX)} into an empty slot, points and gold ensured first: before the battle "
+                        f"{'taken' if before else 'REFUSED'} ({res.get('before_ensure')}), right after it {'taken' if after else 'REFUSED'} ({res.get('after_ensure')}) "
+                        f"(slot re-read; each cancelled in its turn)"), res
 
     def ssimulated(self):
         h = self.data("hover", {"id": "mtb_tree_node_0", "way": "simulate"})
@@ -838,16 +1035,21 @@ class ShipSession(pp.Probe):
     def run(self):
         order = [("census", "Lua environment census (the probe's, standalone)", self.icensus),
                  ("smoke", "each of this session's helpers once, protected, a canary of the game's bindings after each", self.ssmoke),
-                 ("requirement", "FIRST game state: does level II of a chain satisfy a requirement on level I (idle force, empty slot, one real order)", self.srequirement),
+                 ("gates_fresh", "the fresh campaign, read only: development points, gold, hull, and every gate of the game for the first buildings", self.sgates_fresh),
+                 ("requirement", "FIRST game state: does level II of a chain satisfy a requirement on level I (idle force, empty slot, points given first, one real order)", self.srequirement),
                  ("load", "the panel's modules by the switch (tww3_mtb_crew_ui.ship_screen()), else loadfile + our environment, else inline", self.sload),
                  ("configure", "the probe's answers as ENGINE / ASSUMED options on the screen's modules (OPTIONS, --option)", self.sconfigure),
                  ("frames_closed", "timer calls per second, the panel closed", self.sframes("closed")),
                  ("open", "the panel opened: components, build time, root, how the texts were measured", self.sopen),
                  ("frames_open", "timer calls per second with ~3800 components on screen", self.sframes("open")),
+                 ("agree", "the panel's verdict on every building against the game's IsActiveForBuildingBrowser (and its gates where they disagree)", self.sagree("before the orders")),
                  ("dump_fresh_tree", "the live panel dumped (page state fresh_tree)", self.sdump("fresh_tree")),
                  ("info", "a building's window by the hover handler (page state fresh_tree_info); over the advisor and the event feed: see the picture", self.sinfo),
                  ("dump_fresh_tree_info", "dump with the window shown", self.sdump_hover("fresh_tree_info")),
                  ("dump_fresh_ship", "the «Корабль» tab dumped (page state fresh_ship)", self.sdump_tab("fresh_ship")),
+                 ("resize_log", "the wrapper's mod-log line about Resize(w, h, false) and ENGINE.children_keep", self.sresize_log),
+                 ("points", "the development points: the header, a slot's round (red when short), its window (page state early_tree_short)", self.spoints),
+                 ("hover_shots", "the windows under the mouse in the game: a slot with links lit, a locked slot close up", self.shover_shots),
                  ("order", "order the first building by the game's click on its slot; treasury, cost and slot by the adapter and the game", self.sorder()),
                  ("cancel", "cancel it by the same click, in the same turn", self.scancel),
                  ("order_again", "order it again (it stays for the turn)", self.sorder()),
@@ -864,6 +1066,7 @@ class ShipSession(pp.Probe):
                  ("order_long", "an order of two turns or more, left for the turn", self.sorder_long),
                  ("turn", "ONE turn end by script; the events as the panel sees them; the upkeep; the dismantle's end", self.sturn),
                  ("dump_after_turn", "the panel after the turn dumped", self.sdump("after_turn", page_state=False)),
+                 ("agree_after_turn", "the panel's verdict on every building against the game's, after the turn", self.sagree("after the turn")),
                  ("cancel_previous", "the cancel of the earlier turn's order: the game's window, answered, gold, events; none left after", self.scancel_previous),
                  ("save_final", "saved and read back after the turn", self.ssave("at the end")),
                  ("simulated", "SimulateMouseOn on our slot (no hover event expected)", self.ssimulated),
@@ -920,6 +1123,9 @@ class ShipSession(pp.Probe):
 
     def summary(self, how, analysis=None):
         lines = [f"ship panel session {datetime.now():%d.%m.%Y %H:%M}, ended: {how}"]
+        if self.gifts:
+            lines.append("given by script (points and gold short for an order): " + "; ".join(
+                f"{g['step']} {g['key'].removeprefix(pp.PREFIX)}: points {g['before'].get('points')} -> {g['after'].get('points')}, gold {g['before'].get('gold')} -> {g['after'].get('gold')}" for g in self.gifts))
         for no, r in self.results.items():
             lines.append(f"[{no}] {r['status']:<9} {r['title']}: {r['answer']}")
         if analysis:
@@ -939,12 +1145,13 @@ local string, table = {find = string.find, match = string.match}, {sort = table.
 local pairs, ipairs, tonumber, type, pcall, loadstring = pairs, ipairs, tonumber, type, pcall, loadstring
 local U = getmetatable(core:get_ui_root())
 for _, m in ipairs({'SetInteractive', 'SetTooltipText', 'SetCurrentStateImageColour', 'SetCurrentStateImageOpacity', 'ShaderTechniqueSet', 'ShaderVarsSet',
-  'RegisterTopMost'}) do if not U[m] then U[m] = function() end end end
+  'RegisterTopMost', 'PropagateOpacity'}) do if not U[m] then U[m] = function() end end end
 local FACTION, SUBTYPE = 'wh3_dlc25_dwf_malakai', 'wh3_dlc25_dwf_malakai_makaisson'
 local LEVELS = {}
 function fake_set_levels(rows) for _, r in ipairs(rows) do LEVELS[r.key] = r end end
 local N = 19
 local slots, items, gold, turn, saved, escape, dismantling = {}, {}, 4000, 1, {}, {}, {}
+local dev = 0           -- the horde's development points: 0 at the start of a campaign (session 14.11)
 for i = 0, N - 1 do slots[i] = '' end
 slots[0] = 'wh3_dlc25_dwarf_spirit_of_grungni_airship_hull_1'
 local faction
@@ -961,7 +1168,9 @@ local function fire(ev, ctx) fake_fire(ev, nil, ctx) end
 cm = {model = function() return {world = function() return {faction_list = function() return flist end} end, turn_number = function() return turn end} end,
   turn_number = function() return turn end, get_faction = function() return faction end, get_local_faction_name = function() return FACTION end,
   treasury_mod = function(self, f, v) gold = gold + v end,
-  add_development_points_to_horde = function() end,
+  add_development_points_to_horde = function(self, m, v) dev = dev + v end,
+  dismiss_advice = function() end,
+  get_campaign_ui_manager = function() return {get_char_selected = function() return 'character_cqi:42' end} end,
   add_building_to_force = function(self, c, key)
     local r = LEVELS[key]
     if string.find(key, 'airship_hull_', 1, true) then slots[0] = key; return end
@@ -980,10 +1189,29 @@ common = {
       local r = LEVELS[rkey] or {}
       if has(expr, '.CreateCost(') then return r.cost end
       if has(expr, '.CreateTime(') then return r.turns end
-      if has(expr, '.DevelopmentPointCost(') then return 0 end
-      if has(expr, '.IsActiveForBuildingBrowser(') then return n ~= nil and slots[n] == '' and not items[n] end
+      if has(expr, '.DevelopmentPointCost(') then return r.dev or 0 end
+      if has(expr, '.HasEnoughDevelopmentPoints(') then return dev >= (r.dev or 0) end
+      if has(expr, '.CanAfford(') then return gold >= (r.cost or 0) end
+      local hull = LEVELS[slots[0]]
+      local tier_ok = (r.tier or 0) <= ((hull and hull.level or 0) + 1)
+      if has(expr, '.IsLockedByLevel(') then return not tier_ok end
+      if has(expr, '.IsActiveForBuildingBrowser(') then
+        -- as the game's browser: the slot holds the level below (an upgrade) or nothing (a first level), no construction, every required building
+        -- standing (it or a higher level of its line), the hull's tier, the points, the gold
+        if n == nil or items[n] or not tier_ok or dev < (r.dev or 0) or gold < (r.cost or 0) then return false end
+        local here = LEVELS[slots[n]]
+        if (r.level or 0) > 0 then if not (here and here.chain == r.chain and here.level == r.level - 1) then return false end
+        elseif slots[n] ~= '' then return false end
+        for _, q in ipairs(r.requires or {}) do
+          local want, stands = LEVELS[q], false
+          for i = 0, N - 1 do local l = LEVELS[slots[i]]; if slots[i] == q or (l and want and l.chain == want.chain and l.level > want.level) then stands = true end end
+          if not stands then return false end
+        end
+        return true
+      end
       return nil
     end
+    if has(expr, 'HordeContext.DevelopmentPoints') then return dev end
     if n then
       if has(expr, 'IsContextValid(') and has(expr, 'ConstructionItemContext') then return items[n] ~= nil end
       if has(expr, 'ConstructionItemContext.BuildingLevelRecordContext.Key') then return items[n] and items[n].key or nil end
@@ -1009,15 +1237,15 @@ common = {
           UIComponent(db:CreateComponent('button_tick', 'x')); UIComponent(db:CreateComponent('button_cancel', 'x'))
           local slot = n
           core:add_listener('fake_dialog', 'ComponentLClickUp', function(c) return c.string == 'button_tick' or c.string == 'button_cancel' end, function(c)
-            if c.string == 'button_tick' and items[slot] then gold = gold + items[slot].paid; items[slot] = nil; fire('MilitaryForceBuildingCancelled', ours()) end
+            if c.string == 'button_tick' and items[slot] then gold = gold + items[slot].paid; dev = dev + (items[slot].dev or 0); items[slot] = nil; fire('MilitaryForceBuildingCancelled', ours()) end
             db:Destroy(); core:remove_listener('fake_dialog')
           end, false)
         end
-      elseif items[n] then gold = gold + items[n].paid; items[n] = nil; fire('MilitaryForceBuildingCancelled', ours())
+      elseif items[n] then gold = gold + items[n].paid; dev = dev + (items[n].dev or 0); items[n] = nil; fire('MilitaryForceBuildingCancelled', ours())
       else
         local r = LEVELS[key] or {cost = 1000, turns = 1}
-        if gold < r.cost then return end
-        items[n] = {key = key, turns = r.turns, paid = r.cost, turn = turn}; gold = gold - r.cost
+        if gold < r.cost or dev < (r.dev or 0) then return end        -- refused silently, as the game (session 14.11: no points)
+        items[n] = {key = key, turns = r.turns, paid = r.cost, dev = r.dev or 0, turn = turn}; gold = gold - r.cost; dev = dev - (r.dev or 0)
         fire('BuildingConstructionIssuedByPlayer', ours({building = function() return key end}))
       end
     elseif n and has(expr, '.Dismantle') then
@@ -1026,10 +1254,18 @@ common = {
   end,
   get_localised_string = function(k) return 'text of ' .. k end}
 -- the timers: a real callback runs at the next fake_tick (the driver's sleep), as the game's runs a moment later
-local queue = {}
-local tm = {real_callback = function(self, fn, ms, name) queue[#queue + 1] = fn end, repeat_real_callback = function() end, remove_real_callback = function() end}
+local queue, repeats = {}, {}
+local tm = {real_callback = function(self, fn, ms, name) queue[#queue + 1] = fn end,
+  repeat_real_callback = function(self, fn, ms, name) repeats[name or fn] = fn end, remove_real_callback = function(self, name) repeats[name] = nil end}
 core.get_tm = function() return tm end
-function fake_tick() local q = queue; queue = {}; for _, fn in ipairs(q) do pcall(fn) end; return #q end
+function fake_tick()
+  local q = queue; queue = {}
+  for _, fn in ipairs(q) do pcall(fn) end
+  local r = {}
+  for _, fn in pairs(repeats) do r[#r + 1] = fn end
+  for _, fn in ipairs(r) do pcall(fn) end
+  return #q
+end
 -- a turn: ours ends, the constructions count down, the completions come BEFORE our turn start (the order the adapter must cope with), then it
 function fake_end_turn()
   fire('FactionTurnEnd', ours())
@@ -1219,6 +1455,101 @@ def engine_vs_wrapper(rows):
     return out
 
 
+# A slot's look (a dump with "look": the session's slot_look): the components that make the state of a slot, compared with the page's slot of the
+# same state (build/ui_dump/<state>.json; its slot the one the state's actions name). Paths with the slot's index replaced, places relative to the
+# slot, numbers in texts and pictures as «#» (the cost and the level differ from building to building, the look does not).
+LOOK_PARTS = ("", "/check", "/padlock", "/turns_banner", "/turns", "/plain", "dev:", "dev:/fill", "dev:/value", "cost:", "cost:/red", "cost:/value")
+LOOK_FIELDS = ("visible", "image", "colour", "shader", "opacity", "image_opacity", "layout", "w", "h", "dx", "dy", "text")
+
+
+def slot_look(rows, index):
+    """{part: {field: value}} of the slot index's own components in a dump (LOOK_PARTS)."""
+    import re
+    by = {r["path"]: r for r in rows}
+    slot = next((r for p, r in by.items() if p.endswith(f"/mtb_tree_node_{index}")), None)
+    if not slot:
+        return {}
+    base = slot["path"]
+    holder = base.rsplit("/", 1)[0]
+    num = lambda v: re.sub(r"\d+", "#", v) if isinstance(v, str) else v
+    out = {}
+    for part in LOOK_PARTS:
+        if part.startswith("dev:") or part.startswith("cost:"):
+            kind, tail = part.split(":", 1)
+            path = f"{holder}/mtb_tree_node_{kind}_{index}{tail}"
+        else:
+            path = base + part
+        r = by.get(path)
+        if not r:
+            continue
+        row = {f: r.get(f) for f in LOOK_FIELDS if f in r}
+        if not part:
+            row["dx"], row["dy"] = 0, 0
+        elif part.startswith(("/", "dev:/", "cost:/")):
+            row["dx"], row["dy"] = r.get("x"), r.get("y")        # a child: its place in its parent
+        else:
+            row["dx"], row["dy"] = (r.get("x") or 0) - (slot.get("x") or 0), (r.get("y") or 0) - (slot.get("y") or 0)     # beside the slot
+        if "visible" in row:
+            row["visible"] = bool(row["visible"])
+        for f in ("text", "image"):
+            if f in row:
+                row[f] = num(row[f])
+        if part == "/plain" and isinstance(row.get("image"), str):
+            row["image"] = re.sub(r"branch_frame_\w+?(_selected)?\.png", r"branch_frame_*\1.png", row["image"])
+        out[part or "slot"] = row
+    return out
+
+
+def compare_look(page_rows, page_index, game_rows, game_index):
+    """[line] where the game's slot looks otherwise than the page's slot of the same state."""
+    a, b = slot_look(page_rows, page_index), slot_look(game_rows, game_index)
+
+    def seen(look, part):
+        # shown with its holder: a hidden round's number is nothing the player sees
+        root = part.split('/', 1)[0] if part.startswith(('dev:', 'cost:')) else 'slot'
+        return bool(look.get(part, {}).get('visible')) and bool(look.get(root, {}).get('visible', True))
+    out = []
+    for part in sorted(set(a) | set(b)):
+        if part in a and part in b and not seen(a, part) and not seen(b, part):
+            continue
+        if part not in b:
+            out.append(f"{part}: missing in the game")
+            continue
+        if part not in a:
+            out.append(f"{part}: missing on the page")
+            continue
+        for f in LOOK_FIELDS:
+            va, vb = a[part].get(f), b[part].get(f)
+            if isinstance(va, (int, float)) and isinstance(vb, (int, float)) and f in ("w", "h", "dx", "dy"):
+                if abs(va - vb) > 1:
+                    out.append(f"{part}: {f} page {va}, game {vb}")
+            elif va != vb:
+                out.append(f"{part}: {f} page {json.dumps(va, ensure_ascii=False)}, game {json.dumps(vb, ensure_ascii=False)}")
+    return out
+
+
+def crops(run_dir):
+    """The close-ups the session asked for (shots.json crop: a box in root units), cut out of the pictures at their full resolution."""
+    shots = run_dir / "shots.json"
+    if not shots.exists():
+        return []
+    try:
+        from PIL import Image
+    except ImportError:
+        return ["close-ups not cut: no PIL"]
+    made = []
+    for name, s in json.loads(shots.read_text(encoding="utf-8")).items():
+        c, k, png = s.get("crop"), s.get("ui_scale_effective"), run_dir / f"{name}.png"
+        if not (c and k and png.exists()):
+            continue
+        im = Image.open(png)
+        box = [max(0, round(c["x"] * k)), max(0, round(c["y"] * k)), min(im.width, round((c["x"] + c["w"]) * k)), min(im.height, round((c["y"] + c["h"]) * k))]
+        if box[2] > box[0] and box[3] > box[1]:
+            im.crop(box).save(run_dir / f"{name}_crop.png")
+            made.append(f"{name}_crop.png")
+    return made
+
+
 def page_measures():
     out = {}
     for p in sorted(DUMPS.glob("*.json")):
@@ -1270,10 +1601,11 @@ end
 
 OFFLINE_PANEL_LUA = r"""
 return function(UI, Ship, CM, FakeGame, FakeUIC, config, cfg, snap, measures)
-  local game = FakeGame.new(config, {turn = snap.turn, gold = snap.gold, income = 0, demolish = 'chain', built = {}})
+  -- the game's development points and the adapter's marks of a building being dismantled, as the game had them (I.snapshot)
+  local game = FakeGame.new(config, {turn = snap.turn, gold = snap.gold, income = 0, demolish = 'chain', built = {}, dev_points = snap.dev})
   local q = {}
-  for _, x in ipairs(snap.queue or {}) do q[#q + 1] = {key = x.key, turns_left = x.turns_left or 1, paid = 0} end
-  game.restore({turn = snap.turn, gold = snap.gold, built = snap.built, queue = q})
+  for _, x in ipairs(snap.queue or {}) do q[#q + 1] = {key = x.key, turns_left = x.turns_left or 1, paid = 0, dev = x.dev or 0, turn = snap.turn} end
+  game.restore({turn = snap.turn, gold = snap.gold, dev = snap.dev, built = snap.built, queue = q, dismantles = snap.dismantles or {}})
   local M = Ship.make(config, game, CM)
   Ship.load_state(M, function(k) return snap.saved[k] end)
   local ui = FakeUIC.new{measures = measures, text = cfg.text, w = snap.root.w, h = snap.root.h}
@@ -1282,6 +1614,7 @@ return function(UI, Ship, CM, FakeGame, FakeUIC, config, cfg, snap, measures)
   panel.view.close:SetInteractive(true)
   panel.view.root:SetOpacity(150)
   panel.refresh()
+  if panel.build_all then panel.build_all(); panel.refresh() end      -- every window made, as the session's dumps (I.dump_begin)
   if snap.hovered then local c = ui.find(snap.hovered); if c then ui.mouse_on(c) end end
   return {rows = ui.dump(), unmeasured = ui.unmeasured}
 end
@@ -1332,6 +1665,22 @@ def analyse(run_dir):
             note = (f"page root {pd.get('root')}, game root {d.get('root')}; the page's campaign: gold {pd['snapshot'].get('gold')}, built {len(pd['snapshot'].get('built') or [])}; "
                     f"the game's: gold {d['snapshot'].get('gold')}, built {[k.removeprefix(pp.PREFIX) for k in d['snapshot'].get('built') or []]}")
             rep["page"]["status"] = head(f"{name}: game vs the page", diffs, len(pd["components"]), note)
+        # A2: a slot's look against the page's slot in the same state (the dumps of the points, the dismantling, the asked cancel)
+        look = d.get("look")
+        if look:
+            page = DUMPS / f"{look['page']}.json"
+            if page.exists():
+                pd = json.loads(page.read_text(encoding="utf-8"))
+                ids = [a[1] for a in pd.get("actions") or [] if str(a[1]).startswith("mtb_tree_node_")]
+                pi = int(ids[-1].rsplit("_", 1)[1]) if ids else None
+                diffs = compare_look(pd["components"], pi, rows, look["index"]) if pi is not None else ["the page's state names no slot"]
+                rep["look"] = {"page": look["page"], "page_index": pi, "game_index": look["index"], "differences": diffs}
+                rep["look"]["status"] = head(f"{name}: {look.get('title')}: the game's slot vs the page's ({look['page']})", diffs, len(LOOK_PARTS))
+            else:
+                lines.append(f"[{name}: look] no page state {look['page']}: node tools/tests/ui_dump_export.mjs")
+        if d.get("only"):
+            report[name] = rep          # a slot's rows only: the whole-panel comparisons do not apply
+            continue
         # D: the same Lua offline (fake UIComponent) at the game's state, root and TextDimensions: what is left is the game binding's own doing
         snap = d["snapshot"]
         measures = {k: v for k, v in pm.items() if k.startswith("ink|")}
@@ -1392,6 +1741,9 @@ def analyse(run_dir):
         except Exception as e:
             report["texts"] = {"status": "failed", "error": str(e)[:2000]}
             lines.append(f"[texts] failed: {str(e)[:400]}")
+    made = crops(run_dir)
+    if made:
+        lines.append("close-ups: " + ", ".join(made))
     (run_dir / "analysis.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     (run_dir / "analysis.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return lines

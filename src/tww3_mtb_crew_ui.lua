@@ -45,17 +45,29 @@ local function building_name(key)
 end
 
 -- The new screen's modules (script/campaign/tww3_mtb/, packed by tools/ship_lua.py; the game runs only script/campaign/mod/ by itself).
--- ASSUMED until the in-game stage 2 shows it: the game's require finds a script of the pack by its path; loadfile is the second way.
+-- loadfile with this file's own environment first: a module the game's require loads runs with _G as its environment, where core, cm and common
+-- are not (runs/20261114-230723-ship_panel, step load: every required module's functions blind to core; loadfile + the mod's environment worked).
+-- require only should loadfile not answer. Each module loaded once.
+local MOD_ENV = getfenv(1)
+local loaded = {}
 local function ship_module(name)
+    if loaded[name] then return loaded[name] end
     local path = 'script/campaign/tww3_mtb/' .. name
-    local ok, mod = pcall(require, path)
-    if ok and type(mod) == 'table' then return mod end
-    local okf, f = pcall(function() return loadfile(path .. '.lua') end)
+    local okf, f, ferr = pcall(function() return loadfile(path .. '.lua') end)
+    local why = okf and ferr or f
     if okf and f then
+        setfenv(f, MOD_ENV)
         local ok2, m2 = pcall(f)
-        if ok2 and type(m2) == 'table' then return m2 end
+        if ok2 and type(m2) == 'table' then loaded[name] = m2; return m2 end
+        why = m2
     end
-    log('cannot load ' .. path .. ': ' .. tostring(mod))
+    local ok, mod = pcall(require, path)
+    if ok and type(mod) == 'table' then
+        log('module ' .. name .. ' by require: it does not see core / cm (loadfile: ' .. tostring(why) .. ')')
+        loaded[name] = mod
+        return mod
+    end
+    log('cannot load ' .. path .. ': loadfile ' .. tostring(why) .. '; require ' .. tostring(mod))
     return nil
 end
 local screen = nil

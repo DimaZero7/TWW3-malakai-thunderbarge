@@ -213,6 +213,8 @@ export class Component {
         this.textEl.className = 't' + (spec.nowrap ? ' nowrap' : '') + (spec.valign === 'top' ? ' top' : '') + (spec.font === 'header' ? ' header' : '');
         Object.assign(this.textEl.style, {fontSize: spec.size + 'px', color: spec.colour, fontWeight: spec.bold ? 'bold' : 'normal', fontStyle: spec.italic ? 'italic' : 'normal', lineHeight: spec.line ? spec.line + 'px' : '', textAlign: spec.align || 'left',
                                           justifyContent: spec.align === 'center' ? 'center' : spec.align === 'right' ? 'flex-end' : 'flex-start'});
+        // the game's text_outline_t0: a thin black line round the letters
+        if (spec.outline) this.textEl.style.textShadow = '-1px 0 1px #000, 1px 0 1px #000, 0 -1px 1px #000, 0 1px 1px #000';
         this.el.appendChild(this.textEl);
     }
     makeButton(skin) {

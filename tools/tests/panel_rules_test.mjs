@@ -33,7 +33,7 @@ const levels = T.gameData(design, data);
 const K = id => levels.key_of[id];
 const node = Object.fromEntries(design.nodes.map(n => [K(n.id), n]));
 const fresh = (gold = 1e6) => {
-    const game = new GameSim(levels, {...sim, gold, built: []});
+    const game = new GameSim(levels, {...sim, dev_points: 1000, gold, built: []});
     const M = makeBuildings(levels, game, parts);
     for (const a of stage.crew_areas || []) if (a.words) M.words[a.group] = a.words;
     return {game, M};
@@ -312,6 +312,11 @@ check(`the reason of every locked building names exactly its direct requirements
     const bad = tierMismatches(levels, rows);
     check('the tier the page locks a level by is the game\'s (build/web/data.json tree_tiers over the tree = tree_rows.json tier_engine) for every building',
         !!data.tree_tiers && bad.length === 0 && levels.tree_rows.length === rows.levels.length, data.tree_tiers ? bad.slice(0, 6) : 'build/web/data.json has no tree_tiers: py -3.14 tools/web_export.py --data');
+    // the same for the development points (data/tree_port.json В2): the page locks a level by the points the game's row asks
+    const devOf = Object.fromEntries(rows.levels.map(r => [r.id, r.dev]));
+    const badDev = levels.tree_rows.filter(r => r.dev !== devOf[r.node]).map(r => `${r.name}: page ${r.dev}, game ${devOf[r.node]}`);
+    check('the development points the page asks for a level are the game\'s (build/web/data.json tree_points over the tree = tree_rows.json dev) for every building',
+        !!data.tree_points && badDev.length === 0, data.tree_points ? badDev.slice(0, 6) : 'build/web/data.json has no tree_points: py -3.14 tools/web_export.py --data');
     // a level the author put lower than its links: the reason names the hull the game really asks for
     const {game, M} = fresh();
     const hulls = Object.entries(levels.hull_tiers).sort((a, b) => a[1] - b[1]).map(([k]) => k);

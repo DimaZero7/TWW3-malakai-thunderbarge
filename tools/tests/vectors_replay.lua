@@ -37,6 +37,7 @@ return function(Ship, CM, Fake)
         local sk = function(k) return short(w, k) end
         put('turn', game.turn())
         put('treasury', game.treasury())
+        put('points', M.points())
         put('message', M.message())
         put('first_step', M.first_step())
         put('upkeep', M.crew_upkeep())
@@ -58,6 +59,8 @@ return function(Ship, CM, Fake)
             put(b, st.state .. (st.turns ~= nil and (':' .. num(st.turns)) or ''))
             put(b .. '.why', st.why or '')
             put(b .. '.poor', st.poor and true or false)
+            put(b .. '.short', st.short and true or false)
+            put(b .. '.asked', st.asked and true or false)
             put(b .. '.missing', join(st.missing or {}, ',', function(x) if ssub(x, 1, 5) == 'tier:' then return x end return sk(x) end))
             put(b .. '.reason', M.reason(k))
             local d = M.can_demolish(k)
@@ -135,6 +138,9 @@ return function(Ship, CM, Fake)
         elseif act == 'ship_seen' then M.ship_seen(); return ''
         elseif act == 'side' then M.set_malakai_side(a.side); return ''
         elseif act == 'gold' then game.set_gold(a.gold); return ''
+        elseif act == 'points' then game.set_dev(a.points); return ''
+        elseif act == 'answer_cancel' then return tostring(game.answer_cancel(a.yes))
+        elseif act == 'script_stand' then return tostring(game.script_stand(k))
         elseif act == 'debug_build' then M.debug_build_to(k); return ''
         elseif act == 'game_dismantle' then return tostring(game.dismantle(k))
         elseif act == 'chosen_old' then M.set_crew_chosen_silently(true); return ''
