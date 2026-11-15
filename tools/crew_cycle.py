@@ -7,6 +7,8 @@
                      the engine probe of docs/design/port-to-game.md, stage 1 (tools/tests/port_probe.py): refuses unless every check of CLAUDE.md passes
   py -3.14 tools/crew_cycle.py session ship_panel [--dry-run] [--small] [--limit N] [--stash-user-pack] [--option NAME=VALUE ...]
                      the new airship panel opened and exercised in the game (tools/tests/ship_session.py), the same checks and machinery
+  py -3.14 tools/crew_cycle.py session crew_hire [--dry-run] [--small] [--limit N] [--stash-user-pack] [--break swap_models|panel_stays]
+                     the new panel's hire in the game (tools/tests/crew_hire_session.py); --break: the dry run on a mod broken on purpose, it must fail
   --igpu             the lowest settings instead of what the session asks: the RTX is out of the machine
   --scale N          all time limits of the session times N, for a slow GPU
   --limit-scale N    only the hard limit of the session times N; fights stay as long as in earlier runs, so kills compare
@@ -396,6 +398,17 @@ class Session:
             if m and fired_at is None and (int(m.group(3)) > 0 or float(m.group(2)) < 0.9995):
                 fired_at = time.time()
                 self.log("fired", r["result"])
+                if spec.get("fire_shots"):
+                    # a few seconds into the crew's fire: what the seats do then (tools/tests/crew_hire_session.py: Malakai at the rail), at speed 1
+                    time.sleep(spec.get("fire_shot_after", 3))
+                    self.lua("bm:modify_battle_speed(1); return 1", 8)
+                    for name in spec["fire_shots"]:
+                        cam = next(c for c in SPEC["cameras"] if c["name"] == name)
+                        self.lua(f'return C.camera({cam["f"]},{cam["r"]},{cam["u"]},{cam["tf"]},{cam["tr"]},{cam["tu"]},{cam["fov"]})', 10)
+                        time.sleep(1.2)
+                        self.shot(f"{label}_firing_{name}")
+                    self.lua("bm:modify_battle_speed(3); return 1", 8)
+                    result["fire_shots"] = [f"{label}_firing_{n}" for n in spec["fire_shots"]]
             if fired_at and time.time() - fired_at > extra:
                 break
             if m and spec.get("stop_near") and int(m.group(1)) <= spec["stop_near"] and time.time() - started > scaled(60):
@@ -414,6 +427,12 @@ class Session:
         if spec.get("from_game") or spec.get("ammo_report"):
             result["ammo_report"] = str(self.plain("return tostring(tww3_mtb_ammo.status) .. ' | ' .. tww3_mtb_ammo.report()", 8)["result"])
             self.log("ammo", result["ammo_report"])
+        if spec.get("fight_cam"):
+            # the camera was left where the deployment's last picture put it while the barge flew on (run 20261115-065150: only fog): aimed at
+            # the barge where it is now
+            cam = next(c for c in SPEC["cameras"] if c["name"] == spec["fight_cam"])
+            self.lua(f'return C.camera({cam["f"]},{cam["r"]},{cam["u"]},{cam["tf"]},{cam["tr"]},{cam["tu"]},{cam["fov"]})', 10)
+            time.sleep(1.5)
         self.shot(f"{label}_fight")
         if spec.get("late_shots"):
             self.lua("bm:modify_battle_speed(1); if _G.mtb_crew_uc then _G.mtb_crew_uc:halt() end; return 1", 8)
@@ -642,16 +661,33 @@ class Session:
             raise RuntimeError(text)
         return text
 
-    def safe_end_turn(self, limit=300):
-        """Ends the turn and waits for the player's next one. Another army's attack on the way is autoresolved."""
+    def safe_end_turn(self, limit=300, keep_events=False, after_end=None):
+        """Ends the turn and waits for the player's next one. Another army's attack on the way is autoresolved.
+        after_end: called once right after the end turn was given (the AI's turn is running then): a test's picture of that moment.
+        keep_events (tools/tests/crew_hire_session.py, the game's moments at a turn start): what the player's NEW turn opens with (a dilemma,
+        an event) is left on the screen: back as soon as the turn number moved on and either the end turn button is active or the game's events
+        panel is up; nothing of the new turn is clicked. Before that (the AI's turn) everything is answered as always."""
         begin = self.prog("return cm:turn_number()")["result"]
         self.log("turn", self.script("end_turn.lua")["result"])
+        if after_end:
+            try:
+                after_end()
+            except Exception as e:      # a picture never stops a turn end
+                self.log("after_end failed", type(e).__name__, e)
         end = time.time() + scaled(limit)
         step = ('for _, n in ipairs({"button_autoresolve", "button_captive_option_kill", "button_dismiss", "button_set_win", "button_continue", "button_dismiss_results"}) do '
                 'if mtb.find(n, true) then mtb.click(n); return "clicked " .. n end end '
                 'local e = mtb.find("events", true); local a = e and (mtb.find("choice_button", true, e) or mtb.find("button_accept", true, e)); if a then a:SimulateLClick() end '
                 'local b = mtb.find("button_end_turn", true); return cm:turn_number() .. " " .. (b and b:CurrentState() or "-")')
-        ticks = 0
+        if keep_events:
+            # the new turn's own moments are not answered: only the AI's turn is (its events come while the turn number is still the old one)
+            step = (f'local was = {int(float(begin))}; local e = mtb.find("events", true); local up = e and e:VisibleFromRoot() and "events" or "-" '
+                    'if cm:turn_number() > was then local b = mtb.find("button_end_turn", true); return cm:turn_number() .. " " .. (b and b:CurrentState() or "-") .. " " .. up end '
+                    'for _, n in ipairs({"button_autoresolve", "button_captive_option_kill", "button_dismiss", "button_set_win", "button_continue", "button_dismiss_results"}) do '
+                    'if mtb.find(n, true) then mtb.click(n); return "clicked " .. n end end '
+                    'local a = e and (mtb.find("choice_button", true, e) or mtb.find("button_accept", true, e)); if a then a:SimulateLClick() end '
+                    'local b = mtb.find("button_end_turn", true); return cm:turn_number() .. " " .. (b and b:CurrentState() or "-") .. " -"')
+        ticks, new_since = 0, None
         while time.time() < end:
             self.check_time()
             row = self.plain(step, 8)
@@ -659,6 +695,26 @@ class Session:
             if text.startswith("clicked"):
                 self.log(text)
             ticks += 1
+            if keep_events:
+                parts = text.split()
+                if parts and parts[0] == str(int(float(begin)) + 1):
+                    new_since = new_since or time.time()
+                    # back: the button free or the events panel up; or 12 s into the new turn with something else up (left as it is)
+                    if (len(parts) == 3 and (parts[1] == "active" or parts[2] == "events")) or time.time() - new_since > 12:
+                        self.log("turn back, the new turn's moments kept", text)
+                        time.sleep(1)
+                        return
+                if ticks % 4 == 0 and parts and parts[0] == str(int(float(begin))):     # the AI's turn only
+                    found = self.script("dismiss_blockers.lua")["result"]
+                    if found != "{}":
+                        self.log("blockers", found)
+                if len(parts) == 3 and parts[0] == str(int(float(begin))) and parts[1] == "active":     # the first order was taken away
+                    self.log("blockers", self.script("dismiss_blockers.lua")["result"])
+                    time.sleep(4)
+                    if str(self.plain(step, 8)["result"]) == text:
+                        self.log("turn again", self.script("end_turn.lua")["result"])
+                time.sleep(3)
+                continue
             if ticks % 4 == 0:      # an offer of the AI's, for example, stops the turn with the end turn button hidden
                 found = self.script("dismiss_blockers.lua")["result"]
                 if found != "{}":
@@ -978,6 +1034,8 @@ def main():
     ap.add_argument("--stash-user-pack", action="store_true")
     # skip_intro=0|1 for every session (default 1: Session.new_campaign); the other names: session ship_panel only, a probe answer as an option
     ap.add_argument("--option", action="append", default=[], metavar="NAME=VALUE")
+    # session crew_hire only (tools/tests/crew_hire_session.py BREAKS): the dry run with the mod broken on purpose in the fake; it must fail
+    ap.add_argument("--break", dest="broken")
     args = ap.parse_args()
     SCALE, LIMIT_SCALE, IGPU, MINIMIZED, EXTRA_SETTINGS = args.scale, args.limit_scale, args.igpu, args.minimized, args.set
     SKIP_INTRO, rest = skip_intro_option(args.option)
@@ -1008,6 +1066,8 @@ def main():
         extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
         if args.limit:
             extra += ["--limit", str(args.limit)]
+        if args.broken:
+            extra += ["--break", args.broken]
         return crew_hire_session.main(extra + skip)
     if args.what == "report":
         report()

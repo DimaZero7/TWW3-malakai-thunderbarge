@@ -5,7 +5,7 @@
 -- NEW_SHIP_PANEL is on (off by default): then the HUD's button opens this panel instead of the old crew panel.
 --
 --   local S = <this file>; S.start(load)    load(name) -> the module script/campaign/tww3_mtb/<name>.lua (src/tww3_mtb_crew_ui.lua ship_module)
---   S.open(), S.close(), S.is_open(), S.toggle()      S.open() -> false, why while the game's own moment is up (S.blocked)
+--   S.open(), S.close([why]), S.is_open(), S.toggle()      S.open() -> false, why while the game's own moment is up (S.blocked); why: the log's reason
 --   S.blocked()                             why the panel cannot be opened now (the model's words for the game's blocker), nil when it can
 --   S.button_state()                        {inactive, mark, why} for the HUD's button (src/tww3_mtb_crew_ui.lua)
 --   S.destroy()                             the panel's components gone (the next open builds them again)
@@ -126,7 +126,7 @@ end
 -- there is this same function)
 function S.click(id)
     if not (S.ui and S.shown) then return end
-    if id == 'mtb_ship_close' then S.close(); return end
+    if id == 'mtb_ship_close' then S.close('the cross'); return end
     local c = S.ui.by_id(id)
     if c then S.panel.click(c, S.ui.ENGINE.mouse_along()) end
 end
@@ -205,19 +205,19 @@ function S.open()
         S.click(context.string)
     end), true)
     core:add_listener('tww3_mtb_ship_hover', 'ComponentMouseOn', function() return S.ui ~= nil end, guarded(function(context) S.hover(context.string) end), true)
-    core:add_listener('tww3_mtb_ship_turn_end', 'FactionTurnEnd', function(context) return context:faction():name() == 'wh3_dlc25_dwf_malakai' end, guarded(S.close), true)
-    core:add_listener('tww3_mtb_ship_panel', 'PanelOpenedCampaign', function() return S.shown == true end, guarded(S.close), true)
+    core:add_listener('tww3_mtb_ship_turn_end', 'FactionTurnEnd', function(context) return context:faction():name() == 'wh3_dlc25_dwf_malakai' end, guarded(function() S.close('the turn ended') end), true)
+    core:add_listener('tww3_mtb_ship_panel', 'PanelOpenedCampaign', function() return S.shown == true end, guarded(function(context) S.close('a panel of the game opened: ' .. tostring(context and context.string)) end), true)
     -- the game's own moments close it as they close the game's full-screen panels: a battle, a dilemma, an incident (their panels may come a
     -- moment later or not at all); the rest, and any of them that came without an event, the watch below finds
-    core:add_listener('tww3_mtb_ship_battle', 'PendingBattle', function() return S.shown == true end, guarded(S.close), true)
-    core:add_listener('tww3_mtb_ship_dilemma', 'DilemmaIssuedEvent', function() return S.shown == true end, guarded(S.close), true)
-    core:add_listener('tww3_mtb_ship_incident', 'IncidentOccuredEvent', function() return S.shown == true end, guarded(S.close), true)
+    core:add_listener('tww3_mtb_ship_battle', 'PendingBattle', function() return S.shown == true end, guarded(function() S.close('a battle is pending') end), true)
+    core:add_listener('tww3_mtb_ship_dilemma', 'DilemmaIssuedEvent', function() return S.shown == true end, guarded(function() S.close('a dilemma came') end), true)
+    core:add_listener('tww3_mtb_ship_incident', 'IncidentOccuredEvent', function() return S.shown == true end, guarded(function() S.close('an incident came') end), true)
     -- the watch: the game's moment up -> closed; the game's window (the cancel's «Отменить строительство», which the panel waits for) leaves it
     -- open, but nothing of ours over it: the windows over the panel hidden and taken off the top while the window is up
     core:get_tm():repeat_real_callback(guarded(function()
         if not S.shown then return end
         local kind = S.game.blocker()
-        if kind and kind ~= 'dialog' then log('closed by the game: ' .. kind); S.close(); return end
+        if kind and kind ~= 'dialog' then S.close('the game: ' .. kind); return end
         local dialog = kind == 'dialog'
         if dialog and S.ui.topmost_on() then S.ui.mouse_on(nil) end
         S.ui.topmost(not dialog)
@@ -234,7 +234,7 @@ function S.open()
     end), true)
     local function onEscape()
         if not S.shown then return end
-        if S.panel.escape() then cm:steal_escape_key_with_callback(ESCAPE, onEscape) else S.close() end
+        if S.panel.escape() then cm:steal_escape_key_with_callback(ESCAPE, onEscape) else S.close('Esc') end
     end
     S.on_escape = onEscape      -- the key's callback, for the tests (no key can be pressed for them)
     cm:steal_escape_key_with_callback(ESCAPE, onEscape)
@@ -251,8 +251,8 @@ local function quiet()
     if S.hud then local h = S.hud; S.hud = nil; h() end
 end
 
--- closed: hidden and kept, its hover windows and choices gone
-function S.close()
+-- closed: hidden and kept, its hover windows and choices gone. why: what closed it, for the log ('the turn ended', 'the game: dilemma', ...)
+function S.close(why)
     if not S.shown then return end
     S.save()
     S.shown = false
@@ -263,7 +263,7 @@ function S.close()
         S.ui.topmost(false)         -- nothing of ours stays over the game (top-most draws over a hidden root's siblings: not proven otherwise)
         S.root:SetVisible(false)
     end)
-    log('closed')
+    log('closed' .. (type(why) == 'string' and (': ' .. why) or ''))
     button()
 end
 
