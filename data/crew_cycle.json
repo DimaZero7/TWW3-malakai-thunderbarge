@@ -152,46 +152,6 @@
    "fov": 7
   },
   {
-   "name": "mal_right",
-   "f": 5.5,
-   "r": 7.5,
-   "u": 4.6,
-   "tf": 1.8,
-   "tr": 1.9,
-   "tu": 3.2,
-   "fov": 18
-  },
-  {
-   "name": "mal_right_face",
-   "f": 1.8,
-   "r": 6.0,
-   "u": 3.6,
-   "tf": 1.8,
-   "tr": 1.9,
-   "tu": 3.3,
-   "fov": 16
-  },
-  {
-   "name": "mal_left",
-   "f": 5.5,
-   "r": -7.5,
-   "u": 4.6,
-   "tf": 1.8,
-   "tr": -2.1,
-   "tu": 3.2,
-   "fov": 18
-  },
-  {
-   "name": "mal_left_face",
-   "f": 1.8,
-   "r": -6.0,
-   "u": 3.6,
-   "tf": 1.8,
-   "tr": -2.1,
-   "tu": 3.3,
-   "fov": 16
-  },
-  {
    "name": "helm_close",
    "f": -0.5,
    "r": -3.0,
@@ -302,6 +262,181 @@
    "fov": 42
   }
  ],
+ "seat_frames": {
+  "_about": "Close frames of one seat (tools/crew_cycle.py Session.seat_shots, tools/tests/crew_lib.lua C.seat_camera): placed from the men's positions in the battle's memory, f along the deck forward (from the aft neighbour's seat to the forward one's), o outward (away from the seat across the deck), u up from the man's feet; look: the point looked at in the same frame. Every candidate is shot; the analysis keeps the first one the rigging does not block (tools/tests/crew_hire_session.py analyse). Run 20261115-091818: the rigging nets hang from the gas bag down to the rail over seats 0 and 1 of both sides; the gap without a net is around seat 2, aft of seat 1, so the cameras stand outside the hull aft of the seat (aft_gap: below the net's sheet; aft_tent: under the sheet, just outside the rail) or low outside (out_low). Run 20261115-095602: every candidate is checked before the camera moves (C.seat_camera): on the seat's side, at least 1.5 m farther from the centre line than the seat, the point looked at between the camera and the line, otherwise «misplaced»; the cameras nearer the rail than 2 m were dropped (aft_tent at 1.7 m looked down onto the deck). Frames with «camera»: that proven overview camera's position (cameras «deck», «right») looking at the seat's man with a narrow field of view (C.camera_to_seat).",
+  "mal_right": {
+   "seat": "ap_crew_right_1",
+   "across": "ap_crew_left_1",
+   "aft": "ap_crew_right_2",
+   "fwd": "ap_crew_right_0",
+   "look": {
+    "f": 0,
+    "o": 0,
+    "u": 0.75
+   },
+   "candidates": [
+    {
+     "c": "aft_gap",
+     "f": -4.2,
+     "o": 3.0,
+     "u": 1.2,
+     "fov": 30
+    },
+    {
+     "c": "aft_tent",
+     "f": -3.2,
+     "o": 2.4,
+     "u": 2.3,
+     "fov": 34
+    },
+    {
+     "c": "out_low",
+     "f": -0.8,
+     "o": 3.6,
+     "u": 0.3,
+     "fov": 28
+    }
+   ]
+  },
+  "mal_right_face": {
+   "seat": "ap_crew_right_1",
+   "across": "ap_crew_left_1",
+   "aft": "ap_crew_right_2",
+   "fwd": "ap_crew_right_0",
+   "look": {
+    "f": 0,
+    "o": 0,
+    "u": 1.05
+   },
+   "candidates": [
+    {
+     "c": "aft_gap",
+     "f": -2.3,
+     "o": 2.6,
+     "u": 1.3,
+     "fov": 16
+    },
+    {
+     "c": "out_low",
+     "f": -0.6,
+     "o": 2.6,
+     "u": 0.7,
+     "fov": 20
+    },
+    {
+     "c": "aft_tent",
+     "f": -1.8,
+     "o": 2.2,
+     "u": 1.9,
+     "fov": 18
+    }
+   ]
+  },
+  "seat1_left": {
+   "seat": "ap_crew_left_1",
+   "across": "ap_crew_right_1",
+   "aft": "ap_crew_left_2",
+   "fwd": "ap_crew_left_0",
+   "look": {
+    "f": 0,
+    "o": 0,
+    "u": 0.75
+   },
+   "candidates": [
+    {
+     "c": "aft_gap",
+     "f": -4.2,
+     "o": 3.0,
+     "u": 1.2,
+     "fov": 30
+    },
+    {
+     "c": "aft_tent",
+     "f": -3.2,
+     "o": 2.4,
+     "u": 2.3,
+     "fov": 34
+    },
+    {
+     "c": "out_low",
+     "f": -0.8,
+     "o": 3.6,
+     "u": 0.3,
+     "fov": 28
+    }
+   ]
+  },
+  "seat1_left_face": {
+   "seat": "ap_crew_left_1",
+   "across": "ap_crew_right_1",
+   "aft": "ap_crew_left_2",
+   "fwd": "ap_crew_left_0",
+   "look": {
+    "f": 0,
+    "o": 0,
+    "u": 1.05
+   },
+   "candidates": [
+    {
+     "c": "aft_gap",
+     "f": -2.3,
+     "o": 2.6,
+     "u": 1.3,
+     "fov": 16
+    },
+    {
+     "c": "out_low",
+     "f": -0.6,
+     "o": 2.6,
+     "u": 0.7,
+     "fov": 20
+    },
+    {
+     "c": "aft_tent",
+     "f": -1.8,
+     "o": 2.2,
+     "u": 1.9,
+     "fov": 18
+    }
+   ]
+  },
+  "mal_right_from_deck": {
+   "seat": "ap_crew_right_1",
+   "across": "ap_crew_left_1",
+   "aft": "ap_crew_right_2",
+   "fwd": "ap_crew_right_0",
+   "look": {
+    "f": 0,
+    "o": 0,
+    "u": 0.8
+   },
+   "candidates": [
+    {
+     "c": "deck",
+     "camera": "deck",
+     "fov": 9
+    }
+   ]
+  },
+  "mal_right_from_right": {
+   "seat": "ap_crew_right_1",
+   "across": "ap_crew_left_1",
+   "aft": "ap_crew_right_2",
+   "fwd": "ap_crew_right_0",
+   "look": {
+    "f": 0,
+    "o": 0,
+    "u": 0.8
+   },
+   "candidates": [
+    {
+     "c": "right",
+     "camera": "right",
+     "fov": 7
+    }
+   ]
+  }
+ },
  "order": [
   "a_new",
   "b_load",

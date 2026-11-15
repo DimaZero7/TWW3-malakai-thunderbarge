@@ -218,6 +218,88 @@ function C.camera_seat(name, dist, az, el, fov)
   return string.format("seat %.1f %.1f %.1f camera %.1f %.1f %.1f", x, y, z, cx, cy, cz)
 end
 
+-- Where each seat's man stands now (world x, y, z of the first man found on it, as C.men reads them): the frames of a seat are placed from
+-- these, not from the unit's bearing, so the side and the deck's height are the battle's own (tools/tests/crew_hire_session.py, 15.11).
+function C.seat_positions()
+  local u = C.lord_unit()
+  if not u then return {} end
+  local bu = C.battle_unit(u)
+  local out = {}
+  if not bu then return out end
+  for _, vec_off in ipairs({0x110, 0x180}) do
+    local size = mr.read_uint32(bu, vec_off + 4)
+    local data = mr.read_pointer(bu, vec_off + 8)
+    for i = 0, size - 1 do
+      pcall(function()
+        local m = mr.read_pointer(data, i * 8)
+        local e = mr.read_pointer(m, 0xb70)
+        if mr.is_null(e) then return end
+        local ap = mr.read_pointer(e, 8)
+        if mr.is_null(ap) then return end
+        local name = mr.read_string(ap, 0)
+        if not out[name] then out[name] = {x = mr.read_float(m, 0x88), y = mr.read_float(m, 0x8c), z = mr.read_float(m, 0x90)} end
+      end)
+    end
+  end
+  return out
+end
+
+-- A camera in the frame of one seat: out = away from the seat across the deck (seat minus across, level), fwd = from the aft neighbour's seat to
+-- the forward one's (made square to out), up = the world's; f, o, u the camera's offsets from the seat's man (his feet) in metres, lf, lo, lu the
+-- point looked at. The unit's bearing is used for fwd only when a neighbour's seat is not read.
+function C.seat_camera(seat, across, aft, fwd, f, o, u, lf, lo, lu, fov)
+  local P = C.seat_positions()
+  local s, a = P[seat], P[across]
+  if not (s and a) then return "no position for " .. (s and across or seat) end
+  local ox, oz = s.x - a.x, s.z - a.z
+  local ol = math.sqrt(ox * ox + oz * oz)
+  if ol < 0.5 then return "the seats " .. seat .. " and " .. across .. " are " .. string.format("%.2f", ol) .. " m apart" end
+  ox, oz = ox / ol, oz / ol
+  local fx, fz
+  local b0, b1 = P[aft], P[fwd]
+  if b0 and b1 then
+    fx, fz = b1.x - b0.x, b1.z - b0.z
+  else
+    local b = C.lord_unit():bearing() * 3.14159265 / 180
+    fx, fz = math.sin(b), math.cos(b)
+  end
+  local d = fx * ox + fz * oz
+  fx, fz = fx - d * ox, fz - d * oz
+  local fl = math.sqrt(fx * fx + fz * fz)
+  if fl < 0.01 then return "no forward direction" end
+  fx, fz = fx / fl, fz / fl
+  local cx, cy, cz = s.x + f * fx + o * ox, s.y + u, s.z + f * fz + o * oz
+  local tx, ty, tz = s.x + lf * fx + lo * ox, s.y + lu, s.z + lf * fz + lo * oz
+  -- the geometry checked before the camera moves (run 20261115-095602): the barge's centre line halfway between the seat and the one across;
+  -- the camera on the seat's side, at least MARGIN farther from the line than the seat (outside its rail), the point looked at between the
+  -- camera and the line. Otherwise «misplaced» and no move
+  local MARGIN = 1.5
+  local mx, mz = (s.x + a.x) / 2, (s.z + a.z) / 2
+  local ds = (s.x - mx) * ox + (s.z - mz) * oz
+  local dc = (cx - mx) * ox + (cz - mz) * oz
+  local dt = (tx - mx) * ox + (tz - mz) * oz
+  if not (dc >= ds + MARGIN and dt >= 0 and dt <= dc) then
+    return string.format("misplaced: from the centre line the seat %.2f m, the camera %.2f m (wanted at least %.2f, its side), the point looked at %.2f m (wanted 0..%.2f)",
+      ds, dc, ds + MARGIN, dt, dc)
+  end
+  bm:camera():move_to(vec(cx, cy, cz), vec(tx, ty, tz), 0, false, fov or 30)
+  return string.format("seat %s at %.1f %.1f %.1f, out %.2f %.2f, fwd %.2f %.2f; camera %.1f %.1f %.1f -> %.1f %.1f %.1f fov %s", seat, s.x, s.y, s.z,
+    ox, oz, fx, fz, cx, cy, cz, tx, ty, tz, tostring(fov))
+end
+
+-- A camera at a proven overview position (C.camera's f, r, up relative to the lord: data/crew_cycle.json «deck», «right») looking at a seat's
+-- man from his memory position (lu above his feet), with a narrow field of view: a frame of him that does not depend on the seat's own frame.
+function C.camera_to_seat(f, r, up, seat, lu, fov)
+  local s = C.seat_positions()[seat]
+  if not s then return "no position for " .. seat end
+  local u = C.lord_unit()
+  local p = u:position()
+  local b = u:bearing() * 3.14159265 / 180
+  local cx, cy, cz = p:get_x() + math.sin(b) * f + math.cos(b) * r, p:get_y() + up, p:get_z() + math.cos(b) * f - math.sin(b) * r
+  bm:camera():move_to(vec(cx, cy, cz), vec(s.x, s.y + lu, s.z), 0, false, fov)
+  return string.format("seat %s at %.1f %.1f %.1f; camera %.1f %.1f %.1f fov %s", seat, s.x, s.y, s.z, cx, cy, cz, tostring(fov))
+end
+
 -- The nearest living enemy unit. A far target ignores attack_unit (the stock AI does not answer either), so: move there, then attack.
 function C.order()
   local uc, enemy_alliance = _G.mtb_crew_uc, _G.mtb_crew_enemy

@@ -17,7 +17,11 @@ Answers: <run>/crew_hire.jsonl (a line per step), crew_hire_summary.txt, ch_*.pn
 Since run 20261115-065150 (its «ok» rested on names and the mod's own words): every verdict rests on a fact read from the game (its components' texts,
 tooltips and visibility, the treasury, the men in battle memory) and the summary ends with the table A-G (docs/tools-and-work-plan.md, crew_hire):
 A Malakai and the helm from memory + close frames, B the panel against the game's moments, C the turn's report, D the demolish refund, E the panel's
-ammunition against the battle's, F the drawn wording and its glyphs, G the start's speed. --break swap_models|panel_stays: the dry run must fail.
+ammunition against the battle's, F the drawn wording and its glyphs, G the start's speed. --break swap_models|panel_stays|event_stays|stale_blocker:
+the dry run must fail (event_stays: «moment» says it could not dismiss the message and the later steps say «precondition failed»; stale_blocker:
+«moment» says «MOD: stale blocker»). Since run 20261115-091818: the game's messages are answered only by a component visible from the root (the
+panel holds several hidden button_accept / choice_button; the first by name is hidden), ONE incident is fired, each step after «moment»
+establishes its own precondition, the seats' close frames are placed from the men's positions with candidates and a check for the rigging.
 """
 import argparse
 import json
@@ -61,6 +65,11 @@ ss.BUDGET.update({"bridge": 60, "barge": 90, "turn_barge": TURN, "openers": 150,
 # stock incidents for the game's moment by script: in the game's data they have no payload and no option rows (db.pack incidents_tables minus
 # cdir_events_incident_payloads_tables and cdir_events_incident_option_junctions_tables, 15.11): a message, nothing changes
 INCIDENTS = ["wh3_main_incident_rifts_close_soon", "wh3_main_incident_rifts_close_imminent", "wh3_main_ie_incident_endgame_grudge_too_far_early_warning"]
+# the stock HUD buttons whose stock full-screen panels the session opens over the game's event message (B.2, a fact for the author: are the game's
+# own panels held back by a plain message?), by the game's own paths (wh3_prologue_kislev_expedition_interventions.lua), closed again by
+# CampaignUI.ClosePanel (as the game's scripts close objectives_screen); diplomacy is left out (the mod's blocker counts it a modal panel)
+STOCK_PANELS = [("technology", ["hud_campaign", "faction_buttons_docker", "button_technology"], "technology_panel"),
+                ("missions", ["hud_campaign", "faction_buttons_docker", "button_group_management", "button_missions"], "objectives_screen")]
 RISKY = {"battle": "ONE real battle (tools/crew_cycle.py Session.battle): the campaign Lua restarts after it",
          "turn_barge": "a turn end by script", "turn_openers": "a turn end by script", "turn_hire": "a turn end by script (the new turn's moments left up)",
          "turn_lose": "a turn end by script", "turn_refund2": "a turn end by script", "moment": "a stock incident by script when no moment came",
@@ -136,6 +145,11 @@ def checks():
 
 
 # ---------------------------------------------------------------- the steps ----------------------------------------------------------------
+
+class Precondition(Exception):
+    """A step's own precondition could not be established (a game window in the way, the panel not opening): the step says so and stops, instead
+    of failing deep inside a click (run 20261115-091818: one event message left up failed B.3, D and C in turn)."""
+
 
 class CrewHireSession(ss.ShipSession):
     def __init__(self, cfg, transport, session, run_dir, fake=False):
@@ -417,8 +431,111 @@ class CrewHireSession(ss.ShipSession):
                         f"{plan.get(mk['helm_seat'])}; crew status {c.get('status')}; bridge writes {c['bridge']['writes']}; cargo {c.get('cargo')} "
                         f"(the battle's {c.get('cargo_battle')})"), {**d, "watch": watch, "mid": mid, "log": logs}
 
-    # -- B.2 a turn start with the game's moment up (a dilemma or an event; one triggered by script when none came): the HUD button inactive with
-    # the reason, its click and the screen's own open refused, nothing of ours over the game's window; answered, the panel opens again
+    # -- the game's windows: answered by the visible path, a step's precondition established, ONE incident fired, the stock panels probed
+
+    def answer_events(self, limit=8):
+        """The game's event messages on the screen answered as the turn end answers them (I.answer_one: a dilemma's first visible choice, a message's
+        visible tick, never a hidden component), one a call with a wait for the next queued one. -> (the paths clicked, the game's windows after)."""
+        clicks = []
+        for _ in range(limit):
+            r = self.cz("answer_one")
+            if not r.get("up"):
+                break
+            if not r.get("clicked"):
+                clicks.append(f"nothing clicked: {r.get('why') or r.get('err')}")
+                break
+            clicks.append(r.get("how"))
+            self.sleep(1.2)
+        self.sleep(0.5)
+        return clicks, self.cz("game_windows")
+
+    def establish(self, what):
+        """A step's precondition: no game window on the screen (event messages answered by the visible path, the stock panels this session opened
+        closed by the game's call). Raises Precondition naming the window still in the way, or the mod's blocker that stays with nothing up."""
+        w = self.cz("game_windows")
+        closed = []
+        for name in w.get("stock_up") or []:
+            self.cz("stock_close", {"panel": name})
+            closed.append(name)
+        clicks = []
+        if w.get("events_up") or closed:
+            if closed:
+                self.sleep(1.0)
+            clicks, w = self.answer_events()
+        if w.get("up"):
+            raise Precondition(f"precondition failed ({what}): the game's window in the way: {'; '.join(w['up'])}; answered {len(clicks)} times by the visible "
+                               f"path {clicks[-2:]}; the mod's blocker {w.get('blocker')}")
+        b = w.get("blocker")
+        if b not in (None, "none"):
+            raise Precondition(f"precondition failed ({what}): MOD: stale blocker: no game window is up (events panel {w.get('events')}, the ui manager's "
+                               f"event flag {w.get('ui_manager_event_panel')}, dilemma waits {w.get('dilemma_waits')}), yet G.blocker() says «{b}»")
+        return {"answered": clicks, "closed": closed, "windows": w}
+
+    def fire_incident(self):
+        """ONE stock incident by script: a key, then up to 5 s for the game's IncidentOccuredEvent; the next key only when nothing was heard.
+        -> (the key heard or None, [(key, the call's answer, heard)], the read after)."""
+        tried = []
+        for key in self.c["incidents"]:
+            r = self.cz("incident", {"key": key}, 30)
+            heard = r.get("heard") or []
+            for _ in range(5):
+                if heard:
+                    break
+                self.sleep(1.0)
+                heard = self.cz("incident_read", {"keep": True}).get("heard") or []
+            tried.append((key, r.get("call"), bool(heard)))
+            if heard:
+                self.sleep(1.0)         # the message is drawn a moment after the event
+                return key, tried, self.cz("incident_read")
+        return None, tried, self.cz("incident_read")
+
+    def stock_probe(self, label):
+        """B.2's fact for the author: with the game's own message up, do the stock HUD buttons open their stock full-screen panels? Each clicked as
+        the player's click arrives, read from the game's components 1.5 s later, shot, closed again by CampaignUI.ClosePanel (its button again if not)."""
+        rows = []
+        for short, path, panel in STOCK_PANELS:
+            c = self.cz("stock_click", {"path": path, "panel": panel})
+            row = {"panel": panel, "button": c.get("path"), "found": c.get("found"), "state": c.get("state"), "clicked": c.get("clicked"),
+                   "events_before": c.get("events_before"), "opened": None}
+            if c.get("clicked") == "sent":
+                self.sleep(1.5)
+                r = self.cz("stock_read", {"panel": panel})
+                self.shoot(f"ch_stock_{label}_{short}")
+                self.cz("stock_close", {"panel": panel})
+                self.sleep(1.0)
+                r2 = self.cz("stock_read", {"panel": panel})
+                how = "CampaignUI.ClosePanel"
+                if r2.get("panel_up"):
+                    self.cz("stock_click", {"path": path, "panel": panel})
+                    self.sleep(1.0)
+                    r2 = self.cz("stock_read", {"panel": panel})
+                    how = "its HUD button again"
+                row.update(opened=bool(r.get("panel_up")), message_stayed=bool(r.get("events_up")), blocker=r.get("blocker"), ui_manager_open=r.get("ui_manager_panel_open"),
+                           closed=not r2.get("panel_up"), closed_by=how, message_after=bool(r2.get("events_up")), picture=f"ch_stock_{label}_{short}.png")
+            rows.append(row)
+        return rows
+
+    @staticmethod
+    def stock_text(rows):
+        parts = []
+        for r in rows:
+            if r.get("opened") is None:
+                parts.append(f"{r['panel']}: button {r.get('button')} found {r.get('found')}, state {r.get('state')}, {r.get('clicked')}: not measured")
+            else:
+                parts.append(f"{r['panel']} by {r['button']} (state {r.get('state')}): opened {r['opened']}, the message stayed {r['message_stayed']}, the mod's blocker "
+                             f"{r.get('blocker')}; closed again {r['closed']} ({r['closed_by']}), the message still up {r['message_after']}")
+        return "; ".join(parts)
+
+    @staticmethod
+    def stock_fact(rows):
+        measured = [r for r in rows if r.get("opened") is not None]
+        if not measured:
+            return "not measured"
+        return "yes" if any(r["opened"] for r in measured) else "no"
+
+    # -- B.2 a turn start with the game's moment up (a dilemma or an event; ONE incident by script when none came): the HUD button inactive with
+    # the reason, its click and the screen's own open refused, nothing of ours over the game's window; the stock panels over it (a fact); answered
+    # by the visible path, the game's components say nothing is up, only then the mod's blocker; the panel opens by the HUD's own handler
     def smoment(self):
         g, _ = self.c["plan"]["hire"]
         b0 = self.cz("blocker")
@@ -427,18 +544,18 @@ class CrewHireSession(ss.ShipSession):
                 break
             self.sleep(1.0)
             b0 = self.cz("blocker")
-        source = "came by itself at the turn start"
+        source, fired = "came by itself at the turn start", None
         if b0.get("adapter") in ("none", None):
-            inc = self.cz("incident", {"keys": self.c["incidents"]}, 30)
-            self.sleep(2.0)
-            r = self.cz("incident_read")
+            fired, tried, r = self.fire_incident()
             b0 = r["blocker"]
-            source = f"none came by itself: incident by script, tried {[(t['key'], t['call']) for t in inc.get('tried') or []]}, heard {r.get('heard')}"
+            source = f"none came by itself: ONE incident by script {fired}, tried {tried}, heard {r.get('heard')}"
         if b0.get("adapter") in ("none", None):
             self.row("B.2", "the HUD button inactive with the reason; click and S.open refused; nothing of ours over the game's window", f"no moment: {source}",
                      "not measured")
             return "not_measured", f"no game moment to test against: {source}; blocker {b0}", {"blocker": b0}
+        kind = b0.get("adapter")
         self.shoot("ch_moment")
+        ev = self.cz("events_read")         # which components the game's message holds: the evidence for the tick
         hud = self.cz("hud", {"refresh": True, "hover": True})
         self.sleep(0.8)
         hb = hud.get("box") or {}
@@ -449,17 +566,27 @@ class CrewHireSession(ss.ShipSession):
         self.sleep(0.6)
         self.shoot("ch_moment_refused")
         during = tried.get("look") or {}
-        answered = self.cz("dismiss")
-        self.sleep(1.5)
-        b1 = self.cz("blocker")
-        if b1.get("adapter") not in ("none", None):
-            answered2 = self.cz("dismiss")
-            self.sleep(1.5)
-            b1 = self.cz("blocker")
-            answered = {"answered": (answered.get("answered") or 0) + (answered2.get("answered") or 0)}
+        # 2: the game's own panels over the game's own message (the mod's rule is not changed: a fact for the author)
+        stock = {kind: self.stock_probe(kind)}
+        clicks, w = self.answer_events()
+        if kind != "event" and fired is None and not w.get("up"):
+            # a dilemma came by itself: the plain message too, ONE incident, the same probe, answered the same way
+            fired2, tried2, _ = self.fire_incident()
+            if fired2:
+                stock["event"] = self.stock_probe("event")
+                more, w = self.answer_events()
+                clicks += more
+        b1 = w.get("blocker")
+        up = w.get("up") or []
+        stale = not up and b1 not in (None, "none")
         hud2 = self.cz("hud", {"refresh": True})
-        after = self.cz("open_picker", {"group": g})
-        self.sleep(0.6)
+        opened = {}
+        if not up and not stale:
+            # the panel opens as the player opens it: the HUD button (its click, then its handler when the click did not move it)
+            hc = self.cz("hud_click", {"direct": True})
+            opened = {"by_click": hc.get("after_simulated"), "by_handler": hc.get("after_direct"), "log": hc.get("log_simulated") or hc.get("log_direct")}
+            self.cz("open_picker", {"group": g})
+            self.sleep(0.6)
         self.shoot("ch_moment_after")
         self.cz("close")
         why = (b0.get("can_open") or {}).get("why") if isinstance(b0.get("can_open"), dict) else None
@@ -469,50 +596,80 @@ class CrewHireSession(ss.ShipSession):
                    "the HUD click (log)": [l for l in (click.get("log_simulated") or []) + (click.get("log_direct") or []) if "open:" in l or "not opened" in l]}
         self.reasons.update({f"B.2 {k}": v for k, v in reasons.items()})
         root = during.get("root") or {}
-        # the tooltip's text counts only as the game holds it (GetTooltipText); the button's state is the game's own either way
         ok_hud = hud.get("state") == "inactive" and (not tip_game or (bool(why) and why in tip_text))
         ok_refused = not click.get("after_simulated") and not click.get("after_direct") and tried.get("ok") is False and bool(tried.get("why"))
         ok_nothing = not during.get("is_open") and not during.get("topmost_on") and not (isinstance(root, dict) and root.get("from_root"))
-        ok_back = b1.get("adapter") in ("none", None) and (after.get("look") or {}).get("is_open") is True and hud2.get("state") != "inactive"
-        verdict = "ok" if ok_hud and ok_refused and ok_nothing and ok_back else "differs"
-        measured = (f"{source}: blocker {b0.get('adapter')} (events panel {b0.get('events')}, ui manager {b0.get('ui_manager_event_panel')}, dilemma waits "
+        ok_back = bool(opened.get("by_click") or opened.get("by_handler")) and hud2.get("state") != "inactive"
+        answers = ev.get("answers") or []
+        evidence = (f"the events panel holds {len(answers)} answer buttons: " + ", ".join(f"{a['path']} ({'shown' if a.get('visible') else 'hidden'})" for a in answers[:8])
+                    + f"; the first button_accept by name (what find_uicomponent gave the old dismiss): {ev.get('first_by_name')}; the first choice_button by name "
+                    f"{ev.get('first_choice_by_name')}; layouts shown {ev.get('layouts')}")
+        answered = f"answered {len(clicks)} times by the visible path {clicks}; the game's windows after: {up or 'none'} (events panel {w.get('events')})"
+        if up:
+            verdict, status = f"FAILED: the session could not dismiss the message ({'; '.join(up)})", "failed"
+        elif stale:
+            verdict, status = "MOD: stale blocker", "failed"
+        else:
+            verdict = "ok" if ok_hud and ok_refused and ok_nothing and ok_back else "differs"
+            status = "ok" if verdict == "ok" else "differs"
+        measured = (f"{source}: blocker {kind} (events panel {b0.get('events')}, ui manager {b0.get('ui_manager_event_panel')}, dilemma waits "
                     f"{b0.get('dilemma_waits')}, CampaignUI {b0.get('campaign_ui')}); HUD button state {hud.get('state')}, mark {hud.get('mark')}, tooltip «{tip_text}» "
                     f"({'as the game holds it' if tip_game else 'NOT readable from the game: the picture only'}); "
                     f"click: SimulateLClick {click.get('simulated')} -> open {click.get('after_simulated')}, the handler -> open {click.get('after_direct')}; "
                     f"S.open -> {tried.get('ok')}, «{tried.get('why')}»; on the screen: open {during.get('is_open')}, holder {root}, windows {during.get('windows')}; "
-                    f"answered {answered.get('answered')}, blocker after {b1.get('adapter')}; button after {hud2.get('state')}; the panel opened after {(after.get('look') or {}).get('is_open')}")
-        self.row("B.2", "turn start with a dilemma/event: HUD button inactive with the reason; click and S.open refused; nothing of ours over it; answered -> blocker nil, panel opens",
-                 measured, verdict, "ch_hud_inactive_hud.png, ch_moment_refused.png, ch_moment_after.png")
-        return ("ok" if verdict == "ok" else "differs"), measured, {"before": b0, "hud": hud, "click": click, "tried": tried, "after": b1, "hud_after": hud2, "open_after": after}
+                    f"{answered}; then the mod's blocker {b1}, the ui manager's event flag {w.get('ui_manager_event_panel')}; button after {hud2.get('state')}; "
+                    f"the panel opened after by the HUD's click {opened.get('by_click')}, by its handler {opened.get('by_handler')}"
+                    f"; {evidence}")
+        self.row("B.2", "turn start with a dilemma/event: HUD button inactive with the reason; click and S.open refused; nothing of ours over it; answered by the "
+                 "visible path -> the game's components show no message -> blocker nil -> the panel opens by the HUD", measured, verdict,
+                 "ch_hud_inactive_hud.png, ch_moment_refused.png, ch_moment_after.png")
+        facts = "; ".join(f"over {k}: {self.stock_fact(v)} ({self.stock_text(v)})" for k, v in stock.items())
+        self.row("B.2 stock", "a fact for the author (the mod's rule unchanged): do the game's own HUD buttons open their full-screen panels over the game's message?",
+                 f"stock panels open over an event message: {self.stock_fact(stock.get('event') or [])}; {facts}", "fact",
+                 ", ".join(r["picture"] for v in stock.values() for r in v if r.get("picture")))
+        answer = f"{verdict}: {measured}; stock panels: {facts}"
+        return status, answer, {"before": b0, "events": ev, "hud": hud, "click": click, "tried": tried, "stock": stock, "answered": clicks, "windows_after": w,
+                                "hud_after": hud2, "opened": opened}
 
-    # -- B.3 an incident by script while the panel and the picker are open in the player's turn: the panel closes itself
+    # -- B.3 ONE incident by script while the panel and the picker are open in the player's turn: the panel closes itself
     def sincident(self):
         g, _ = self.c["plan"]["hire"]
-        op = self.cz("open_picker", {"group": g})
-        self.sleep(0.5)
-        before = op.get("look") or {}
+        expected = "incident by script with the panel and picker open: the panel closes itself"
+        try:
+            pre = self.establish("B.3")
+            op = self.cz("open_picker", {"group": g})
+            self.sleep(0.5)
+            before = op.get("look") or {}
+            if not op.get("opened") or not before.get("is_open"):
+                raise Precondition(f"precondition failed (B.3): the panel did not open by S.open: «{op.get('why')}», blocker {before.get('blocker')}")
+        except Precondition as e:
+            self.row("B.3", expected, str(e), "precondition failed", "")
+            return "failed", str(e), {}
         self.cz("log_mark")
-        inc = self.cz("incident", {"keys": list(reversed(self.c["incidents"]))}, 30)
-        self.sleep(1.5)
-        r = self.cz("incident_read")
+        key, tried, r = self.fire_incident()
         logs = (self.cz("log_since", {"has": "[ship screen]"}).get("lines")) or []
         self.shoot("ch_incident")
         seen = r.get("look") or {}
-        answered = self.cz("dismiss")
-        self.sleep(1.5)
-        after = self.cz("blocker")
-        if not r.get("heard"):
-            self.row("B.3", "incident by script with the panel and picker open: the panel closes itself", f"no incident issued: {inc.get('tried')}", "not measured", "ch_incident.png")
-            return "not_measured", f"no incident was issued by the game: {inc.get('tried')}", {"inc": inc, "read": r}
+        clicks, w = self.answer_events()
+        if not key:
+            self.row("B.3", expected, f"no incident issued: {tried}", "not measured", "ch_incident.png")
+            return "not_measured", f"no incident was issued by the game: {tried}", {"tried": tried, "read": r}
         root = seen.get("root") or {}
         closed = [l for l in logs if "] closed" in l]
         gone = not seen.get("is_open") and not seen.get("topmost_on") and isinstance(root, dict) and root.get("own") is False
         verdict = "ok" if gone and closed else ("differs" if gone else "FAILED")
-        measured = (f"before: open {before.get('is_open')}, pickers {before.get('pickers')}; incident {r.get('heard')}; then open {seen.get('is_open')}, holder {root}, windows "
-                    f"{seen.get('windows')}, pickers {seen.get('pickers')}, blocker {seen.get('blocker')}; log {closed or 'NO «closed» line'}; answered {answered.get('answered')}, "
-                    f"blocker after {after.get('adapter')}")
-        self.row("B.3", "incident by script with the panel and picker open: the panel closes itself", measured, verdict, "ch_incident.png")
-        return ("ok" if verdict == "ok" else ("failed" if verdict == "FAILED" else "differs")), measured, {"inc": inc, "read": r, "log": logs, "after": after}
+        up = w.get("up") or []
+        stale = not up and w.get("blocker") not in (None, "none")
+        measured = (f"before: open {before.get('is_open')}, pickers {before.get('pickers')} (precondition: answered {pre['answered']}); ONE incident {key} (tried {tried}); "
+                    f"then open {seen.get('is_open')}, holder {root}, windows {seen.get('windows')}, pickers {seen.get('pickers')}, blocker {seen.get('blocker')}; log "
+                    f"{closed or 'NO «closed» line'}; answered {len(clicks)} times by the visible path {clicks}; the game's windows after {up or 'none'}, the mod's "
+                    f"blocker after {w.get('blocker')}")
+        self.row("B.3", expected, measured, verdict, "ch_incident.png")
+        if up:
+            return "failed", measured + "; the session could not dismiss the message", {"tried": tried, "read": r, "log": logs, "after": w}
+        if stale:
+            return "failed", measured + "; MOD: stale blocker", {"tried": tried, "read": r, "log": logs, "after": w}
+        return ("ok" if verdict == "ok" else ("failed" if verdict == "FAILED" else "differs")), measured, {"tried": tried, "read": r, "log": logs, "after": w}
 
     # -- A: the men of the battle read from memory: Malakai's own variant at his rail, the crew dwarf at the helm, nobody else his
     def malakai_check(self, text):
@@ -564,8 +721,11 @@ class CrewHireSession(ss.ShipSession):
             saver = self.s.save_result
             self.s.save_result = lambda result: (got.update(result), saver(result))
             try:
-                self.s.battle({"label": "crew_hire", "from_game": True, "ammo_report": True, "fight": 90, "shots": CLOSE_FRAMES + ["right", "left", "wheel_30", "deck"],
-                               "fire_shots": ["mal_right", "mal_right_face"], "fire_shot_after": 3, "fight_cam": "right"})
+                # the overview frames first (crew_hire_right is the analysis' reference of the battle's light), then the seats' close frames placed from
+                # the men's own positions (Session.seat_shots: every candidate shot, the analysis keeps the first the rigging does not block); the same
+                # four again 3 s into the crew's fire, the battle slowed to a tenth meanwhile
+                self.s.battle({"label": "crew_hire", "from_game": True, "ammo_report": True, "fight": 90, "shots": ["right", "left", "wheel_30", "deck", "helm_close"],
+                               "seat_shots": SEAT_FRAMES, "fire_seat_shots": SEAT_FRAMES, "fire_shot_after": 3, "fight_cam": "right"})
             finally:
                 self.s.save_result = saver
                 self.s.malakai = None
@@ -577,10 +737,13 @@ class CrewHireSession(ss.ShipSession):
                  "the other side's seat 1 an ordinary man of the hired kind",
                  ("no men read" if n == 0 else "; ".join(f"{'ok' if c['ok'] else 'FAIL'} {c['check']} (got {c['got']})" for c in checks)) + (" [fake: from the seat plan]" if self.fake else ""),
                  "ok" if a_ok else "FAILED", "men_crew_hire.txt")
-        frames = [f"crew_hire_{n_}.png" for n_ in CLOSE_FRAMES] + [f"{x}.png" for x in got.get("fire_shots") or []] + ["crew_hire_fight.png"]
-        self.row("A (look)", "his own body and rifle at the right rail, an ordinary crossbowman on the left seat 1, the engineer at the wheel; in the fire: what he does, "
-                 "where his axe is", "pictures only (judged by eye; brightness in the table's notes)" if not self.fake else "not measured (fake: no battle)",
-                 "see pictures" if not self.fake else "not measured", ", ".join(frames))
+        frames = [f"crew_hire_{n_}.png" for n_ in SEAT_FRAMES + ["helm_close"]] + [f"crew_hire_firing_{n_}.png" for n_ in SEAT_FRAMES] + ["crew_hire_fight.png"]
+        cams = {**{n_: v for n_, v in (got.get("seat_shots") or {}).items()}, **{"firing " + n_: v for n_, v in (got.get("fire_seat_shots") or {}).items()}}
+        self.camera_lines = cams
+        self.row("A (look)", "his own body and rifle at the right rail with both neighbours (height, scale, feet, the rail), his head and hands (the rifle, the axe), the "
+                 "same for the left seat 1 (an ordinary crossbowman), the engineer at the wheel; two frames of him from the proven overview cameras (deck 9°, right 7°); at deployment and 3 s into the fire; no frame misplaced (camera inside the rail) or blocked by the rigging",
+                 "pictures only (judged by eye); each seat frame: the first candidate the rigging does not block (the analysis at the end)" if not self.fake
+                 else "not measured (fake: no battle)", "see pictures" if not self.fake else "not measured", ", ".join(frames))
         start = None
         m = re.search(rf"{g} {o} (\d+)/(\d+)", str(got.get("ammo_report") or ""))
         if m:
@@ -615,7 +778,13 @@ class CrewHireSession(ss.ShipSession):
     # treasury right after; then the panel closed (C: the turn's report comes while it is closed)
     def sdemolish(self):
         k = self.c["keys"]["demolish"]
-        op = self.data("open", {}, 200)
+        try:
+            pre = self.establish("D, the demolish by the panel's button")
+            op = self.data("open", {}, 200)
+            if not op.get("ok"):
+                raise Precondition(f"precondition failed (D, the demolish by the panel's button): the panel did not open: «{op.get('err')}»")
+        except Precondition as e:
+            return "failed", str(e), {}
         self.data("click", {"id": "mtb_tab_tree", "keys": [k]})
         nodes = {n["key"]: n for n in self.data("nodes")["nodes"]}
         node = nodes.get(k)
@@ -637,7 +806,7 @@ class CrewHireSession(ss.ShipSession):
         n = right_after.get("adapter_refund")
         said = re.search(r"За снос вернётся ([\d\s ]+) золота", tip_text)
         self.reasons["D the round button's tooltip (" + str((raze.get("tooltip") or {}).get("from")) + ")"] = tip_text
-        answer = (f"{k.removeprefix(PREFIX)} slot {before.get('slot')}: the game's refund on the slot BuildingContext.DismantleRefundAmount {before.get('game_building_refund')}, "
+        answer = (f"precondition: no game window (answered {pre['answered'] or 'nothing'}); {k.removeprefix(PREFIX)} slot {before.get('slot')}: the game's refund on the slot BuildingContext.DismantleRefundAmount {before.get('game_building_refund')}, "
                   f".DismantleRefundAmount {before.get('game_slot_refund')}; the adapter's {before.get('adapter_refund')}; the round button {raze.get('shown')}, tooltip "
                   f"«{tip_text}» ({(raze.get('tooltip') or {}).get('from')}); treasury before the order {before.get('treasury')}, right after {right_after.get('treasury')}; "
                   f"forecast M.turn_gold {right_after.get('turn_gold')}; the treasury's tooltip «{(right_after.get('gold_tooltip') or {}).get('text')}»; the faction's "
@@ -672,55 +841,94 @@ class CrewHireSession(ss.ShipSession):
         k = self.c["keys"]["demolish"]
         g, o = self.c["plan"]["hire"]
         pre = self.cz("refund_read", {"key": k})
+        # D's own precondition: the dismantle ordered by the demolish step, as the game's slot says it (IsDismantling)
+        d_pre = None if (pre.get("dismantling") or {}).get("v") is True else \
+            f"precondition failed (D level I): the game's slot is not dismantling ({pre.get('dismantling')}): the demolish step did not order it ({(self.results.get('demolish') or {}).get('status')})"
         self.cz("close")
         back, once, text, d = self.turn("lose", 0)
         c = d["after"]
         plan = c.get("plan") or {}
         mk, side = self.c["malakai"], self.c["plan"]["side"]
         empty = all(plan.get(s) == "mtb_bp_empty" for s in self.c["rifle_seats"] if s != mk["seats"][side])
-        hud = self.cz("hud", {"refresh": True})
-        hb = hud.get("box") or {}
-        crop = {"x": hb["x"] - 120, "y": hb["y"] - 120, "w": (hb.get("w") or 60) + 240, "h": (hb.get("h") or 60) + 240, "units": "game"} if hb.get("x") is not None else None
-        self.shoot_crops("ch_hud_mark", {"hud": crop})
-        t0 = time.time()
-        op = self.cz("open_read")
-        t_open = time.time()
-        self.shoot_crops("ch_report_open", {"foot": op.get("foot_box")}, quick=True)
-        t_shot = time.time()
-        p1 = self.cz("pick_read", {"group": g, "option": "empty"})
-        t_click = time.time()
-        self.shoot_crops("ch_report_click", {"foot": op.get("foot_box")}, quick=True)
-        self.sleep(2.0)
-        seen_log = self.cz("log_since", {"has": "report"}).get("lines") or []
-        p2 = self.cz("pick_read", {"group": g, "option": "empty"})
-        self.shoot_crops("ch_report_after", {"foot": op.get("foot_box")}, quick=True)
-        self.cz("close")
         name = self.c["names"][g][o]
-        foot0 = (op.get("foot") or "") + " " + str(op.get("foot_tip") or "")
-        leaving = name in foot0 and "сошли с корабля" in foot0
-        report = op.get("model_report") or ""
-        f1, f2 = p1.get("foot") or "", p2.get("foot") or ""
-        in_time = (t_click - t_open) < 1.0
-        line2 = p2.get("model_message") or ""
-        c_ok = leaving and (report[:40] in f1 and f1 != (op.get("foot") or "")) and (report[:40] not in f2 if report else True) and any("seen" in l for l in seen_log)
-        mark = hud.get("mark") or {}
-        c_measured = (f"HUD button before the open: state {hud.get('state')}, «!» mark {mark}; opened by {op.get('way')} {round(t_open - t0, 2)} s, picture at "
-                      f"+{round(t_shot - t_open, 2)} s; the foot as drawn «{op.get('foot')}» (its tooltip «{op.get('foot_tip')}»); the crossbows "
-                      f"leaving in it: {leaving}; click «Пусто» at +{round(t_click - t_open, 2)} s (within 1 s: {in_time}): foot «{f1}»; 2 s later the log {seen_log}; the click "
-                      f"again: foot «{f2}» (the click's line «{line2}»)")
-        self.row("C", "the HUD's «!» before the open; on the first open the drawn foot holds the report (the crossbows leaving); a click within 1 s adds its line; "
-                 "after the read time the click's line alone", c_measured, ("ok" if c_ok and in_time else ("differs" if leaving else "FAILED")),
-                 "ch_hud_mark_hud.png, ch_report_open_foot.png, ch_report_click_foot.png, ch_report_after_foot.png")
+        c_expected = ("the HUD's «!» before the open; the first open by the HUD's own handler; on it the drawn foot holds the report (the crossbows leaving); a "
+                      "click within 1 s adds its line; after the read time the click's line alone")
+        out = {**d, "pre": pre}
+        # C's precondition, in the game's order: the turn start's messages answered (the game holds the panel back until then), nothing up
+        try:
+            est = self.establish("C, the first open after the turn")
+        except Precondition as e:
+            est, c_measured, c_verdict, c_ok, leaving = None, str(e), "precondition failed", False, False
+            self.row("C", c_expected, c_measured, c_verdict, "")
+        if est is not None:
+            hud = self.cz("hud", {"refresh": True})
+            hb = hud.get("box") or {}
+            crop = {"x": hb["x"] - 120, "y": hb["y"] - 120, "w": (hb.get("w") or 60) + 240, "h": (hb.get("h") or 60) + 240, "units": "game"} if hb.get("x") is not None else None
+            self.shoot_crops("ch_hud_mark", {"hud": crop})
+            # the open, its foot and the click «Пусто» in ONE call: the click comes by the game's own timer CLICK_MS after the open (run
+            # 20261115-095602: three round trips put it at +1.24 s, after the panel's read time of 1 s)
+            t0 = time.time()
+            op = self.cz("open_click", {"group": g, "option": "empty", "click_ms": CLICK_MS})
+            t_open = time.time()
+            self.shoot_crops("ch_report_open", {"foot": op.get("foot_box")}, quick=True)
+            t_shot = time.time()
+            self.sleep(max(0.2, CLICK_MS / 1000 - (t_shot - t_open)) + 0.4)
+            cr = self.cz("click_result")
+            p1 = cr.get("result") or {}
+            game_after = cr.get("after_s")
+            # the click's moment: the game's clock between the open and the click; the driver's when the game's is not read
+            # (never earlier than the timer's own delay: os.clock is the process's clock, the fake's ticks take no time)
+            t_click = t_open + max(game_after if isinstance(game_after, (int, float)) else 0, CLICK_MS / 1000)
+            self.shoot_crops("ch_report_click", {"foot": op.get("foot_box")}, quick=True)
+            self.sleep(2.0)
+            seen_log = self.cz("log_since", {"has": "report"}).get("lines") or []
+            p2 = self.cz("pick_read", {"group": g, "option": "empty"})
+            self.shoot_crops("ch_report_after", {"foot": op.get("foot_box")}, quick=True)
+            self.cz("close")
+            foot0 = (op.get("foot") or "") + " " + str(op.get("foot_tip") or "")
+            leaving = name in foot0 and "сошли с корабля" in foot0
+            report = op.get("model_report") or ""
+            f1, f2 = p1.get("foot") or "", p2.get("foot") or ""
+            clicked = bool(p1) and "err" not in p1
+            in_time = clicked and (t_click - t_open) < 1.0
+            line2 = p2.get("model_message") or ""
+            mark = hud.get("mark") or {}
+            mark_on = isinstance(mark, dict) and mark.get("from_root") is True
+            handler = op.get("handler_opened") is True
+            c_ok = leaving and (report[:40] in f1 and f1 != (op.get("foot") or "")) and (report[:40] not in f2 if report else True) and any("seen" in l for l in seen_log)
+            c_measured = (f"precondition: answered {est['answered'] or 'nothing'}, closed {est['closed'] or 'nothing'}, blocker {est['windows'].get('blocker')}; HUD button "
+                          f"before the open: state {hud.get('state')}, «!» mark {mark}; the HUD's handler opened the panel: {handler} (blocker before it "
+                          f"{op.get('blocker_before')}{', its error ' + str(op.get('handler_err')) if op.get('handler_err') else ''}); opened by {op.get('way')} "
+                          f"{round(t_open - t0, 2)} s, picture at +{round(t_shot - t_open, 2)} s; the foot as drawn «{op.get('foot')}» (its tooltip «{op.get('foot_tip')}»); "
+                          f"the crossbows leaving in it: {leaving}; click «Пусто» by the game's timer {CLICK_MS} ms after the open ({op.get('scheduled')}): done {clicked}, at +{round(t_click - t_open, 2)} s by the game's clock ({'os.clock' if isinstance(game_after, (int, float)) else 'not read: the scheduled time'}; within the 1 s read time: {in_time}): foot «{f1}»{(' ' + str(p1.get('err'))) if p1.get('err') else ''}; 2 s later the log "
+                          f"{seen_log}; the click again: foot «{f2}» (the click's line «{line2}»)")
+            if not handler:
+                c_verdict = "FAILED: the HUD's handler did not open the panel with nothing in the way"
+            elif c_ok and in_time and mark_on and hud.get("state") != "inactive":
+                c_verdict = "ok"
+            elif leaving and not in_time:
+                # the report was on the first open, but «a click within 1 s adds its line» was not tried in time: not measured, never «differs»
+                c_verdict = (f"not measured: the click «Пусто» {'did not come' if not clicked else f'came at +{round(t_click - t_open, 2)} s'}, not within the 1 s read time "
+                             f"(the report on the first open: {leaving}, the «!» mark {mark_on})")
+            else:
+                c_verdict = "differs" if leaving else "FAILED"
+            self.row("C", c_expected, c_measured, c_verdict, "ch_hud_mark_hud.png, ch_report_open_foot.png, ch_report_click_foot.png, ch_report_after_foot.png")
+            out.update(hud=hud, open=op, click1=p1, click2=p2, seen_log=seen_log, times=[t0, t_open, t_shot, t_click], establish=est)
         moves = (self.money_log[-1] if self.money_log else {}).get("model") or []
-        d_measured, d_verdict, refund = self.money_verdict("lose", pre, c.get("gold"), moves, "expected refund of level I (1000 x 0.6) 600")
+        if d_pre:
+            d_measured, d_verdict, refund = d_pre, "precondition failed", None
+        else:
+            d_measured, d_verdict, refund = self.money_verdict("lose", pre, c.get("gold"), moves, "expected refund of level I (1000 x 0.6) 600")
         self.refund_paid_one = refund
         self.row("D (level I)", "what the game paid at the turn = the panel's forecast (M.turn_gold); the refund 600 for «Манекен» (1000)", d_measured, d_verdict,
                  "ch_raze_tooltip_raze.png")
         ok = back and c["groups"][g].get("standing") == "empty" and (c.get("old") or {}).get(g) == "empty" and empty and leaving
-        status = "failed" if not leaving else ("ok" if ok and once and c_ok else "differs")
+        if c_verdict == "precondition failed" or d_verdict == "precondition failed" or c_verdict.startswith("FAILED"):
+            status = "failed"
+        else:
+            status = "ok" if ok and once and c_verdict == "ok" and d_verdict == "ok" else "differs"
         return status, (f"C: {c_measured}; D: {d_measured}; {text}; the model {g} {c['groups'][g].get('standing')}, the old module {(c.get('old') or {}).get(g)}, the rifle seats "
-                        f"{'empty' if empty else {s: plan.get(s) for s in self.c['rifle_seats']}}"), {**d, "pre": pre, "hud": hud, "open": op, "click1": p1, "click2": p2,
-                                                                                                      "seen_log": seen_log, "times": [t0, t_open, t_shot, t_click]}
+                        f"{'empty' if empty else {s: plan.get(s) for s in self.c['rifle_seats']}}"), out
 
     # -- D at level II: «Тир» (crew_weapons_2: 1000 for level I + 1500 for II) stood by script and demolished: does the game give back 60 % of the
     # level (900) or of the line (1500)? One more turn end
@@ -800,12 +1008,14 @@ class CrewHireSession(ss.ShipSession):
                     raise pp.SessionAbort(f"step {no} {rec['status']}: {str(rec.get('answer'))[:800]}")
                 if no == "turn_hire" and "turn NOT back" in str(rec.get("answer")):
                     raise pp.SessionAbort("the hire's turn did not come back: no battle on an unknown crew")
-                if no == "moment" and rec["status"] in ("failed", "timeout"):
-                    # whatever the step left up is answered before the battle (the battle's panel does not open over a dilemma)
+                if no in ("moment", "incident") and rec["status"] in ("failed", "timeout"):
+                    # whatever the step left up is answered before the battle by the visible path (the battle's panel does not open over a dilemma);
+                    # each later step establishes its own precondition all the same
                     try:
-                        self.cz("dismiss")
+                        clicks, w = self.answer_events()
+                        self.s.log("answered after", no, clicks, "up:", w.get("up"))
                     except Exception as e:
-                        self.s.log("dismiss after moment failed", e)
+                        self.s.log("answering after", no, "failed", e)
         except pp.SessionAbort as e:
             how = f"aborted early: {e}"
             self.write({"step": "abort", "status": "aborted", "answer": str(e)})
@@ -854,6 +1064,19 @@ class CrewHireSession(ss.ShipSession):
         lines.append(f"playable map at {n if n is not None else 'not measured'} s (this morning ~300 s)")
         if self.reasons:
             lines.append("refusal and refund texts the player reads: " + "; ".join(f"{k}: «{v}»" for k, v in self.reasons.items()))
+        frames = {k: v for k, v in ((analysis or {}).get("frames") or {}).items() if not k.startswith("_")}
+        if frames and not self.fake:
+            # A (look): which candidate each seat frame kept, and the frames the rigging blocked from every candidate (named, not handed on)
+            text = "; ".join(f"{k}: {v['verdict']}" + (f" ({v['chosen']}, dark share {v['candidates'].get(v['chosen'])}; candidates {v['candidates']})" if v.get("chosen") else "")
+                             for k, v in frames.items())
+            blocked = [k for k, v in frames.items() if v["verdict"] != "clear"]
+            for r in self.table:
+                if r["item"] == "A (look)":
+                    r["measured"] = f"{analysis['frames'].get('_rule')}: {text}"
+                    r["verdict"] = "see pictures" if not blocked else f"blocked or not shot: {', '.join(blocked)}"
+            lines.append("seat frames (A): " + text)
+        if getattr(self, "camera_lines", None):
+            lines.append("seat cameras (C.seat_camera): " + "; ".join(f"{k}: {v}" for k, v in self.camera_lines.items()))
         bright = (analysis or {}).get("brightness") or {}
         if bright:
             lines.append("brightness of the battle's frames (mean luma of the centre, 0-255; below 45 too dark to judge a model): " +
@@ -872,12 +1095,63 @@ class CrewHireSession(ss.ShipSession):
         return text
 
 
-CLOSE_FRAMES = ["mal_right", "mal_right_face", "mal_left", "mal_left_face", "helm_close"]
+# the seats' close frames (data/crew_cycle.json seat_frames): Malakai at the right rail, the left side's seat 1 (an ordinary crossbowman)
+SEAT_FRAMES = ["mal_right", "mal_right_face", "seat1_left", "seat1_left_face", "mal_right_from_deck", "mal_right_from_right"]
+# a frame is blocked when more than this share of its centre (24 px blocks) is darker than half the light of crew_hire_right's centre (the same
+# battle's overview): run 20261115-091818's frames through the net 0.26-0.49, its clear frames 0.08-0.17
+BLOCKED_SHARE, DARK_OF_REF = 0.22, 0.5
+# C: the click «Пусто» this long after the open, by the game's own timer (the panel's read time is 1000 ms)
+CLICK_MS = 500
+
+
+def dark_share(Image, path, t):
+    im = Image.open(path).convert("L")
+    w, h = im.size
+    box = im.crop((int(w * .25), int(h * .2), int(w * .75), int(h * .78)))
+    small = box.resize((max(1, box.width // 24), max(1, box.height // 24)), Image.BOX)
+    hist = small.histogram()
+    n = sum(hist)
+    return round(sum(hist[:max(1, int(t))]) / n, 3) if n else None
+
+
+def choose_frames(run_dir, Image, ImageStat):
+    """Each seat frame (deployment and fire): the first candidate (data/crew_cycle.json order) not blocked by the rigging, copied to the frame's own
+    name; all candidates blocked: the least dark one, verdict «blocked». -> {frame: {candidates, chosen, verdict}}."""
+    import shutil as sh
+    spec = json.loads((REPO / "data" / "crew_cycle.json").read_text(encoding="utf-8")).get("seat_frames") or {}
+    ref = run_dir / "crew_hire_right.png"
+    if ref.exists():
+        im = Image.open(ref).convert("L")
+        w, h = im.size
+        t = DARK_OF_REF * ImageStat.Stat(im.crop((int(w * .25), int(h * .2), int(w * .75), int(h * .78)))).mean[0]
+        how = f"darker than {round(t)} (half of crew_hire_right's centre)"
+    else:
+        t, how = 28, "darker than 28 (no crew_hire_right.png)"
+    out = {"_rule": f"misplaced: the camera not outside the seat's rail by C.seat_camera's geometry (not shot); blocked: more than {BLOCKED_SHARE} of the "
+                    f"centre's 24 px blocks {how}"}
+    # the camera lines of the battle (tools/crew_cycle.py Session.seat_shots): a candidate the geometry refused says «misplaced»
+    path = run_dir / "seat_cameras.json"
+    cams = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    for prefix in ("crew_hire", "crew_hire_firing"):
+        for name in SEAT_FRAMES:
+            order = [c["c"] for c in (spec.get(name) or {}).get("candidates", [])]
+            lines = (cams.get(prefix) or {}).get(name) or []
+            misplaced = [l.split(":", 1)[0] for l in lines if ": misplaced" in l]
+            got = {c: dark_share(Image, run_dir / f"{prefix}_{name}__{c}.png", t) for c in order if (run_dir / f"{prefix}_{name}__{c}.png").exists()}
+            key = f"{prefix}_{name}"
+            if not got:
+                out[key] = {"candidates": {}, "chosen": None, "misplaced": misplaced, "verdict": "misplaced" if misplaced else "not shot"}
+                continue
+            clear = [c for c in order if c in got and got[c] is not None and got[c] <= BLOCKED_SHARE]
+            chosen = clear[0] if clear else min(got, key=lambda c: got[c] if got[c] is not None else 1)
+            sh.copy2(run_dir / f"{prefix}_{name}__{chosen}.png", run_dir / f"{key}.png")
+            out[key] = {"candidates": got, "chosen": chosen, "misplaced": misplaced, "verdict": "clear" if clear else "blocked"}
+    return out
 
 
 def analyse(run_dir):
-    """py -3.10 (PIL): the close-ups the session asked for (shots.json crops: <name>_<suffix>.png, twice the size) and the brightness of the battle's
-    frames (mean luma of the centre half): <run>/analysis.json."""
+    """py -3.10 (PIL): the close-ups the session asked for (shots.json crops: <name>_<suffix>.png, twice the size), the seats' frames chosen among
+    their candidates (blocked by the rigging or clear) and the brightness of the battle's frames (mean luma of the centre half): <run>/analysis.json."""
     run_dir = Path(run_dir)
     out = {"crops": [], "brightness": {}}
     try:
@@ -885,6 +1159,7 @@ def analyse(run_dir):
     except ImportError:
         out["error"] = "no PIL"
         return out
+    out["frames"] = choose_frames(run_dir, Image, ImageStat)
     shots = json.loads((run_dir / "shots.json").read_text(encoding="utf-8")) if (run_dir / "shots.json").exists() else {}
     for name, s in shots.items():
         png = run_dir / f"{name}.png"
@@ -900,7 +1175,7 @@ def analyse(run_dir):
                 part.resize((part.width * 2, part.height * 2), Image.NEAREST).save(run_dir / f"{name}_{suffix}.png")
                 out["crops"].append(f"{name}_{suffix}.png")
     for png in sorted(run_dir.glob("crew_hire_*.png")):
-        if png.stem.endswith(tuple(f"_{x}" for x in ("hud", "foot", "raze", "window", "upkeep", "bonus"))):
+        if png.stem.endswith(tuple(f"_{x}" for x in ("hud", "foot", "raze", "window", "upkeep", "bonus"))) or "__" in png.stem:
             continue
         im = Image.open(png).convert("L")
         w, h = im.size
@@ -961,21 +1236,91 @@ local root = core:get_ui_root()
 -- the HUD's ring of buttons the mod's button lives in (src/tww3_mtb_crew_ui.lua refresh_button)
 local docker = UIComponent(find_uicomponent(root, 'hud_campaign'):CreateComponent('faction_buttons_docker', 'x'))
 UIComponent(docker:CreateComponent('button_group_management', 'x'))
--- the game's events panel of an incident (events > button_accept) and the ui manager's flag over it; a stock incident by script
-local function events_up() local e = find_uicomponent(root, 'events'); return e and e:VisibleFromRoot() or false end
+local function make(parent, id, visible) local u = UIComponent(parent:CreateComponent(id, 'x')); if visible == false then u:SetVisible(false) end; return u end
+-- the game's real-time callbacks after their delay (C: the click 500 ms after the open must come BEFORE the panel's read time of 1000 ms): a
+-- fake_tick is 100 ms (the driver's sleep makes a tick per 100 ms); a callback runs at the first tick at or after its time, in the order of its time
+do
+  local tm, old_tick, now_ms, later = core:get_tm(), fake_tick, 0, {}
+  tm.real_callback = function(self, fn, ms, name) later[#later + 1] = {fn = fn, due = now_ms + (tonumber(ms) or 0), name = name} end
+  local remove = tm.remove_real_callback
+  tm.remove_real_callback = function(self, name)
+    for i = #later, 1, -1 do if later[i].name == name then table.remove(later, i) end end
+    return remove(self, name)
+  end
+  fake_tick = function()
+    local n = old_tick()
+    now_ms = now_ms + 100
+    local due, keep = {}, {}
+    for _, c in ipairs(later) do if c.due <= now_ms then due[#due + 1] = c else keep[#keep + 1] = c end end
+    later = keep
+    table.sort(due, function(a, b) return a.due < b.due end)
+    for _, c in ipairs(due) do pcall(c.fn); n = n + 1 end
+    return n
+  end
+end
+-- the game's UIComponent walk (ChildCount, Find(i)) for the session's walk of the events panel (tools/tests/crew_hire_session.lua)
+U.ChildCount = function(self) return #self._kids end
+U.Find = function(self, i)
+  if type(i) == 'number' then local k = self._kids[i + 1]; return k and k._addr or nil end
+  for _, k in ipairs(self._kids) do if k._id == i then return k._addr end end
+end
+-- the game's events panel as run 20261115-091818 showed it: ONE component for every message, hidden while none is queued, holding SEVERAL
+-- components named button_accept and choice_button, most of them in hidden layouts and found by name BEFORE the tick of a plain message
+-- (events > event_layouts > dilemma_active > choice_button (x2); > mission_active > mission_complete > footer > button_accept; > incident_active;
+-- events > button_set > accept_holder > button_accept). A click on a hidden component does nothing; the tick answers the message on the screen and
+-- the next queued one comes. The ui manager's flag is the game's (lib_campaign_ui.lua is_event_panel_open: the panel open and events Visible)
+local events = make(root, 'events', false)
+local layouts = make(events, 'event_layouts')
+local dl = make(layouts, 'dilemma_active', false)
+make(dl, 'choice_button'); make(dl, 'choice_button')
+make(make(make(make(layouts, 'mission_active', false), 'mission_complete'), 'footer'), 'button_accept')
+local incident_layout = make(layouts, 'incident_active', false)
+local incident_text = make(incident_layout, 'dy_title')
+local tick = make(make(make(events, 'button_set'), 'accept_holder'), 'button_accept')
+local queue = {}
+local function show()
+  local on = #queue > 0
+  events:SetVisible(on); incident_layout:SetVisible(on)
+  if on then incident_text:SetStateText(queue[1]) end
+end
+fake_events_queue = queue
+function fake_push_event(key) queue[#queue + 1] = key; show() end
 local uim0 = cm.get_campaign_ui_manager
-cm.get_campaign_ui_manager = function() local u = uim0(); u.is_event_panel_open = function() return events_up() end; u.is_panel_open = function() return false end; return u end
+fake_event_flag = nil          -- a break may hold the ui manager's flag (stale_blocker)
+cm.get_campaign_ui_manager = function()
+  local u = uim0()
+  u.is_event_panel_open = function() if fake_event_flag ~= nil then return fake_event_flag end; return events:Visible() end
+  u.is_panel_open = function(self, name) if name == 'events' then return events:Visible() end; local p = find_uicomponent(root, name); return p and p:Visible() or false end
+  return u
+end
 fake_incidents = {}
 cm.trigger_incident = function(self, faction, key, now)
   if not fake_incidents[key] then return false end
-  local e = UIComponent(root:CreateComponent('events', 'x'))
-  UIComponent(e:CreateComponent('button_accept', 'x'))
+  fake_push_event(key)
   fake_fire('IncidentOccuredEvent', nil, {dilemma = function() return key end, faction = function() return f end})
   return true
 end
-core:add_listener('fake_events_accept', 'ComponentLClickUp', function(c) return c.string == 'button_accept' end, function()
-  local e = find_uicomponent(root, 'events'); if e then e:Destroy() end
+core:add_listener('fake_events_accept', 'ComponentLClickUp', function(c) return c.string == 'button_accept' end, function(c)
+  local ok, b = pcall(UIComponent, c.component)
+  if not (ok and b and b == tick and b:VisibleFromRoot()) then return end       -- a hidden button_accept: nothing happens
+  table.remove(queue, 1); show()
 end, true)
+-- the game's turn start may open with a message (the game's real order for C: answered before the panel can open, then the first open's report)
+fake_turn_events = {}
+core:add_listener('fake_turn_start_events', 'FactionTurnStart', function(c) return c:faction():name() == 'wh3_dlc25_dwf_malakai' end, function()
+  local key = fake_turn_events[cm:turn_number()]
+  if key then fake_push_event(key) end
+end, true)
+-- the stock HUD buttons and their stock full-screen panels (each opened over the message here: the fake's guess, the game's answer is B.2's fact)
+local docker0 = find_uicomponent(root, 'hud_campaign', 'faction_buttons_docker')
+local stock_buttons = {button_technology = 'technology_panel', button_missions = 'objectives_screen'}
+make(docker0, 'button_technology')
+make(find_uicomponent(docker0, 'button_group_management'), 'button_missions')
+local function stock_panel(name) local p = find_uicomponent(root, name); if not p then p = make(root, name, false) end; return p end
+core:add_listener('fake_stock_buttons', 'ComponentLClickUp', function(c) return stock_buttons[c.string] ~= nil end, function(c)
+  local p = stock_panel(stock_buttons[c.string]); p:SetVisible(not p:Visible())
+end, true)
+CampaignUI.ClosePanel = function(name) local p = find_uicomponent(root, name); if p then p:SetVisible(false) end end
 -- the game's refund of a dismantle when the building goes (campaign_variables building_dismantle_recoup_multiplier_when_full_health 0.6 of the
 -- level's price, rounded down: the fake's rule, the question the session asks the game) and the faction's income (none in the fake)
 fake_costs = {}
@@ -1019,7 +1364,20 @@ core.add_listener = function(self, name, ...) if name == 'tww3_mtb_ship_turn_end
 """),
     # Malakai's rail rows and the helm crew's row swap their variants, every row name kept (tools/seat_models.py swap_malakai_variants)
     "swap_models": ("battle", None),
+    # the event message is not dismissed (the tick does nothing, as the hidden button_accept did in run 20261115-091818): «moment» must fail as the
+    # session's own failure to answer it, and every later step that needs the screen must say «precondition failed», not fail deep in a click
+    "event_stays": ("moment", "core:remove_listener('fake_events_accept')\n"),
+    # the message is answered and gone from the screen, but the ui manager's flag the mod's blocker reads stays set: «moment» must say «MOD: stale
+    # blocker» (a defect of the mod's rule, not of the session), the later steps the same as their precondition
+    "stale_blocker": ("moment", r"""
+local trig = cm.trigger_incident
+cm.trigger_incident = function(...) local r = trig(...); if r then fake_event_flag = true end; return r end
+"""),
 }
+# what the failing step must say for these breaks; and no cascade: every later step that fails says «precondition failed»
+BREAK_SAYS = {"event_stays": "could not dismiss", "stale_blocker": "MOD: stale blocker"}
+# the fake's turn start with a message of its own: turn 5, the turn after turn end 4 (turn_lose): C must answer it, then open by the HUD
+FAKE_TURN_EVENTS = {5: "fake_turn_start_message"}
 
 
 def fake_main(config_path, broken=None):
@@ -1045,6 +1403,8 @@ def fake_main(config_path, broken=None):
         rt.globals().fake_incidents[key] = True
     for key, cost in cfg["crew"]["costs"].items():
         rt.globals().fake_costs[key] = cost
+    for turn, key in FAKE_TURN_EVENTS.items():
+        rt.globals().fake_turn_events[turn] = key
     if broken:
         step, lua = BREAKS[broken]
         if lua:
@@ -1084,9 +1444,20 @@ def fake_main(config_path, broken=None):
     print("fake run:", how, "| steps failed:", bad or "none", "| differ:", differs or "none", "| folder", run_dir)
     if broken:
         step = BREAKS[broken][0]
-        caught = s.results.get(step, {}).get("status") == "failed"
-        print(f"broken {broken}: " + (f"the dry run FAILS as it must: step {step} failed" if caught else
-                                      f"NOT CAUGHT: step {step} is {s.results.get(step, {}).get('status')}: the dry run would pass a broken mod"))
+        rec = s.results.get(step, {})
+        caught = rec.get("status") == "failed"
+        note = ""
+        if broken in BREAK_SAYS:
+            says = BREAK_SAYS[broken] in str(rec.get("answer"))
+            names = list(s.results)
+            later = names[names.index(step) + 1:] if step in names else []
+            cascade = [no for no in later if s.results[no]["status"] in ("failed", "timeout") and "precondition failed" not in str(s.results[no]["answer"])]
+            prec = [no for no in later if "precondition failed" in str(s.results[no]["answer"])]
+            caught = caught and says and not cascade and bool(prec)
+            note = (f"; it says «{BREAK_SAYS[broken]}»: {says}; later steps reporting their own precondition: {prec or 'none'}; a cascade (failed deep "
+                    f"inside instead): {cascade or 'none'}")
+        print(f"broken {broken}: " + (f"the dry run FAILS as it must: step {step} failed{note}" if caught else
+                                      f"NOT CAUGHT: step {step} is {rec.get('status')}{note}: the dry run would pass a broken mod"))
         return 1 if caught else 0
     return 1 if bad or differs or how != "completed" else 0
 
@@ -1120,18 +1491,26 @@ def plan_text(args, limit):
         "     E/F: the crossbows' unit window and the picker's upkeep line read back from the game's components (crops);",
         "     B.1: turn end 3 with the panel AND the picker open (a picture 2 s into the AI's turn: nothing of ours; the log's «closed: <why>»);",
         "     the order stands (11 crossbows at boost 1, Malakai at ap_crew_right_1, mtb_bp_helm_crew at the helm; upkeep once, by the model);",
-        "     B.2: the new turn's dilemma/event left up (none: a stock incident without payload by script): the HUD button inactive with its reason,",
-        "     its click and S.open refused, answered, the panel opens; B.3: an incident by script with the panel and the picker open: it closes;",
+        "     B.2: the new turn's dilemma/event left up (none: ONE stock incident without payload by script, the next key only if none was heard):",
+        "     the HUD button inactive with its reason, its click and S.open refused; the stock buttons technology and missions clicked over the",
+        "     message (a fact: do the game's own panels open over it?), closed again by CampaignUI.ClosePanel; the message answered by the VISIBLE",
+        "     path (events > button_set > accept_holder > button_accept, a dilemma's visible choice), the game's components show nothing up, only",
+        "     then the mod's blocker (still set: «MOD: stale blocker»), the panel opens by the HUD; B.3: ONE incident with the panel and the picker",
+        "     open: it closes; every later step first establishes its own precondition (no game window) or says «precondition failed: <window>»;",
         "     ONE battle (A: men from memory: var=mtb_v_malakai_rail once at the right rail, mtb_v_helm_crew at the helm, no mtb_dwf_malakai_captain;",
-        "     close frames mal_right(_face), mal_left(_face), helm_close at deployment, two frames 3 s into the crew's fire, the fight frame aimed;",
-        "     E: the battle's start ammunition against the panel's); the campaign Lua again;",
-        "     D: «Манекен» demolished by the panel's round button (the game's refund on the slot, the tooltip, the treasury), the panel closed;",
-        "     C/D: turn end 4: the HUD's «!», the first open's foot (the crossbows leaving) within 0.5 s, «Пусто» within 1 s, again 2 s later; the",
-        "     money against the forecast; D: «Тир» (level II) stood by script and demolished, turn end 5: 900 (the level) or 1500 (the line); save.",
+        "     overview frames right, left, wheel_30, deck, helm_close; the seat frames mal_right(_face), seat1_left(_face) placed from the men's own",
+        "     positions, outside the hull aft of the seat, three candidates each, again 3 s into the crew's fire at a tenth of the speed; the",
+        "     candidate not outside the rail «misplaced» before the move; two frames of him from the deck and right cameras (9°, 7°); the",
+        "     analysis keeps the first candidate the rigging does not block, «blocked» otherwise; E: the start ammunition against the panel's);",
+        "     the campaign Lua again; D: «Манекен» demolished by the panel's round button (the game's refund on the slot, the tooltip, the",
+        "     treasury), the panel closed; C/D: turn end 4: the turn start's messages answered, the HUD's «!», the first open BY THE HUD'S HANDLER",
+        "     (FAILED if it does not open with nothing in the way), its foot (the crossbows leaving), «Пусто» by the game's timer 0.5 s after the open",
+        "     in the same call (late: «not measured»), again 2 s",
+        "     later; the money against the forecast; D: «Тир» (level II) stood by script and demolished, turn end 5: 900 or 1500; save.",
         "  4. STOP flag -> run_game.py closes only the game it started, waits until tasklist has no Warhammer3.exe, removes the lock;",
-        "     timeline.txt (G) and the analysis (py -3.10: close-ups, the frames' brightness), the summary's table A-G.",
-        f"  hard limit {limit} s (~{limit // 60} min); expected 18-25 min: start and new campaign 3-6 (skip_intro), five turn ends 4-6 (~45 s each this",
-        "  morning), the battle 4-6, the rest 6-8.",
+        "     timeline.txt (G) and the analysis (py -3.10: close-ups, the seat frames chosen, the frames' brightness), the summary's table A-G.",
+        f"  hard limit {limit} s (~{limit // 60} min); expected 11-14 min (run 20261115-091818: 10 min 10 s; now the stock panels, the answers, the",
+        "  demolish and C that measure, 28 seat frames instead of 7).",
     ])
 
 

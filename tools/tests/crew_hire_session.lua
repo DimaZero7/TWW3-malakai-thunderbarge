@@ -177,6 +177,8 @@ local function box(c, pad)
   if ok then out.game_x, out.game_y = ax, ay end
   return out
 end
+-- a pcall's answer as it is (false stays false; «a and b or c» turned a false answer into an error in run 20261115-091818: «dilemma waits ERR false»)
+local function got(ok, v) if ok then return v end; return 'ERR ' .. flat(v) end
 local function vis(u)
   if not u then return nil end
   local out = {}
@@ -358,18 +360,19 @@ function I.blocker()
   out.events = e and vis(e) or 'none'
   local uim = (function() local okm, m = pcall(function() return cm:get_campaign_ui_manager() end); return okm and m or nil end)()
   local oke, ev = pcall(function() return uim:is_event_panel_open() end)
-  out.ui_manager_event_panel = oke and ev or ('ERR ' .. flat(ev))
+  out.ui_manager_event_panel = got(oke, ev)
   local CUI = ENV.CampaignUI or _G.CampaignUI
   out.campaign_ui = CUI and 'present' or 'nil in this environment'
   local okd, d = pcall(function() return CUI.DoesEventTypeRequireResponse('faction_event_dilemmaevent_feed_target_dilemma_faction') end)
-  out.dilemma_waits = okd and d or ('ERR ' .. flat(d))
+  out.dilemma_waits = got(okd, d)
   local okl, lt = pcall(function() return cm:is_local_players_turn(true) end)
   out.local_turn = okl and lt or nil
   out.turn = cm:turn_number()
   return out
 end
--- a stock incident by script (no payload, no option rows in the game's data: db cdir_events_incident_payloads / _option_junctions): the first of
--- the keys that the game reports issued (IncidentOccuredEvent) within the call or by the next read
+-- ONE stock incident by script (no payload, no option rows in the game's data: db cdir_events_incident_payloads / _option_junctions). The game
+-- issues it a moment later (run 20261115-091818: all three keys were tried in one call, none heard yet, all three came): the driver fires one key,
+-- polls incident_read({keep = true}) and fires the next key only when nothing was heard
 function I.incident(a)
   ST.incidents = {}
   core:remove_listener('tww3_mtb_ch_incident')
@@ -377,31 +380,178 @@ function I.incident(a)
     local okk, k = pcall(function() return c:dilemma() end)
     ST.incidents[#ST.incidents + 1] = okk and tostring(k) or 'issued'
   end, true)
-  local tried = {}
-  for _, key in ipairs(a.keys or {}) do
-    local ok, e = pcall(function() return cm:trigger_incident(FACTION, key, true) end)
-    tried[#tried + 1] = {key = key, call = ok and tostring(e) or ('ERR ' .. flat(e)), heard = #ST.incidents}
-    if #ST.incidents > 0 then break end
-  end
-  return {tried = tried, heard = ST.incidents}
+  local ok, e = pcall(function() return cm:trigger_incident(FACTION, a.key, true) end)
+  return {key = a.key, call = ok and tostring(e) or ('ERR ' .. flat(e)), heard = ST.incidents}
 end
-function I.incident_read()
-  core:remove_listener('tww3_mtb_ch_incident')
+function I.incident_read(a)
+  if not (a and a.keep) then core:remove_listener('tww3_mtb_ch_incident') end
   return {heard = ST.incidents or {}, blocker = I.blocker(), look = look()}
 end
--- the game's events panel answered as the session's turn end answers it (a dilemma: its first choice; an event: accept)
-function I.dismiss()
-  local n = 0
-  for _ = 1, 6 do
-    local e = find_uicomponent(root_ui(), 'events')
-    local ok, on = pcall(function() return e and e:VisibleFromRoot() end)
-    if not (ok and on) then break end
-    local b = find_uicomponent(e, 'choice_button') or find_uicomponent(e, 'button_accept')
-    if not b then break end
-    b:SimulateLClick()
-    n = n + 1
+
+-- ---------------- the game's event message, read and answered as the game holds it (run 20261115-091818) ----------------
+-- The events panel holds SEVERAL components named button_accept (the tick of a plain message, events > button_set > accept_holder > button_accept,
+-- the game's own scripts click it by that path: wh3_prologue_kislev_expedition_start.lua; a mission's footer: events > event_layouts > mission_active
+-- > mission_complete > footer > button_accept) and dilemma choice buttons, most of them hidden in the layouts not in use. The game's find_uicomponent
+-- returns the FIRST by name whatever its visibility: the old dismiss clicked a hidden one six times a call and the message stayed. The turn end's
+-- path (tools/tests/end_turn.lua, dismiss_blockers.lua: mtb.find(name, true, events)) takes the first VISIBLE one, and dismissed. So here: only a
+-- component visible from the root is clicked, found by a walk of the events panel alone (never the whole tree), its visible subtrees only.
+local function uid(u) local ok, i = pcall(function() return u:Id() end); return ok and tostring(i) or '?' end
+local function vfr(u) local ok, v = pcall(function() return u:VisibleFromRoot() end); return ok and v and true or false end
+local function kids(u)
+  local out = {}
+  local okc, n = pcall(function() return u:ChildCount() end)
+  if not okc or type(n) ~= 'number' then return out end
+  for i = 0, n - 1 do
+    local ok, c = pcall(function() return UIComponent(u:Find(i)) end)
+    if ok and c then out[#out + 1] = c end
   end
-  return {answered = n}
+  return out
+end
+local function path_of(u)
+  local parts, p = {}, u
+  for _ = 1, 14 do
+    if not p then break end
+    local id = uid(p)
+    table.insert(parts, 1, id)
+    if id == 'events' or id == 'root' then break end
+    local ok, a = pcall(function() return p:Parent() end)
+    if not ok or not a then break end
+    local ok2, q = pcall(UIComponent, a)
+    p = ok2 and q or nil
+  end
+  return table.concat(parts, ' > ')
+end
+-- every component named in names under u, with its visibility from the root (hidden subtrees walked too: the evidence of what the game holds)
+local function all_named(u, names, out, depth)
+  if depth > 14 then return out end
+  local id = uid(u)
+  if names[id] then out[#out + 1] = {c = u, id = id, visible = vfr(u)} end
+  for _, k in ipairs(kids(u)) do all_named(k, names, out, depth + 1) end
+  return out
+end
+-- the first component of this name visible from the root (as mtb.find(name, true, root)), visible subtrees only
+local function vfind(u, name, depth)
+  depth = depth or 0
+  if depth > 14 or not vfr(u) then return nil end
+  if uid(u) == name then return u end
+  for _, k in ipairs(kids(u)) do local f = vfind(k, name, depth + 1); if f then return f end end
+  return nil
+end
+local function events_panel() local e = find_uicomponent(root_ui(), 'events'); return e or nil end
+local ANSWERS = {button_accept = true, choice_button = true}
+-- the events panel as the game holds it: shown, the layouts shown, every answer button with its path and its visibility
+function I.events_read()
+  local e = events_panel()
+  local out = {exists = e and true or false}
+  if not e then return out end
+  out.visible = vis(e)
+  local lay = find_uicomponent(e, 'event_layouts')
+  if lay then out.layouts = {}; for _, k in ipairs(kids(lay)) do if vfr(k) then out.layouts[#out.layouts + 1] = uid(k) end end end
+  local list = {}
+  for _, x in ipairs(all_named(e, ANSWERS, {}, 0)) do list[#list + 1] = {path = path_of(x.c), visible = x.visible} end
+  out.answers = list
+  local first = find_uicomponent(e, 'button_accept')
+  out.first_by_name = first and {path = path_of(first), visible = vfr(first)} or 'none'
+  local firstc = find_uicomponent(e, 'choice_button')
+  out.first_choice_by_name = firstc and {path = path_of(firstc), visible = vfr(firstc)} or 'none'
+  return out
+end
+-- ONE answer to the message on the screen, as the turn end answers it: a dilemma its first visible choice, a message its visible tick (the
+-- game's path first), never a hidden component. The driver waits and calls again while the panel is up (the next queued message comes then).
+function I.answer_one()
+  local e = events_panel()
+  if not (e and vfr(e)) then return {up = false} end
+  local b, how = vfind(e, 'choice_button'), nil
+  if b then how = path_of(b) end
+  if not b then
+    local tick = find_uicomponent(e, 'button_set', 'accept_holder', 'button_accept')
+    if tick and vfr(tick) then b, how = tick, path_of(tick) end
+  end
+  if not b then b = vfind(e, 'button_accept'); how = b and path_of(b) or nil end
+  if not b then return {up = true, clicked = false, why = 'no answer button visible', events = I.events_read()} end
+  local okc, err = pcall(function() b:SimulateLClick() end)
+  return {up = true, clicked = okc, how = how, state = (function() local ok, s = pcall(function() return b:CurrentState() end); return ok and s or nil end)(),
+          err = (not okc) and flat(err) or nil}
+end
+
+-- the game's windows on the screen now, each read from the game's own components: the event message (events panel shown), a dilemma waiting, the
+-- modal panels of the mod's blocker and the stock full-screen panels this session opens; the mod's blocker and the ui manager's flag beside them
+local MODAL = {'diplomacy_dropdown', 'popup_pre_battle', 'popup_battle_results', 'settlement_captured', 'waiting_for_players'}
+local STOCK = {'technology_panel', 'objectives_screen', 'finance_screen'}
+function I.game_windows()
+  local s = screen()
+  local out = {up = {}, stock_up = {}}
+  local e = events_panel()
+  out.events = e and vis(e) or 'none'
+  out.events_up = e and vfr(e) or false
+  if out.events_up then
+    local lay, shown = find_uicomponent(e, 'event_layouts'), {}
+    if lay then for _, k in ipairs(kids(lay)) do if vfr(k) then shown[#shown + 1] = uid(k) end end end
+    out.up[#out.up + 1] = 'the event message (events panel shown' .. (#shown > 0 and (', layout ' .. table.concat(shown, ', ')) or '') .. ')'
+  end
+  local CUI = ENV.CampaignUI or _G.CampaignUI
+  local okd, d = pcall(function() return CUI.DoesEventTypeRequireResponse('faction_event_dilemmaevent_feed_target_dilemma_faction') end)
+  out.dilemma_waits = okd and d or false
+  if okd and d == true then out.up[#out.up + 1] = 'a dilemma waiting for its answer (CampaignUI.DoesEventTypeRequireResponse)' end
+  for _, name in ipairs(MODAL) do
+    local u = find_uicomponent(root_ui(), name)
+    if u and vfr(u) then out.up[#out.up + 1] = 'the game\'s panel ' .. name end
+  end
+  for _, name in ipairs(STOCK) do
+    local u = find_uicomponent(root_ui(), name)
+    if u and vfr(u) then out.up[#out.up + 1] = 'the game\'s panel ' .. name; out.stock_up[#out.stock_up + 1] = name end
+  end
+  if s and s.game and s.game.blocker then local ok, b = pcall(s.game.blocker); out.blocker = ok and (b or 'none') or ('ERR ' .. flat(b)) end
+  local okm, uim = pcall(function() return cm:get_campaign_ui_manager() end)
+  local oke, ev = pcall(function() return uim:is_event_panel_open() end)
+  out.ui_manager_event_panel = got(oke, ev)
+  out.is_open = s and s.is_open and s.is_open() or false
+  local okl, lt = pcall(function() return cm:is_local_players_turn(true) end)
+  out.local_turn = okl and lt or nil
+  return out
+end
+
+-- a stock HUD button that opens a stock full-screen panel (the game's own paths: wh3_prologue_kislev_expedition_interventions.lua), clicked as the
+-- player's click arrives (SimulateLClick); its state before; the panel and the event message before
+function I.stock_click(a)
+  local b = root_ui()
+  for _, n in ipairs(a.path) do b = b and find_uicomponent(b, n) or nil end
+  local out = {path = table.concat(a.path, ' > '), found = b and true or false}
+  if not b then return out end
+  out.button = vis(b)
+  local ok, st = pcall(function() return b:CurrentState() end)
+  out.state = ok and st or nil
+  out.tooltip = tip(b).text
+  local p = find_uicomponent(root_ui(), a.panel)
+  out.panel_before = p and vis(p) or 'none'
+  local e = events_panel()
+  out.events_before = e and vis(e) or 'none'
+  if out.button and out.button.from_root then
+    local okc, err = pcall(function() b:SimulateLClick() end)
+    out.clicked = okc and 'sent' or flat(err)
+  else
+    out.clicked = 'not visible: not clicked'
+  end
+  return out
+end
+function I.stock_read(a)
+  local p = find_uicomponent(root_ui(), a.panel)
+  local e = events_panel()
+  local s = screen()
+  local out = {panel = p and vis(p) or 'none', events = e and vis(e) or 'none'}
+  out.panel_up = p and vfr(p) or false
+  out.events_up = e and vfr(e) or false
+  local okm, uim = pcall(function() return cm:get_campaign_ui_manager() end)
+  local okp, po = pcall(function() return uim:is_panel_open(a.panel) end)
+  out.ui_manager_panel_open = got(okp, po)
+  if s and s.game and s.game.blocker then local ok, b = pcall(s.game.blocker); out.blocker = ok and (b or 'none') or ('ERR ' .. flat(b)) end
+  return out
+end
+-- closed by the game's own call (CampaignUI.ClosePanel, as the game's scripts close objectives_screen)
+function I.stock_close(a)
+  local CUI = ENV.CampaignUI or _G.CampaignUI
+  local ok, err = pcall(function() CUI.ClosePanel(a.panel) end)
+  return {closed_call = ok and 'called' or flat(err)}
 end
 
 -- E, F: the hired kind's unit window in the picker (the card under the mouse) and the picker's upkeep line, read back from the game's components
@@ -482,13 +632,46 @@ function I.open_read(a)
   local s = screen()
   I.log_mark()
   local cu = _G.tww3_mtb_crew_ui or ENV.tww3_mtb_crew_ui
-  local way
-  if cu and cu.on_click then pcall(function() cu.on_click('button_mtb_crew') end); way = 'the HUD button handler' end
-  if not s.is_open() then s.open(); way = 'S.open (the handler did not open it)' end
+  local way, handler_opened, handler_err
+  local blocker_before = (function() local ok, b = pcall(s.game.blocker); return ok and (b or 'none') or ('ERR ' .. flat(b)) end)()
+  if cu and cu.on_click then
+    local okh, e = pcall(function() cu.on_click('button_mtb_crew') end)
+    handler_err = (not okh) and flat(e) or nil
+    handler_opened = s.is_open()
+    way = 'the HUD button handler'
+  else
+    way, handler_opened = 'no HUD handler (tww3_mtb_crew_ui.on_click missing)', false
+  end
+  -- the report is still read when the handler failed (S.open), but the step's verdict says the handler did not open it
+  if not s.is_open() then s.open(); way = 'S.open, AFTER the HUD handler did not open it' end
   local v = view()
   local foot, ftip, fbox = foot_drawn(v)
-  return {way = way, open = s.is_open(), foot = foot, foot_tip = ftip, foot_box = fbox, model_report = s.M.report(), model_message = s.M.message(), look = look()}
+  return {way = way, handler_opened = handler_opened, handler_err = handler_err, blocker_before = blocker_before, open = s.is_open(), foot = foot, foot_tip = ftip,
+          foot_box = fbox, model_report = s.M.report(), model_message = s.M.message(), look = look()}
 end
+-- C in one call (run 20261115-095602: three round trips put the click at +1.24 s, after the panel's 1 s read time): the panel opened as I.open_read
+-- opens it, its foot read, and the click on «Пусто» scheduled by the game's own timer a.click_ms later (the panel's read time is a real-time
+-- callback too, READ_MS 1000 in src/tww3_mtb_ship_screen.lua); the click's foot and the seconds between the open and the click (os.clock in the
+-- game) are kept for I.click_result
+local function now_s() local ok, t = pcall(os.clock); return ok and t or nil end
+function I.open_click(a)
+  local t0 = now_s()
+  local out = I.open_read(a)
+  out.opened_at = t0
+  ST.click = {scheduled_ms = a.click_ms}
+  local ok, err = pcall(function()
+    core:get_tm():real_callback(function()
+      local okc, r = pcall(I.pick_read, {group = a.group, option = a.option})
+      ST.click.result = okc and r or {err = flat(r)}
+      local t1 = now_s()
+      ST.click.after_s = (t0 and t1) and (t1 - t0) or nil
+    end, a.click_ms, 'tww3_mtb_ch_report_click')
+  end)
+  out.scheduled = ok and 'scheduled' or flat(err)
+  return out
+end
+function I.click_result() return ST.click or {} end
+
 -- C: a click on a kind of the place's picker (the area, then the card, the panel's own handlers) and the foot row read right after
 function I.pick_read(a)
   local s = screen()
@@ -517,7 +700,7 @@ end
 -- this file's own smoke: every read once, protected
 function CH.smoke()
   local lines = {}
-  for _, name in ipairs({'crew', 'barge', 'look', 'hud', 'log_mark'}) do
+  for _, name in ipairs({'crew', 'barge', 'look', 'hud', 'log_mark', 'game_windows'}) do
     local ok, r = protect(I[name], {})
     lines[#lines + 1] = 'S\t' .. name .. '\t' .. (ok and 'ok' or ('ERR ' .. flat(r)))
   end

@@ -7,7 +7,7 @@
                      the engine probe of docs/design/port-to-game.md, stage 1 (tools/tests/port_probe.py): refuses unless every check of CLAUDE.md passes
   py -3.14 tools/crew_cycle.py session ship_panel [--dry-run] [--small] [--limit N] [--stash-user-pack] [--option NAME=VALUE ...]
                      the new airship panel opened and exercised in the game (tools/tests/ship_session.py), the same checks and machinery
-  py -3.14 tools/crew_cycle.py session crew_hire [--dry-run] [--small] [--limit N] [--stash-user-pack] [--break swap_models|panel_stays]
+  py -3.14 tools/crew_cycle.py session crew_hire [--dry-run] [--small] [--limit N] [--stash-user-pack] [--break swap_models|panel_stays|event_stays|stale_blocker]
                      the new panel's hire in the game (tools/tests/crew_hire_session.py); --break: the dry run on a mod broken on purpose, it must fail
   --igpu             the lowest settings instead of what the session asks: the RTX is out of the machine
   --scale N          all time limits of the session times N, for a slow GPU
@@ -373,6 +373,7 @@ class Session:
             self.lua(f'return C.camera({cam["f"]},{cam["r"]},{cam["u"]},{cam["tf"]},{cam["tr"]},{cam["tu"]},{cam["fov"]})', 10)
             time.sleep(1.5)
             self.shot(f'{label}_{cam["name"]}')
+        result["seat_shots"] = self.seat_shots(label, spec.get("seat_shots") or [], 1.5)
         self.plain("bm:end_current_battle_phase(); return 1", 5)
         time.sleep(3)
         self.log("fight", self.lua((TESTS / "crew_fight.lua").read_text(encoding="utf-8"), 10)["result"])
@@ -398,9 +399,19 @@ class Session:
             if m and fired_at is None and (int(m.group(3)) > 0 or float(m.group(2)) < 0.9995):
                 fired_at = time.time()
                 self.log("fired", r["result"])
+                if spec.get("fire_seat_shots"):
+                    # a few seconds into the crew's fire: the seats' frames placed from where the men stand NOW (the barge flies), the battle slowed
+                    # to a tenth so it barely moves between the camera and the picture
+                    time.sleep(spec.get("fire_shot_after", 3))
+                    self.lua("bm:modify_battle_speed(0.1); return 1", 8)
+                    try:
+                        result["fire_seat_shots"] = self.seat_shots(f"{label}_firing", spec["fire_seat_shots"], 1.2)
+                    finally:
+                        self.lua("bm:modify_battle_speed(3); return 1", 8)
                 if spec.get("fire_shots"):
                     # a few seconds into the crew's fire: what the seats do then (tools/tests/crew_hire_session.py: Malakai at the rail), at speed 1
-                    time.sleep(spec.get("fire_shot_after", 3))
+                    if not spec.get("fire_seat_shots"):
+                        time.sleep(spec.get("fire_shot_after", 3))
                     self.lua("bm:modify_battle_speed(1); return 1", 8)
                     for name in spec["fire_shots"]:
                         cam = next(c for c in SPEC["cameras"] if c["name"] == name)
@@ -660,6 +671,43 @@ class Session:
         if not row["ok"]:
             raise RuntimeError(text)
         return text
+
+    def seat_shots(self, prefix, names, settle):
+        """The close frames of seats (data/crew_cycle.json «seat_frames»): each frame shot from every candidate position, placed by C.seat_camera
+        from the men's own positions in the battle's memory (outward = away from the seat across the deck). Pictures <prefix>_<frame>__<candidate>.png;
+        tools/tests/crew_hire_session.py's analysis keeps the first candidate the rigging does not block. -> {frame: [camera lines]}"""
+        out = {}
+        frames = SPEC.get("seat_frames") or {}
+        for name in names:
+            fr = frames.get(name)
+            if not fr:
+                out[name] = ["no such frame in data/crew_cycle.json seat_frames"]
+                continue
+            look = fr.get("look") or {}
+            lines = []
+            for cand in fr["candidates"]:
+                if cand.get("camera"):
+                    # a proven overview camera's position (SPEC cameras), the point looked at moved onto the seat's man
+                    cam = next(c for c in SPEC["cameras"] if c["name"] == cand["camera"])
+                    code = f'return C.camera_to_seat({cam["f"]}, {cam["r"]}, {cam["u"]}, "{fr["seat"]}", {look.get("u", 0.8)}, {cand.get("fov", 9)})'
+                else:
+                    code = (f'return C.seat_camera("{fr["seat"]}", "{fr["across"]}", "{fr["aft"]}", "{fr["fwd"]}", {cand["f"]}, {cand["o"]}, {cand["u"]}, '
+                            f'{look.get("f", 0)}, {look.get("o", 0)}, {look.get("u", 0.8)}, {cand.get("fov", fr.get("fov", 30))})')
+                r = self.lua(code, 10)
+                text = str(r.get("result"))
+                lines.append(f'{cand["c"]}: {text}')
+                self.log("seat camera", name, cand["c"], text)
+                if r.get("ok") and text.startswith("seat "):
+                    time.sleep(settle)
+                    self.shot(f'{prefix}_{name}__{cand["c"]}')
+            out[name] = lines
+        # the camera lines beside the pictures: the analysis names a candidate the geometry refused «misplaced»
+        if self.dir:
+            path = self.dir / "seat_cameras.json"
+            known = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            known[prefix] = out
+            path.write_text(json.dumps(known, ensure_ascii=False, indent=1), encoding="utf-8")
+        return out
 
     def safe_end_turn(self, limit=300, keep_events=False, after_end=None):
         """Ends the turn and waits for the player's next one. Another army's attack on the way is autoresolved.
