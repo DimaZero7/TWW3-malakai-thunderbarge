@@ -148,6 +148,8 @@ export function makeBuildings(data, game, parts) {
         // 'pending': the game applies it a moment later (CommandResult below); otherwise it is applied now
         if (game.issue_building_command(row.key) === 'pending') {
             pending[row.key] = {kind: 'order', cost, dev};
+            // the foot line from the click on: the wait, never the last verdict (run 20261115-030121: «Отменено…» stood under a fresh order)
+            message = `Заказ «${row.name}» отправлен, ждём ответа игры.`;
             fire();
             return {ok: true, kind: 'pending'};
         }
@@ -195,6 +197,7 @@ export function makeBuildings(data, game, parts) {
         if (game.cancel_asked && game.cancel_asked(row.key)) return {ok: false, why: `Отмена «${row.name}»: ответьте в окне игры.`};
         if (game.cancel_construction(row.key) === 'pending') {
             pending[row.key] = {kind: 'cancel'};
+            message = `Отмена «${row.name}» отправлена, ждём ответа игры.`;
             fire();
             return {ok: true, kind: 'pending'};
         }
@@ -467,11 +470,13 @@ export function makeBuildings(data, game, parts) {
     };
     // What the ship has after a demolish of row, before it is done: the levels it takes, the crew places it closes, and what of the crew goes (the
     // same rule as dropLocked: an order whose option closes comes back with its gold, a standing crew leaves without)
-    const afterDemolish = row => {
-        const takes = takesOf(row), gone_ = takes.map(r => r.key);
-        const below = belowOf(row);
-        const back = takes.length === 1 && below ? below.key : null;        // a dismantle of one level (the page's step_down): the one below stands again
-        const standsAfter = r => r.key === back || (stands(r) && !gone_.includes(r.key));
+    const afterDemolish = row => afterDismantles([row]);
+    // the same for every dismantle of the turn at once (M.place_closing)
+    const afterDismantles = rows => {
+        const takes = rows.flatMap(takesOf), gone_ = takes.map(r => r.key);
+        // a dismantle of one level (the page's step_down): the one below stands again
+        const back = rows.map(row => { const below = belowOf(row); return takesOf(row).length === 1 && below ? below.key : null; }).filter(Boolean);
+        const standsAfter = r => back.includes(r.key) || (stands(r) && !gone_.includes(r.key));
         const opensAfter = (g, o) => ((openers[g] || {})[o] || []).some(standsAfter);
         const placeAfter = g => {
             const group = data.groups[g];
@@ -592,6 +597,21 @@ export function makeBuildings(data, game, parts) {
         const g = M.growth();
         if (g && g.turns) return `Нечего заказать: не хватает ${M.POINTS}, следующая единица через ${turnsText(g.turns)}.`;
         return `Нечего заказать: не хватает ${M.POINTS}.`;
+    };
+    // The part of the foot line that tells the player what to wait for (M.waiting, at the line's end): the panel never cuts it, it gets a line of its
+    // own when the whole does not fit (run 20261115-030121, ss_after_turn: «…Нечего заказать: не хватает…» cut). '' when the line has none
+    M.foot_tail = () => {
+        const msg = message || M.first_step() || '', w = M.waiting();
+        return w && msg.endsWith(w) ? w : '';
+    };
+    // A crew place that a dismantle ordered this turn closes at the turn's end (it stays open till then): the «Экипаж» row's grey note (M.CLOSING)
+    // and the place's tag say so for the whole turn, not only the foot line until the next message. '' when the place stays
+    M.CLOSING = 'Закроется в конце хода';
+    M.place_closing = g => {
+        const tops = [];
+        for (const r of Object.values(levels)) if (game.has_building(r.key) && going(r)) { const t = goingTop(r); if (!tops.includes(t)) tops.push(t); }
+        if (!tops.length || !afterDismantles(tops).places.includes(g)) return '';
+        return `${M.CLOSING}: снос ${namesOf(tops.flatMap(takesOf))}.`;
     };
     M.first_step = () => {
         if (message) return null;

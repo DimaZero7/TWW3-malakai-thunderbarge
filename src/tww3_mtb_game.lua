@@ -216,6 +216,17 @@ function Game.new(config)
     function G.treasury() return cached('gold', function() local f = cm:get_faction(FACTION); return f and f:treasury() or 0 end) end
     function G.treasury_mod(d) cm:treasury_mod(FACTION, d); invalidate() end
     function G.turn() return cm:model():turn_number() end
+    -- The crew's upkeep is due only while the crew can stand on the barge (the old mod's rule, src/tww3_mtb_crew.lua paying: a human Malakai on the
+    -- barge, the seats writable). SEAM: src/tww3_mtb_ship.lua's turn start asks this once patch P1 of docs/design/port-to-game.md 8.6 is in; the
+    -- page's fake game has none (it always pays). true without the crew module.
+    function G.crew_pays()
+        local c = _G.tww3_mtb_crew
+        if c and c.paying then
+            local ok, v = pcall(c.paying)
+            if ok then return v and true or false end
+        end
+        return true
+    end
     -- [игра: 222543 п. 3] CreateCost(this) from his context = the pack's price, no selection needed; the data's when it does not answer
     function G.cost(key)
         return cached('cost ' .. key, function()

@@ -132,9 +132,11 @@ scenario('a treasury in debt: no hire, but the crew may be taken off', 'pirates'
         if (o.stock && g === 'rifles') continue;        // the AI's stock rifles: the barge's own secondary pool, as the game has it
         const r = o.ammo_rule;
         seen.push(`${g}:${k}`);
-        if (!r || r.per_seat !== Math.ceil(r.stock * 0.7 - 1e-9) || r.seats !== G.seats.length || o.ammo !== r.per_seat * r.seats) bad.push([g, k, o.ammo, r]);
+        // the riflemen shoot from 11 seats: Malakai stands on the twelfth (malakai_at_rail, docs/design/port-to-game.md 8.6)
+        const shooting = G.seats.length - (g === 'rifles' && cfg.malakai_at_rail ? 1 : 0);
+        if (!r || r.per_seat !== Math.ceil(r.stock * 0.7 - 1e-9) || r.seats !== shooting || o.ammo !== r.per_seat * r.seats) bad.push([g, k, o.ammo, r]);
     }
-    check('every weapon of the crew (but the AI\'s stock rifles) follows the rule: stock x 0.7 up a seat, x the seats', !bad.length && seen.length >= 14, bad);
+    check('every weapon of the crew (but the AI\'s stock rifles) follows the rule: stock x 0.7 up a seat, x the seats that shoot', !bad.length && seen.length >= 14, bad);
     const q = cfg.groups.rifles.options.quarrellers.ammo_rule;
     check('the rounding up: crossbows 22 -> 16 (15.4 up), pirates 8 -> 6 (5.6 up), axes 12 -> 9 (8.4 up)', q.per_seat === 16 && cfg.groups.rifles.options.pirates.ammo_rule.per_seat === 6 && cfg.groups.cupolas.options.axes.ammo_rule.per_seat === 9);
     check('a small base keeps its percent: +15 % of the pirates\' 72 is 83 shots (the group\'s whole is rounded, not a man\'s 6)', FX.applyPct(72, 15, 'ammo') === 83 && FX.applyPct(18, 15, 'ammo') === 21);

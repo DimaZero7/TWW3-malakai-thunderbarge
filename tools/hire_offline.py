@@ -4,6 +4,9 @@ Reads the module out of build/campaign/pack/tww3_mtb_campaign.pack, so py -3.14 
 The buildings are named by the level of the mod they stand for (mod_key of the author's tree: crew_weapons_1); their keys in the game come from
 build/tree/tree_rows.json (the tree gives most of them new keys, data/tree_port.json В1).
 A load is a new module on the same saved values and treasury: nothing may be taken or given by it.
+The cases «new panel» run with src/tww3_mtb_crew_ui.lua's switch on and the screen not started: the old order, upkeep and set() step aside for
+the model, the seats follow the model's saved state, Malakai stands at the rail (docs/design/port-to-game.md 8.6). With the model itself:
+py -3.10 tools/crew_bridge_offline.py.
 """
 import json
 import sys
@@ -56,10 +59,15 @@ SRC = source()
 failed = 0
 
 
-def case(name, body):
+def case(name, body, new_panel=False):
+    """new_panel: src/tww3_mtb_crew_ui.lua's switch on, the screen not started (the module reads the model's saved state, docs/design/port-to-game.md
+    8.6); the replay of the bridge with the model itself is tools/crew_bridge_offline.py."""
     global failed
     lua = lupa.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(FAKE)
+    lua.execute("_G.tww3_mtb_campaign.find_malakai = function() return {has_ancillary = function() return true end} end")
+    if new_panel:
+        lua.execute("_G.tww3_mtb_crew_ui = {NEW_SHIP_PANEL = true, ship_screen = function() return nil end}")
     load = lua.eval("function(src) local f, e = load(src); if not f then error(e) end; f(); local M = tww3_mtb_crew; M.status = 'applied'; M.apply = function() M.status = 'applied'; return true end; return M end")
     lua.globals().the_load = lambda: load(SRC)
     load(SRC)
@@ -194,6 +202,74 @@ def building_gone(run):
     expect(run, "gold", 10000)
 
 
+def upkeep_paid(run):
+    """The control of the new panel's case below: with the old panel the upkeep of what stands is taken at the turn start."""
+    built(run, "airship_hull_2", "crew_weapons_1")
+    run("saved['mtb_crew_rifles'] = 'quarrellers'")
+    cost = num(run, "tww3_mtb_crew.upkeep_of('rifles', 'quarrellers')")
+    assert cost > 0, "an upkeep"
+    run("tww3_mtb_crew.pay_upkeep()")
+    expect(run, "gold", 10000 - cost)
+
+
+MODEL_STATE = '{"order":{"option":"thunderers","paid":100},"standing":"quarrellers"}'
+
+
+def new_no_old_order(run):
+    built(run, "airship_hull_2", "crew_weapons_1")
+    ok, why = run("return tww3_mtb_crew.choose('rifles', 'quarrellers')")
+    assert ok is False and "new panel" in why, (ok, why)
+    expect(run, "gold", 10000)
+    expect(run, "tww3_mtb_crew.orders().rifles", None)
+
+
+def new_no_old_upkeep(run):
+    built(run, "airship_hull_2", "crew_weapons_1")
+    run("saved['mtb_crew_rifles'] = '" + MODEL_STATE + "'")
+    run("tww3_mtb_crew.pay_upkeep(); tww3_mtb_crew.carry_out()")
+    expect(run, "gold", 10000)
+    expect(run, "moves", 0)
+    expect(run, "tww3_mtb_crew.get().rifles", "quarrellers")
+
+
+def new_reads_model(run):
+    run("saved['mtb_crew_rifles'] = '" + MODEL_STATE + "'")
+    expect(run, "tww3_mtb_crew.get().rifles", "quarrellers")
+    # the model's empty bay is the plain ship without the bay's building, the bay with it
+    run("saved['mtb_crew_cannons'] = '{\"standing\":\"empty\"}'")
+    expect(run, "tww3_mtb_crew.get().cannons", "none")
+    built(run, "airship_hull_2", "mtb_guns_1")
+    expect(run, "tww3_mtb_crew.get().cannons", "empty")
+
+
+def new_set_refuses(run):
+    ok, why = run("return tww3_mtb_crew.set('rifles', 'pirates')")
+    assert ok is False and "new panel" in why, (ok, why)
+    expect(run, "tww3_mtb_crew.set('pub', 'stock')", True)
+    expect(run, "tww3_mtb_crew.get().pub", "stock")
+
+
+def old_reads_model(run):
+    run("saved['mtb_crew_rifles'] = '" + MODEL_STATE + "'")
+    expect(run, "tww3_mtb_crew.get().rifles", "quarrellers")
+
+
+def new_malakai_seat(run):
+    expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_malakai_rail_left")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_captain", "wh3_dlc25_dwf_veh_thunderbarge_grungni_captain")
+    run("saved['mtb_malakai_side'] = 'right'")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_crew_right_1", "mtb_bp_malakai_rail_right")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_empty")
+    run("tww3_mtb_crew.MALAKAI_AT_RAIL = false")
+    expect(run, "tww3_mtb_crew.seat_plan().ap_captain", "mtb_dwf_veh_thunderbarge_grungni_malakai_captain")
+
+
+def old_no_malakai(run):
+    expect(run, "tww3_mtb_crew.seat_plan().ap_captain", None)
+    expect(run, "tww3_mtb_crew.seat_plan().ap_crew_left_1", "mtb_bp_empty")
+    expect(run, "tww3_mtb_crew.malakai_seat()", None)
+
+
 case("an order takes the price at once, the crew does not change yet", order_paid)
 case("taking the order back returns all of it, once", taken_back)
 case("carried out: nothing more, nothing back", carried_out)
@@ -204,5 +280,13 @@ case("a load neither takes nor gives", load_changes_nothing)
 case("the AI pays nothing", ai_free)
 case("without memreader Plus nothing", stock_free)
 case("a building that goes takes the order and gives the gold back", building_gone)
+case("the upkeep of what stands is taken at the turn start", upkeep_paid)
+case("old panel: a save of the new panel is read for its standing crew", old_reads_model)
+case("old panel: Malakai keeps the helm, 12 rifle seats", old_no_malakai)
+case("new panel: the old panel's order is refused, nothing taken", new_no_old_order, new_panel=True)
+case("new panel: the old upkeep and the old orders take nothing (the model takes them)", new_no_old_upkeep, new_panel=True)
+case("new panel: the seats get the model's standing crew; its empty bay is the plain ship until the bay is built", new_reads_model, new_panel=True)
+case("new panel: set() refuses a place of the panel, not the pub", new_set_refuses, new_panel=True)
+case("new panel: Malakai at the rail of his side, a crew dwarf at the helm; back at the helm when switched off", new_malakai_seat, new_panel=True)
 print("failed:", failed)
 sys.exit(1 if failed else 0)

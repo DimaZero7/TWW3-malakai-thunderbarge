@@ -68,3 +68,19 @@ export const GAME_COLOURS = {
     green: '#A0FF37', red: '#FF2D2D', yellow: '#FFB900', white: '#FFFFFF', fe_white: '#FFF8D7', ui_font_yellow: '#FFD700', ui_font_faded_grey_beige: '#A99F89',
     ui_font_inactive_grey: '#666666', ui_font_inactive_grey_light: '#C0C0C0', ui_font_brown: '#4D3019', help_page_link_inactive: '#FFE77F',
 };
+
+// The screen's sentences that the page and the mod write alike (tools/ship_ui_config.mjs carries them to src/tww3_mtb_ship_ui.lua as cfg.words);
+// %s: the name put in
+export const WORDS = {
+    // a unit's panel of a card that stands for a crew and the army's unit at once (tree_model.mjs oneCardPerUnit): both facts in one sentence
+    army_line: '«%s» открывает этот отряд в экипаже и для найма в армию.',
+};
+
+// Switches of the screen's look for the author to judge, the same on the page and in the mod (cfg.options)
+export const OPTIONS = {
+    // a slot that only lacks gold or development points: its price plate dimmed and a muted red rim kept on it (the refused click's red frame at
+    // short_slot_rim of 255), instead of the red number alone. Off: the game's own look
+    short_slot_marked: false,
+    short_slot_rim: 110,
+    short_slot_plate: 140,      // the dimmed price plate's opacity of 255
+};

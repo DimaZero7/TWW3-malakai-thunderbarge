@@ -64,6 +64,7 @@ function observe(w) {
     const g = M.growth();
     o.growth = g ? [g.now, g.per_turn, g.need, g.turns ?? '-', g.max].join('/') : null;
     o.waiting = M.waiting();
+    o.foot_tail = M.foot_tail();
     o['view.tab'] = w.view.tab;
     o['view.scroll'] = w.view.scroll ? [w.view.scroll.x, w.view.scroll.y, w.view.scroll.zoom].map(num).join(',') : null;
     for (const r of config.levels) {
@@ -92,6 +93,7 @@ function observe(w) {
         const po = M.place_opener(G);
         o[`crew.${G}.opener`] = po ? sk(po.key) : null;
         o[`crew.${G}.hint`] = M.crew_hint(G);
+        o[`crew.${G}.closing`] = M.place_closing(G);
         const note = M.crew_note(G);
         o[`crew.${G}.note`] = note ? (note.bad ? '!' : '') + note.text : null;
         const opts = M.crew_options(G);
@@ -779,7 +781,8 @@ const SENTENCES = {
     ', следующая единица через ': 'nothing to order: the turns of growth', '» сносится: уйдёт в конце хода': 'a requirement being dismantled',
     'Уже сносится: ': 'demolish refused: already', 'Корпус не сносится': 'demolish refused: the hull', 'Сначала отмените стройку «': 'demolish refused: a construction in the slot',
     'Снос заказан: «': 'demolish ordered', '» не прошёл: игра его не приняла.': 'a demolish or an order the game did not take', ': ответьте в окне игры.': 'cancel: the game asks',
-    'продолжается: отмену не подтвердили': 'cancel: answered no', 'Первая постройка — «': 'the first step, locked',
+    'продолжается: отмену не подтвердили': 'cancel: answered no', '» отправлен, ждём ответа игры.': 'an order waits for the game (the foot line)',
+    '» отправлена, ждём ответа игры.': 'a cancel waits for the game (the foot line)', 'Закроется в конце хода: снос «': 'a place a dismantle closes (its row and tag)', 'Первая постройка — «': 'the first step, locked',
     'Малакай встанет на правый': 'side right', 'Заперто: ': 'crew locked', 'Не хватает золота на ': 'crew poor', 'Экипаж уже сходит в начале хода': 'kept: taking off ordered',
     ' уже в найме': 'kept: ordered', 'kept:У бортов никого': 'kept: nobody (rifles)', 'Заказ на ': 'cancelled (done)', 'Снять заказ на ': 'cancelled (preview)',
     'Экипаж сойдёт в начале хода': 'taking off (done)', 'Снять экипаж в начале хода': 'taking off (preview)', 'В найме «': 'ordered (done)',

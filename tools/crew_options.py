@@ -414,6 +414,31 @@ def building_bindings(t, stock):
     return bindings, levels, sorted(followed)
 
 
+def malakai_rows(t, stock, unit, stock_seat):
+    """The new panel's Malakai at the rail (data/crew_options.json malakai_at_rail; docs/design/port-to-game.md, В6 (а) and 8.6): for each side a seat row
+    that is the stock rifle seat's own row with autonomous_rider_hero on (a hero seat of a character's unit shows the character's model: the clones of
+    tools/crew_options.py option_rows) and no weapon (the riflemen's ammo is the other 11 seats'), so his seat neither shoots nor takes the group's ammo;
+    the helm gets the stock barge's crew captain. Returns the Lua data {seats, rows, helm_seat, helm_crew, helm_own} or None without the section."""
+    spec = CONFIG.get("malakai_at_rail")
+    if not spec:
+        return None
+    rifles = CONFIG["groups"]["rifles"]["seats"]
+    junction = "land_units_to_battle_personalities_junctions"
+    own = [r["battle_personality"] for r in t[junction] if r["land_unit"] == unit and r["riders_attachment_point"] == spec["helm_seat"]]
+    if len(own) != 1 or spec["helm_seat"] not in CONFIG["fixed_seats"]:
+        raise SystemExit(f"malakai_at_rail: the helm {spec['helm_seat']} is not one fixed seat of {unit} ({own})")
+    one(stock["battle_personalities"], key=spec["helm_crew"])
+    rows = {}
+    for side, seat in spec["seats"].items():
+        if seat not in rifles:
+            raise SystemExit(f"malakai_at_rail: {seat} is not a rifle seat")
+        base = one(stock["battle_personalities"], key=stock_seat[seat])
+        key = f"mtb_bp_malakai_rail_{side}"
+        t["battle_personalities"].append(dict(base, key=key, autonomous_rider_hero=True, battle_entity_stats=None))
+        rows[side] = key
+    return {"seats": dict(spec["seats"]), "rows": rows, "helm_seat": spec["helm_seat"], "helm_crew": spec["helm_crew"], "helm_own": own[0]}
+
+
 def extend(t, stock, unit, barge, table_name_check=True):
     """Adds the rows of all options to the tables t. Returns {pack path: bytes}, with the Lua module."""
     stock_seat = {r["riders_attachment_point"]: r["battle_personality"]
@@ -477,6 +502,9 @@ def extend(t, stock, unit, barge, table_name_check=True):
             files.update(definition_files)
             files.update(option_files(group_key, key, opt))
     weapon_upgrades(t, stock, unit, ammo, own_stats)
+    malakai = malakai_rows(t, stock, unit, stock_seat)
+    if malakai:
+        data["malakai"] = malakai
     if CONFIG.get("remove_bow_figure"):
         files.update(hull_files())
     # The tables hold the stock crew: without memreader Plus, or before the module has written, the unit is the stock barge.

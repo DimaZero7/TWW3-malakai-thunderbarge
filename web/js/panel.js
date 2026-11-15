@@ -17,10 +17,11 @@
 // Reads only the module (web/js/barge_buildings.js); a click calls it, refresh() reads it back.
 
 import {turnsText} from './barge_buildings.js';
-import {linkSegments, slotsBlock, lineMarks, slotCards, GRID} from './tree_model.mjs';
+import {linkSegments, slotsBlock, slotsAround, lineMarks, slotCards, GRID} from './tree_model.mjs';
 import * as FX from './effects_model.mjs';
 import {crewSources, crewAmmo, ammoShare} from './crew_model.mjs';
 import {clearTooltip} from './gameui.js';
+import {WORDS, OPTIONS} from './ui_text.mjs';
 
 const LAYOUTS = 'ui/tww3_mtb/';
 const WEB_ART = LAYOUTS + 'web/';       // the stage layers; in the game they would be ui/tww3_mtb/<name>.png like the others
@@ -244,6 +245,11 @@ export function makePanel(root, M, data, art, blueprint, flags, cards = {}, keep
     at(strip, area.x, foot_y);
     view.fitBtn = makeButton(frame, FIT, area.x + area.w - fit_w - 2, foot_y + 2, fit_w, foot_hh - 4, 'Всё дерево');
     view.message = text(frame, 'message', 'text_copper', area.x + 14, foot_y, area.w - fit_w - 40, foot_hh, '');
+    // its second line, when the text needs two (footLines)
+    view.message2 = text(frame, 'message_2', 'text_copper', area.x + 14, foot_y + FOOT_LINE, area.w - fit_w - 40, FOOT_LINE, '');
+    view.message2.SetVisible(false);
+    view.footY = foot_y;
+    view.footText = () => footText(view);
 
     view.root = backdrop;
     view.frame = frame;
@@ -392,11 +398,15 @@ function paintShipColumn(view, M, col) {
         const fresh = newsPlaces.includes(g);
         row.card.SetGlow(fresh);
         row.name.SetStateText(!st.place ? `[[col:ui_font_faded_grey_beige]]${M.place_name(g)}[[/col]]` : fresh ? `[[col:ui_font_yellow]]${M.place_name(g)}[[/col]]` : M.place_name(g));
+        // a place a dismantle of this turn closes at the turn's end: the grey note instead of its crew for the whole turn, why in its tooltip
+        // (M.place_closing; run 20261115-030121, ss_dismantling: only the foot line said so, until the next message)
+        const closing = st.place ? M.place_closing(g) : '';
         const line = !st.place ? `[[col:ui_font_faded_grey_beige]]${opener ? `Откроет «${opener.name}»` : 'Закрыто'}[[/col]]`
+            : closing ? `[[col:ui_font_faded_grey_beige]]${M.CLOSING}[[/col]]`
             : st.ordered ? (st.ordered.empty ? `${w.who} ${w.leave} в начале хода` : `${st.ordered.name}: ${w.come} в начале хода`)
             : st.nobody ? `[[col:ui_font_faded_grey_beige]]${w.nobody}[[/col]]` : st.standing.name;
         fitLine(row.state, line);
-        row.hit.SetTooltipText(row.state.GetStateText() !== line ? line : '', true);
+        row.hit.SetTooltipText(closing || (row.state.GetStateText() !== line ? line : ''), true);
     }
 }
 
@@ -563,6 +573,10 @@ function unitCard(parent, id, x, y, uc, colour) {
 // ?aboard=outline: the other variant, the game's red frame with a thin line of the colour over it (web/art/aboard_outline_<colour>.png).
 // The game's hover state enlarges the card to 30 x 65; the page only brightens it.
 const CARD_W = 23, CARD_H = 50, CARD_OVERLAP = 10;
+// The reload's bar as the game draws it: the seconds against the stat's max_value of the game's ui_unit_stats table (stat_reloading: 15), so a longer
+// bar is a longer reload, as every bar of the game's unit panel is the stat's own size (db.pack, ui_unit_stats_tables: «Maximum value of stat,
+// affects stat bars on info panel when calculating percentage full»)
+const RELOAD_MAX = 15;
 function slotUnitCard(parent, id, x, y, uc, colour, outline) {
     const card = image(parent, id, uc.picture, x, y, CARD_W, CARD_H);
     if (colour === null) image(card, 'frame', 'ui/skins/default/unit_card_build_frame.png', 0, 0, CARD_W, CARD_H);      // an army unit: the game's own frame
@@ -763,7 +777,7 @@ function unitInfo(parent, id, spec, flags = {}) {
     at(head, 8, y);
     text(head, 'dy_title', 'text_unit_centre', 0, 0, W - 16, 34, (spec.area && spec.area.stats_head) || 'Стрельба экипажа');
     y += 38;
-    // the rows of the crew's weapon; the bar is the value against the best of the group's kinds (for the reload: the fastest)
+    // the rows of the crew's weapon; the bar is the value against the best of the group's kinds (the reload: against the game's own scale, RELOAD_MAX)
     const all = Object.values(group.options).map(x => x.numbers || {}).filter(x => x.range);
     const best = (f, low) => (low ? Math.min : Math.max)(...all.map(f));
     info.rows = {};
@@ -805,7 +819,7 @@ function unitInfo(parent, id, spec, flags = {}) {
         }
         if (o.range_text) row('range', D + 'icon_stat_range.png', 'Дальность', o.range_text, null);
         else row('range', D + 'icon_stat_range.png', 'Дальность', num(n.range), n.range / best(x => x.range));
-        row('reload', D + 'icon_stat_reload_time.png', 'Перезарядка, с', num(n.reload), best(x => x.reload, true) / n.reload);
+        row('reload', D + 'icon_stat_reload_time.png', 'Перезарядка, с', num(n.reload), n.reload / RELOAD_MAX);
         // the ammunition: the group's whole, the true number (the mod rounds the whole, crew_model.mjs crewAmmo); under it in small letters its places
         // and a place's share («4 люка по 28», «4 люка, около 65 на люк»); with no seats in the data, the group's whole alone
         if (n.seats) {
@@ -857,7 +871,7 @@ function unitInfo(parent, id, spec, flags = {}) {
         info.h = info.base_h + linesH;
         size(panel, W, info.h);
         // a card that stands for the same unit opened for the army too (oneCardPerUnit): the second fact in the same window, in the army panel's words
-        const armyLine = spec.army_building ? `«${spec.army_building}» открывает этот отряд и для найма в армию` : '';
+        const armyLine = spec.army_building ? WORDS.army_line.replace('%s', spec.army_building) : '';
         const crewLine = dyn.reason ? `[[col:red]]${dyn.reason}[[/col]]` : dyn.state || '';
         info.stateText.SetStateText([crewLine, armyLine].filter(Boolean).join('\n'));
         info.has_state = !!(dyn.reason || dyn.state || armyLine);
@@ -934,7 +948,7 @@ function armyInfo(parent, id, u, all, building) {
         row('missile_ap', D + 'modifier_icon_armour_piercing.png', 'Бронебойный', String(st.missile_ap * (st.shots || 1)), st.missile_ap / Math.max(1, st.missile_damage + st.missile_ap));
         stat('range', 'icon_stat_range.png', 'Дальность');
         stat('ammo', 'icon_stat_ammo.png', 'Боезапас');
-        if (st.reload) row('reload', D + 'icon_stat_reload_time.png', 'Перезарядка, с', num(st.reload), Math.min(1, 4 / st.reload));
+        if (st.reload) row('reload', D + 'icon_stat_reload_time.png', 'Перезарядка, с', num(st.reload), Math.min(1, st.reload / RELOAD_MAX));
     }
     y += 10;
     info.h = y;
@@ -1001,6 +1015,14 @@ const BAR = 22, ARROW = 22, HANDLE_MIN = 39, STEP = 106;
 // across too (a drag, shift + the wheel, the bar at the foot). «Всё дерево» shows the whole of it smaller (a click on a slot then comes back to the
 // game's size at that slot, it orders nothing), «Вблизи» back. It opens at what can be done now: the slots under construction and those that can be
 // ordered.
+// The units a level's slot shows as small cards: only what this level brings new in its line, as the game's tree (tree_model.mjs newOnLevel; a tree
+// without lines: all it opens), the crew first (what has a unit card and is not the group's mount), then the army's units
+function slotItems(view, row, armyAll) {
+    const list = (row.unlocks_new || row.unlocks).map(u => ({...u, group_data: view.data.groups[u.group]})).map(u => ({...u, option_data: u.group_data && u.group_data.options[u.option]}))
+        .filter(u => u.option_data && u.option_data.unit_card && u.option !== u.group_data.mount);
+    const army = (row.units_new || row.units || []).map(k => armyAll[k]).filter(Boolean);
+    return [...list.map(u => ({crew: true, u})), ...army.map(u => ({crew: false, tier: u.tier, u}))];
+}
 function makeFileTree(frame, view, M, area, keep) {
     const rows = view.data.tree_rows || [];
     const D = 'ui/skins/default/';
@@ -1038,8 +1060,12 @@ function makeFileTree(frame, view, M, area, keep) {
     size(lines, Math.max(1, cw), Math.max(1, ch));
     lines.SetPassive();
     const blocked = slotsBlock(Object.values(pos));
+    // what each slot shows as its small unit cards (slotItems below): a line never turns under them (tree_model.mjs slotsAround)
+    const armyAll = view.data.army_units || {};
+    const cardsTotal = new Map(rows.map(r => { const {shown, folded} = slotCards(slotItems(view, r, armyAll)); return [pos[r.key], shown.length + (folded.length ? 1 : 0)]; }));
+    const around = slotsAround(Object.values(pos), c => cardsTotal.get(c) || 0);
     const links = [];
-    for (const r of rows) for (const p of r.requires) if (pos[p]) links.push({from: p, to: r.key, colour: r.branch, segs: linkSegments(pos[p], pos[r.key], blocked)});
+    for (const r of rows) for (const p of r.requires) if (pos[p]) links.push({from: p, to: r.key, colour: r.branch, segs: linkSegments(pos[p], pos[r.key], blocked, around)});
     const marks = lineMarks(links);
     const cuts = new Map();       // a horizontal -> the x's where a vertical crosses it
     for (const c of marks.crossings) (cuts.get(c.h) || cuts.set(c.h, []).get(c.h)).push(c.x);
@@ -1104,6 +1130,8 @@ function makeFileTree(frame, view, M, area, keep) {
         v.markIn = ring('lit_needed', 255, 211, 106);
         v.markOut = ring('lit_opened', 145, 231, 50);
         v.deny = ring('refused', 226, 40, 40);
+        // the author's option (ui_text.mjs OPTIONS.short_slot_marked, off by default): a slot short only of gold or points keeps a muted red rim
+        if (OPTIONS.short_slot_marked) { v.shortRim = ring('short', 226, 40, 40); v.shortRim.SetOpacity(OPTIONS.short_slot_rim); }
         b.el.addEventListener('mouseenter', () => { view.hoverSlot = v; fillInfo(view, v); placeInfo(view, v); lightLinks(view); });
         b.el.addEventListener('mouseleave', () => { if (view.hoverSlot === v) view.hoverSlot = null; lightLinks(view); });
         // the turns of a construction: the game's banner across the slot's foot (turns_banner_queued.png with the hourglass at its left), the number
@@ -1144,16 +1172,11 @@ function makeFileTree(frame, view, M, area, keep) {
     view.crew = [];
     const blueprint = view.blueprint;
     const clips = Object.fromEntries((blueprint.crew_cards || []).map(c => [c.group + ':' + c.option, c]));
-    const armyAll = view.data.army_units || {};
     // At most three in the row (tree_model.mjs slotCards): with more, two cards and the plate «+N» in the card's place; its tooltip lists the rest
     // (the building's window lists them all too).
     view.plates = [];
     for (const v of view.tree) {
-        // only what this level brings new in its line, as the game's tree (tree_model.mjs newOnLevel); a tree without lines: all it opens
-        const list = (v.node.row.unlocks_new || v.node.row.unlocks).map(u => ({...u, group_data: view.data.groups[u.group]})).map(u => ({...u, option_data: u.group_data && u.group_data.options[u.option]}))
-            .filter(u => u.option_data && u.option_data.unit_card && u.option !== u.group_data.mount);
-        const army = (v.node.row.units_new || v.node.row.units || []).map(k => armyAll[k]).filter(Boolean);
-        const {shown, folded} = slotCards([...list.map(u => ({crew: true, u})), ...army.map(u => ({crew: false, tier: u.tier, u}))]);
+        const {shown, folded} = slotCards(slotItems(view, v.node.row, armyAll));
         const total = shown.length + (folded.length ? 1 : 0), row_w = CARD_W + (total - 1) * (CARD_W - CARD_OVERLAP);
         const cardAt = i => [v.button.x + NODE + 17 - row_w + i * (CARD_W - CARD_OVERLAP), v.button.y - 22];
         shown.forEach((item, i) => {
@@ -1398,7 +1421,8 @@ function slotOnFrame(view, v) {
     return {x: view.pane.x + p.win.x + p.x + v.button.x * p.z, y: view.pane.y + p.win.y + p.y + v.button.y * p.z, k: p.z};
 }
 
-// a unit's panel by its small card: right of the card when it fits in the screen, else left of the card's slot; level with the card, inside the screen
+// a unit's panel by its small card: right of the card when it fits in the panel, else left of the card's slot (infoLeft); level with the card,
+// over the foot row when it fits there (infoTop)
 function placeTips(view) {
     const root = view.frame && view.frame.parent;
     for (const c of view.crew || []) {
@@ -1406,12 +1430,9 @@ function placeTips(view) {
         const s = slotOnFrame(view, c.v), frame = c.info.panel.parent, F = frame;
         const cardL = s.x + (c.card.x - c.v.button.x) * s.k, cardR = cardL + CARD_W * s.k;
         const cy = s.y + (c.cardY - c.v.button.y + CARD_H / 2) * s.k;
-        const minX = 4 - F.x, maxX = (root ? root.Width() : F.Width()) - 4 - F.x - UNIT_INFO_W;
-        let px = cardR + 10;
-        if (px > maxX) px = Math.min(s.x - 18, cardL) - 10 - UNIT_INFO_W;
-        px = Math.max(minX, Math.min(maxX, px));
-        // as a building's window: inside the panel when it fits there (infoTop)
-        c.info.place(px, infoTop(cy - c.info.total / 2, c.info.total, root ? root.Height() : F.Height(), F.y, view.area ? view.area.y : 4 - F.y, F.Height()));
+        const px = infoLeft(cardR + 10, Math.min(s.x - 18, cardL) - 10 - UNIT_INFO_W, UNIT_INFO_W, F.Width(), F.x, root ? root.Width() : F.Width());
+        // as a building's window: inside the panel and over its foot row when it fits there (infoTop)
+        c.info.place(px, infoTop(cy - c.info.total / 2, c.info.total, root ? root.Height() : F.Height(), F.y, view.area ? view.area.y : 4 - F.y, F.Height(), footTop(view)));
     }
 }
 
@@ -1453,23 +1474,32 @@ function fillInfo(view, v) {
     const room = v.info.tip.parent.parent.Height() - 8;
     for (let w = INFO_W; w <= 800; w += 100) if (fillInfoTip(v.info, {...v.info.content, width: w}) <= room) break;
 }
-// frameH: the panel's height. The window's foot stays inside the panel when the window fits between the title row and the panel's foot (the game
-// showed a window over the map, 57 under the panel: runs/20261115-012811-ship_panel, ss_fresh_tree_info), else 4 above the screen's foot
-export function infoTop(want, h, screenH, frameY, headY, frameH = screenH - frameY) {
-    const inPanel = frameH - 4 - h;
-    const maxY = inPanel >= headY ? inPanel : screenH - 4 - frameY - h;
+// frameH: the panel's height; footY: the top of its foot row (the panel's foot less 4 when none). The window lies between the title row and the
+// foot row when it fits there (run 20261115-030121, ss_unit_panel: a unit's panel lay on the foot line; the game showed a window over the map, 57
+// under the panel: runs/20261115-012811-ship_panel, ss_fresh_tree_info); a taller one stays right under the title row, its foot as low as it
+// must be, while the screen's foot allows; taller than that, 4 above the screen's foot, over the title row. One rule without a jump: a window a
+// unit taller or shorter (the text measured a unit apart) lies a unit apart, not on the other side of a threshold.
+export function infoTop(want, h, screenH, frameY, headY, frameH = screenH - frameY, footY = frameH - 4) {
+    const maxY = Math.max(footY - h, Math.min(headY, screenH - 4 - frameY - h));
     const minY = maxY >= headY ? headY : 4 - frameY; // under the title row when it fits there, else as high as the screen's top
     return Math.max(minY, Math.min(maxY, want));
 }
+// Across: right of what it stands by when it fits inside the panel, else left of it when that fits inside the panel (inside the panel wins over
+// «right»: run 20261115-030121, ss_info_corner: the window of the rightmost slot hung 43 over the map although the left had room); fitting on
+// neither side, against the panel's inner edge; never out of the screen. Offsets from the panel's frame.
+export function infoLeft(right, left, w, panelW, frameX, screenW) {
+    const lo = 4, hi = panelW - 4 - w;
+    const x = right <= hi ? right : left >= lo ? left : Math.max(lo, Math.min(hi, right));
+    return Math.max(4 - frameX, Math.min(screenW - 4 - frameX - w, x));
+}
+// the top of the foot row on the frame, less a hair: no window lies on its line when it fits over it
+function footTop(view) { return view.footY !== undefined ? view.footY - 2 : undefined; }
 function placeInfo(view, v) {
     const frame = v.info.tip.parent, root = frame.parent;
     const on = slotOnFrame(view, v);
-    let x = on.x + (NODE + 17) * on.k + 10;
     const w = v.info.w;
-    if (frame.x + x + w > root.Width() - 4) x = on.x - 18 - 10 - w;
-    x = Math.min(x, root.Width() - 4 - frame.x - w);
-    x = Math.max(4 - frame.x, x);
-    at(v.info.tip, x, infoTop(on.y + (NODE + 28) * on.k - v.info.h, v.info.h, root.Height(), frame.y, view.area.y, frame.Height()));
+    const x = infoLeft(on.x + (NODE + 17) * on.k + 10, on.x - 18 - 10 - w, w, frame.Width(), frame.x, root.Width());
+    at(v.info.tip, x, infoTop(on.y + (NODE + 28) * on.k - v.info.h, v.info.h, root.Height(), frame.y, view.area.y, frame.Height(), footTop(view)));
 }
 
 // The states of the game's slot (square_building_button), each read on the slot itself:
@@ -1527,6 +1557,8 @@ function refreshTree(view, M) {
         v.cost.SetVisible(!!row && !built && !building);
         v.costRed.SetVisible(goldShort);
         v.costText.SetStateText(row ? (goldShort ? `[[col:red]]${cost}[[/col]]` : String(cost)) : '');
+        // the option of a slot short only of gold or points: its plate dimmed and the muted red rim while it lasts (OPTIONS.short_slot_marked)
+        if (v.shortRim) { v.shortRim.SetVisible(poor); v.cost.SetOpacity(poor ? OPTIONS.short_slot_plate : 255); }
         // the points by the slot, as the game's: a level that costs some, neither built nor under construction; red when the horde has too few
         v.dev.SetVisible(!!row && dev > 0 && !built && !building);
         v.devText.SetStateText(dev > 0 ? (st.short ? `[[col:red]]${dev}[[/col]]` : String(dev)) : '');
@@ -1588,8 +1620,11 @@ function refreshCrewArea(view, M, c) {
     for (const k of Object.keys(c.tags)) { c.tags[k].SetVisible(k === tag); c.hoverTags[k].SetVisible(k === tag); c.tags[k].SetGlow(fresh && k === tag); c.hoverTags[k].SetGlow(fresh && k === tag); }
     c.fresh = fresh;
     c.glow.SetVisible(shown && M.crew_hint(g));
-    c.area.SetTooltipText(c.open ? '' : ordered ? (ordered.empty ? `${w.who} ${w.leave} в начале хода` : `${ordered.name}: в найме, ${w.come} в начале хода`)
-        : nobody ? '' : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' ' + w.at + ', ' : ''}содержание ${standing.upkeep} за ход`, true);
+    const tip = c.open ? '' : ordered ? (ordered.empty ? `${w.who} ${w.leave} в начале хода` : `${ordered.name}: в найме, ${w.come} в начале хода`)
+        : nobody ? '' : `${standing.name}: ${standing.unit_card ? standing.unit_card.men + ' ' + w.at + ', ' : ''}содержание ${standing.upkeep} за ход`;
+    // a place a dismantle of this turn closes at the turn's end: its tag says so too (M.place_closing)
+    const closing = shown && !c.open ? M.place_closing(g) : '';
+    c.area.SetTooltipText(closing ? (tip ? `${tip}. ${closing}` : closing) : tip, true);
     // Both states show at once: who stands (the game's frame of the selected card) and who is ordered (the game's banner of a unit being recruited
     // with the turns); every other kind its hire, red when the treasury cannot pay it.
     for (const slot of c.slots) {
@@ -1748,8 +1783,47 @@ function refresh(view, M) {
     view.fitBtn.button.SetVisible(zoom);
     view.fitBtn.label.SetStateText(view.pan.z < 1 ? 'Вблизи' : 'Всё дерево');
     view.fitBtn.button.SetTooltipText(view.pan.z < 1 ? 'Вернуть дерево в обычный размер' : 'Показать всё дерево целиком', true);
-    size(view.message, (zoom ? view.fitBtn.button.x - 24 : view.area.x + view.area.w - 14) - view.message.x, view.message.Height());
-    fitLine(view.message, M.message() || M.first_step() || '');
+    footLines(view, M.message() || M.first_step() || '', M.foot_tail(), (zoom ? view.fitBtn.button.x - 24 : view.area.x + view.area.w - 14) - view.message.x);
+}
+
+// The foot row (run 20261115-030121, ss_after_turn: the turn's report was cut exactly where it said what to wait for). One line in the middle of the
+// row when the whole fits; else two lines of FOOT_LINE, as the game's turn report gives each event its own line: the part that says what to wait for
+// (M.foot_tail) whole on the second line, the rest on the first, cut with «…» only if it must; a text without such a part runs on to the second line
+// and only its end is cut. When anything is cut the whole text is the tooltip of both lines.
+const FOOT_LINE = 20;
+function footLines(view, msg, tail, w) {
+    const a = view.message, b = view.message2;
+    a.SetTooltipText('', true);
+    b.SetTooltipText('', true);
+    size(a, w, 2 * FOOT_LINE);
+    a.SetStateText(msg);
+    b.SetStateText('');
+    b.SetVisible(false);
+    if (!msg || a.TextDimensions()[0] <= w) return;
+    size(a, w, FOOT_LINE);
+    size(b, w, FOOT_LINE);
+    b.SetVisible(true);
+    let first, second;
+    if (tail && tail !== msg) { first = msg.slice(0, msg.length - tail.length).replace(/\s+$/, ''); second = tail; }
+    else {
+        const words = msg.split(' ');
+        let k = 1;
+        for (let i = 2; i <= words.length; i++) {
+            a.SetStateText(words.slice(0, i).join(' '));
+            if (a.TextDimensions()[0] <= w) k = i; else break;
+        }
+        first = words.slice(0, k).join(' ');
+        second = words.slice(k).join(' ');
+    }
+    fitLine(a, first);
+    fitLine(b, second);
+    const cut = a.GetStateText() !== first || b.GetStateText() !== second;
+    a.SetTooltipText(cut ? msg : '', true);
+    b.SetTooltipText(cut ? msg : '', true);
+}
+// the foot row as the player reads it: both lines (the tests read this)
+function footText(view) {
+    return [view.message, view.message2].filter(c => c.Visible() && c.GetStateText()).map(c => c.GetStateText()).join(' ');
 }
 
 // A click on a slot, as the game's horde slot: order what can be ordered, cancel what is under construction, a built one shows its demolish button.

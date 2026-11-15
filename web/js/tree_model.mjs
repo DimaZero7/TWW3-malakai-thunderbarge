@@ -440,7 +440,14 @@ export function engineTiers(d, rule) {
 // between two columns (half a step aside, towards the child) and climbs there, so it never runs behind a building it has nothing to do with.
 // -> [[x0, y0, x1, y1], ...]
 export const JUNCTION = 25;
-export function linkSegments(a, b, blocked = null) {
+// around (optional, the game's tree): {cards(corner): the box of the unit cards over that slot or null, plate(x0, y0, x1, y1, except): a price
+// plate of a slot other than except on that piece of line}. A link one row up that turns to the right over its parent would turn 7 over the
+// parent's top: inside the band of the parent's own unit cards (22 over its top to 28 into it, over its upper right corner), so its turn showed as
+// a stub bending into the first card and the rest ran under the cards (run 20261115-030121, ss_tree_top: the slot of 3500). It turns over the
+// cards instead (CARDS_CLEAR over their top) and meets the child's line under the child's price plate; when a plate of another slot is on that
+// way, the old way.
+export const CARDS_CLEAR = 4;
+export function linkSegments(a, b, blocked = null, around = null) {
     const ax = a.x + NODE / 2, bx = b.x + NODE / 2;
     const up = b.y < a.y - NODE / 2, down = b.y > a.y + NODE / 2;
     if (up || down) {
@@ -452,6 +459,13 @@ export function linkSegments(a, b, blocked = null) {
             const lane = ax + (bx >= ax ? 1 : -1) * GRID / 2;
             return [[ax, ay, ax, turn], [ax, turn, lane, turn], [lane, turn, lane, jy], [lane, jy, bx, jy], [bx, jy, bx, by]];
         }
+        if (up && bx > ax && around) {
+            const c = around.cards(a);
+            if (c && jy > c.t - CARDS_CLEAR && jy < c.b && c.l < bx) {
+                const ty = c.t - CARDS_CLEAR - 1;
+                if (ty > by && !around.plate(ax - 2, ty, ax + 2, ay, b) && !around.plate(ax, ty - 2, bx, ty + 2, b)) return [[ax, ay, ax, ty], [ax, ty, bx, ty], [bx, ty, bx, by]];
+            }
+        }
         return ax === bx ? [[ax, ay, bx, by]] : [[ax, ay, ax, jy], [ax, jy, bx, jy], [bx, jy, bx, by]];
     }
     const y = a.y + NODE / 2;
@@ -461,6 +475,23 @@ export function linkSegments(a, b, blocked = null) {
 // blocked() for linkSegments over the slots at these corners: a vertical at x between y0 and y1 crosses one of them
 export function slotsBlock(corners) {
     return (x, y0, y1) => corners.some(c => x > c.x && x < c.x + NODE && c.y < y1 - 1 && c.y + NODE > y0 + 1);
+}
+// The places of a slot's marks that a line must not run under (web/js/panel.js makeFileTree draws them there): the row of unit cards (the game's
+// units_list: docked 17 right of the slot's top right corner and 22 over it, CARD_W wide each, overlapping by CARD_OVERLAP, CARD_H tall) and the
+// price plate under the slot (62 x 20, 3 from its left, 2 under it).
+export const SLOT_MARKS = {CARD_W: 23, CARD_H: 50, CARD_OVERLAP: 10, CARDS_RIGHT: 17, CARDS_TOP: 22, PLATE_X: 3, PLATE_Y: NODE + 2, PLATE_W: 62, PLATE_H: 20};
+export function cardsBox(corner, total) {
+    if (!total) return null;
+    const S = SLOT_MARKS, w = S.CARD_W + (total - 1) * (S.CARD_W - S.CARD_OVERLAP), r = corner.x + NODE + S.CARDS_RIGHT;
+    return {l: r - w, r, t: corner.y - S.CARDS_TOP, b: corner.y - S.CARDS_TOP + S.CARD_H};
+}
+// around for linkSegments over the slots at these corners; total(corner): the number of cards over that slot (slotCards: shown, and the plate «+N»)
+export function slotsAround(corners, total) {
+    const S = SLOT_MARKS;
+    return {
+        cards: c => cardsBox(c, total(c)),
+        plate: (x0, y0, x1, y1, except) => corners.some(c => c !== except && x0 < c.x + S.PLATE_X + S.PLATE_W && x1 > c.x + S.PLATE_X && y0 < c.y + S.PLATE_Y + S.PLATE_H && y1 > c.y + S.PLATE_Y),
+    };
 }
 
 // The small unit cards over a slot of the game's tree: the game's template has room for a few (they stand over the slot's upper right corner, and

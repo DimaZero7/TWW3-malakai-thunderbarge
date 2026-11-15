@@ -41,6 +41,7 @@ import pfh5  # noqa: E402
 
 PACK = REPO / "build" / "campaign" / "pack" / "tww3_mtb_campaign.pack"
 DUMPS = REPO / "build" / "ui_dump"
+SIM = json.loads((REPO / "web" / "data" / "sim.json").read_text(encoding="utf-8"))      # the page's simulated game: its growth rule
 SESSION_LAST = REPO / "build" / "ship_session" / "last_run.txt"
 SEP = chr(92)
 FOLDER = f"script{SEP}campaign{SEP}tww3_mtb{SEP}"
@@ -273,12 +274,17 @@ def main(argv=None):
     # text decoded by Ship.decode. mode: 'page' (all windows at once), 'lazy' (on first use), 'game' (on first use, the game's text measures)
     build_state = lua.eval("""function(UI, Uic, Ship, CM, FakeGame, FakeUIC, config, cfg, game_json, saved, actions_json, measures_json, layouts, pack, mode)
         local snap, actions, measures = Ship.decode(game_json), Ship.decode(actions_json), Ship.decode(measures_json)
+        -- the horde's growth as the page had it (web/data/sim.json: growth_base, growth_threshold; the snapshot's growth accumulated): the foot
+        -- row's «… следующая единица через N ходов» is the same then
         local game = FakeGame.new(config, {turn = snap.turn, gold = snap.gold, income = 0, demolish = 'chain', built = {}, dev_points = snap.dev,
+                                           growth = snap.growth, growth_base = snap.growth_base, growth_threshold = snap.growth_threshold,
                                            ask_cancel = snap.ask_cancel, async = snap.async})
-        game.restore({turn = snap.turn, gold = snap.gold, dev = snap.dev, built = snap.built, queue = snap.queue, dismantles = snap.dismantles})
+        game.restore({turn = snap.turn, gold = snap.gold, dev = snap.dev, growth = snap.growth, built = snap.built, queue = snap.queue, dismantles = snap.dismantles})
         local M = Ship.make(config, game, CM)
         local keep = Ship.load_state(M, function(k) return saved[k] end)
-        local E = FakeUIC.engine{layouts = layouts, measures = measures, w = 1600, h = 900}
+        -- with the game's measures at the game's root of the sessions (1920 x 1080, the panel 180 from the screen's edge): a window placed by the
+        -- screen's edge instead of the panel's shows there (run 20261115-030121, ss_info_corner), not at the page's 1600 x 900
+        local E = FakeUIC.engine{layouts = layouts, measures = measures, w = mode == 'game' and 1920 or 1600, h = mode == 'game' and 1080 or 900}
         local saved_g = {UIComponent = UIComponent, core = core}
         UIComponent = function(x) return x end
         core = {get_ui_root = function() return E.root end}
@@ -315,7 +321,9 @@ def main(argv=None):
             for _, k in ipairs(E.unmeasured) do unmeasured[#unmeasured + 1] = k end
             -- the mouse and the tree as a player moves them (with the game's text measures: the windows' real sizes), after the dump's rows are taken
             local rows = ui.dump(root)
+            local foot = mode == 'game' and FakeUIC.check_foot(panel.view, M) or {}
             local scen = mode == 'game' and FakeUIC.scenarios(panel, ui, root) or {}
+            for _, p in ipairs(foot) do scen[#scen + 1] = p end
             -- the drawing's own time by section and the model's calls (src/tww3_mtb_ship_ui.lua env.profile): the opening, the state's actions, then
             -- «Всё дерево» and back, each with the refresh it makes
             local prof = panel.profile and panel.profile(true)
@@ -398,6 +406,7 @@ def main(argv=None):
             "dismantles": [mk(k) for k in snap.get("dismantles") or []],
             # the horde's development points (None: the page does not model them) and the game's window before a cancel (the dump's own sim)
             **({"dev": snap["dev"]} if snap.get("dev") is not None else {}),
+            **({"growth": snap["growth"], "growth_base": SIM.get("growth_base", 0), "growth_threshold": SIM.get("growth_threshold", 20)} if snap.get("growth") is not None else {}),
             "ask_cancel": bool((d.get("sim") or {}).get("ask_cancel")),
             "async": bool((d.get("sim") or {}).get("async")),
         }

@@ -450,6 +450,31 @@ function Fake.scenarios(panel, ui, root)
     end
     -- every slot hovered at the top, the middle and the bottom, at full size and as «Всё дерево»
     local screenW, screenH = frame.parent.w, frame.parent.h
+    -- a window by what it stands by (run 20261115-030121, ss_info_corner, ss_unit_panel): inside the panel across when it fits on one side of it
+    -- (right: it would start at `right`; left: it would end at `leftEnd`), and over the foot row when it fits between the title row and it
+    local footY = view.footY or (frame.h - 4)
+    local function inPanel(key, what, l, t, w, h, right, leftEnd)
+        local fits = right + w <= frame.w - 4 or leftEnd - w >= 4
+        if fits and (l < 4 - 1 or l + w > frame.w - 4 + 1) then add('panel', key, what .. ' ' .. l .. '..' .. (l + w) .. ' out of the panel 4..' .. (frame.w - 4) .. ' across, although it fits beside') end
+        if h <= footY - 2 - view.area.y and t + h > footY - 2 + 1 then add('foot', key, what .. ' ' .. t .. '..' .. (t + h) .. ' over the foot row (from ' .. footY .. '), although it fits over it') end
+    end
+    -- every unit card over a slot hovered: its panel (and the line under it) as the building window
+    local function hoverCards(where)
+        for _, c in ipairs(view.crew or {}) do
+            local s = slotRect(c.v)
+            if s.r > win.l and s.b > win.t and s.l < win.r and s.t < win.b and c.card.visible ~= false then
+                ui.mouse_on('frame')
+                ui.mouse_on(c.card:Id())
+                local info = c.info.ensure and c.info.ensure() or c.info
+                local p = info.panel
+                if p and shownFromRoot(p) then
+                    local cardL = s.l + (c.card.x - c.v.button.x) * pan.z
+                    inPanel(c.card:Id(), where .. ': the unit panel', p.x, p.y, p.w, info.total, cardL + 23 * pan.z + 10, math.min(s.l - 18, cardL) - 10)
+                end
+            end
+        end
+        ui.mouse_on('frame')
+    end
     local function hoverAll(where)
         for _, v in ipairs(view.tree) do
             ui.mouse_on('frame')
@@ -468,6 +493,7 @@ function Fake.scenarios(panel, ui, root)
                 local ax, ay = frame.x + tl, frame.y + tt
                 if ax < 0 or ay < 0 or ax + tip.w > screenW or ay + tip.h > screenH then add('outside', v.node.key, where .. ': the window out of the screen') end
                 if tip.h <= frame.h - 4 - view.area.y and (tb > frame.h or tt < 0) then add('outside', v.node.key, where .. ': the window ' .. tt .. '..' .. tb .. ' out of the panel 0..' .. frame.h) end
+                inPanel(v.node.key, where .. ': the building window', tl, tt, tip.w, tip.h, s.r + 17 * pan.z + 10, s.l - 18 - 10)
             end
         end
         ui.mouse_on('frame')
@@ -477,6 +503,7 @@ function Fake.scenarios(panel, ui, root)
             pan.z = z == 1 and 1 or pan.fitZ()
             pan.y = at[2]; pan.clamp(); panel.refresh()
             hoverAll(at[1] .. (z == 1 and '' or ', «Всё дерево»'))
+            if z == 1 then hoverCards(at[1]) end
         end
     end
     -- a slot under the mouse scrolled away, a tab switched: its window goes
@@ -493,6 +520,27 @@ function Fake.scenarios(panel, ui, root)
         click('mtb_tab_ship')
         if shownFromRoot(firstIn.info.tip) then add('survives', firstIn.node.key, 'its window still shown after the tab «Корабль»') end
         click('mtb_tab_tree')
+    end
+    return out
+end
+
+-- Fake.check_foot(view, M): the foot row as the player reads it (run 20261115-030121, ss_after_turn: the turn's report cut where it said what to
+-- wait for): what the player waits for (M.foot_tail) is shown whole at its end; a text shown cut has the whole in its tooltip; each line's ink in
+-- its box. Problems {kind = 'foot', path, text}
+function Fake.check_foot(view, M)
+    local out = {}
+    local function add(t) out[#out + 1] = {kind = 'foot', path = 'message', text = t} end
+    local msg = M.message() or M.first_step() or ''
+    local tail = M.foot_tail and M.foot_tail() or ''
+    local shown = view.footText and view.footText() or view.message:GetStateText()
+    local bsub = string.sub_lua or string.sub        -- bytes (the game's string.sub counts characters)
+    if tail ~= '' and bsub(shown, -#tail) ~= tail then add('«' .. shown .. '» lost what the player waits for «' .. tail .. '»') end
+    if shown ~= msg and (view.message.tooltip or '') ~= msg then add('«' .. shown .. '» cut, the tooltip not the whole «' .. msg .. '»') end
+    for _, c in ipairs({view.message, view.message2}) do
+        if c and c:Visible() and c:GetStateText() ~= '' then
+            local w = c:TextDimensions()
+            if w > c:Width() + 1 then add(c:Id() .. ': the ink ' .. w .. ' wider than its box ' .. c:Width()) end
+        end
     end
     return out
 end

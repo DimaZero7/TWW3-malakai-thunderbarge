@@ -6,6 +6,15 @@
   "ap_captain",
   "ap_thunderburner"
  ],
+ "malakai_at_rail": {
+  "_about": "The new panel only (src/tww3_mtb_crew.lua malakai_seat; docs/design/port-to-game.md, В6 (а) and 8.6): Malakai on the rifle seat of the side the player chose (the page: web/js/main.js, ap_crew_<side>_1), his own model (autonomous_rider_hero) without a weapon, on the rifle seat's animation table; at the helm the stock barge's crew captain. The riflemen shoot from the other 11 seats, so their ammo is per_seat x 11. Not proven in a battle yet (session crew_hire).",
+  "seats": {
+   "left": "ap_crew_left_1",
+   "right": "ap_crew_right_1"
+  },
+  "helm_seat": "ap_captain",
+  "helm_crew": "wh3_dlc25_dwf_veh_thunderbarge_grungni_captain"
+ },
  "groups": {
   "rifles": {
    "seats": [
@@ -49,8 +58,8 @@
      "variant_like": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
      "scale": 1.15,
      "table": "hu3_dlc25_zeppelin01_crew_rifle",
-     "ammo": 372,
-     "ammo_source": "Громобои (Злопыхатели): primary_ammo 44; × 0,7 вверх = 31 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 1450",
+     "ammo": 341,
+     "ammo_source": "Громобои (Злопыхатели): primary_ammo 44; × 0,7 вверх = 31 залпов на место × 11 мест, Малакай на двенадцатом (правило автора 12.11.2026, docs/design/ammo-balance.md); было 1450",
      "ui": {
       "name": "Злопыхатели",
       "card": "wh3_dlc25_dwf_inf_thunderers_grudger_raker",
@@ -64,7 +73,7 @@
       "analog": "wh3_dlc25_dwf_inf_thunderers_grudge_rakers",
       "stock": 44,
       "per_seat": 31,
-      "seats": 12
+      "seats": 11
      }
     },
     "thunderers": {
@@ -78,8 +87,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 192,
-     "ammo_source": "Громобои: primary_ammo 22; × 0,7 вверх = 16 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 264",
+     "ammo": 176,
+     "ammo_source": "Громобои: primary_ammo 22; × 0,7 вверх = 16 залпов на место × 11 мест, Малакай на двенадцатом (правило автора 12.11.2026, docs/design/ammo-balance.md); было 264",
      "ui": {
       "name": "Громобои",
       "card": "wh_main_dwf_thunderers",
@@ -93,7 +102,7 @@
       "analog": "wh_main_dwf_inf_thunderers_0",
       "stock": 22,
       "per_seat": 16,
-      "seats": 12
+      "seats": 11
      }
     },
     "pirates": {
@@ -107,8 +116,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 72,
-     "ammo_source": "Мстители-пираты: primary_ammo 8; × 0,7 вверх = 6 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 96",
+     "ammo": 66,
+     "ammo_source": "Мстители-пираты: primary_ammo 8; × 0,7 вверх = 6 залпов на место × 11 мест, Малакай на двенадцатом (правило автора 12.11.2026, docs/design/ammo-balance.md); было 96",
      "ui": {
       "name": "Мстители-пираты",
       "card": "wh3_dlc25_dwf_inf_slayer_pirates",
@@ -118,12 +127,12 @@
       "unit": "wh3_dlc25_dwf_inf_slayer_pirates",
       "count": 11
      },
-     "_note": "Opened by beer_hall_1 since 10.11.2026 (user): a choice of the crew panel, not placed by the building. airship_hull_2 gives no crew since 08.11.2026, the rifles start empty. 11 pirates: Malakai takes the twelfth rifle seat (docs/design/barge-upgrades-ideas.md, Место Малакая), so hire and upkeep count 11. His seat is not made in the mod yet: the group still has 12 seats and the pirates still stand on all 12, ammo 8 x 12.",
+     "_note": "Opened by beer_hall_1 since 10.11.2026 (user): a choice of the crew panel, not placed by the building. airship_hull_2 gives no crew since 08.11.2026, the rifles start empty. 11 pirates: Malakai takes the twelfth rifle seat (docs/design/barge-upgrades-ideas.md, Место Малакая), so hire and upkeep count 11. With the new panel his seat is made (malakai_at_rail): 11 pirates shoot, ammo per_seat x 11; with the old panel he keeps the helm and 12 share that ammo.",
      "ammo_rule": {
       "analog": "wh3_dlc25_dwf_inf_slayer_pirates",
       "stock": 8,
       "per_seat": 6,
-      "seats": 12
+      "seats": 11
      }
     },
     "quarrellers": {
@@ -137,8 +146,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 192,
-     "ammo_source": "Забияки: primary_ammo 22; × 0,7 вверх = 16 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 264",
+     "ammo": 176,
+     "ammo_source": "Забияки: primary_ammo 22; × 0,7 вверх = 16 залпов на место × 11 мест, Малакай на двенадцатом (правило автора 12.11.2026, docs/design/ammo-balance.md); было 264",
      "ui": {
       "name": "Арбалетчики",
       "card": "wh_main_dwf_quarrellers",
@@ -148,12 +157,12 @@
       "unit": "wh_main_dwf_inf_quarrellers_0",
       "count": 11
      },
-     "_note": "Opened by crew_weapons_1 (the training dummies), a choice of the crew panel. 11 as the pirates: Malakai takes the twelfth rifle seat; the seats and the ammo are still for 12.",
+     "_note": "Opened by crew_weapons_1 (the training dummies), a choice of the crew panel. 11 as the pirates: Malakai takes the twelfth rifle seat (malakai_at_rail), the ammo is per_seat x 11.",
      "ammo_rule": {
       "analog": "wh_main_dwf_inf_quarrellers_0",
       "stock": 22,
       "per_seat": 16,
-      "seats": 12
+      "seats": 11
      }
     },
     "torpedoes": {
@@ -167,8 +176,8 @@
      "weapon_fields": {
       "use_secondary_ammo_pool": true
      },
-     "ammo": 156,
-     "ammo_source": "Железные ящеры с торпедами: primary_ammo 18; × 0,7 вверх = 13 залпов на место × 12 мест (правило автора 12.11.2026, docs/design/ammo-balance.md); было 216",
+     "ammo": 143,
+     "ammo_source": "Железные ящеры с торпедами: primary_ammo 18; × 0,7 вверх = 13 залпов на место × 11 мест, Малакай на двенадцатом (правило автора 12.11.2026, docs/design/ammo-balance.md); было 216",
      "ui": {
       "name": "Ящеры с торпедами",
       "card": "wh_main_dwf_irondrakes_troll_hammer",
@@ -182,7 +191,7 @@
       "analog": "wh_main_dwf_inf_irondrakes_2",
       "stock": 18,
       "per_seat": 13,
-      "seats": 12
+      "seats": 11
      }
     }
    },

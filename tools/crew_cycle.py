@@ -184,11 +184,21 @@ class Session:
         good, bad = 0, []
         full = dict(self.current)
         full.update(choice)
+        # the new panel's Malakai at the rail (tools/tests/crew_hire_session.py sets it): his seat carries his row, the helm the crew captain
+        mk = getattr(self, "malakai", None)
+        if mk:
+            line = next((x for x in lines if f" {mk['helm_seat']} " in x), "")
+            if f" {mk['helm_row']} " in line:
+                good += 1
+            else:
+                bad.append(mk["helm_seat"])
         for group, option in full.items():
             opt = groups[group]["options"][option]
             for seat in groups[group]["seats"]:
                 line = next((x for x in lines if f" {seat} " in x), "")
-                if opt.get("empty"):
+                if mk and seat == mk["seat"]:
+                    ok = f" {mk['row']} " in line
+                elif opt.get("empty"):
                     ok = " mtb_bp_empty " in line
                 elif opt.get("stock"):
                     ok = "wh3_dlc25_dwf_veh_thunderbarge_grungni" in line or f" mtb_bp_{option}_" in line
@@ -872,6 +882,14 @@ def main():
         for o in args.option:
             extra += ["--option", o]
         return ship_session.main(extra)
+    if args.what == "session" and args.name == "crew_hire":
+        # the new panel's hire into the old crew mechanics (tools/tests/crew_hire_session.py): ship_panel's machinery, the battle of this file
+        sys.path.insert(0, str(TESTS))
+        import crew_hire_session
+        extra = (["--dry-run"] if args.dry_run else []) + (["--small"] if args.small else []) + (["--stash-user-pack"] if args.stash_user_pack else [])
+        if args.limit:
+            extra += ["--limit", str(args.limit)]
+        return crew_hire_session.main(extra)
     if args.what == "report":
         report()
     elif args.what == "session":

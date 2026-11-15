@@ -303,7 +303,12 @@ check(`the reason of every locked building names exactly its direct requirements
     const top = (want, h) => infoTop(want, h, 900, 15, 66, 870);
     check('a building window: under the title row when it fits; its foot inside the panel when it fits there; a taller one over the title row, inside the screen; never cut',
         top(500, 300) === 500 && top(10, 300) === 66 && top(700, 300) === 870 - 4 - 300 && top(100, 850) === 900 - 4 - 15 - 850 && top(100, 850) < 66 && top(100, 850) + 15 >= 4
-        && top(700, 790) === 870 - 4 - 790 && top(700, 805) === 900 - 4 - 15 - 805, [top(500, 300), top(10, 300), top(700, 300), top(100, 850), top(700, 790), top(700, 805)]);
+        && top(700, 790) === 870 - 4 - 790 && top(700, 805) === 66 && top(700, 800) === 66 && top(700, 801) === 66, [top(500, 300), top(10, 300), top(700, 300), top(100, 850), top(700, 790), top(700, 805)]);
+    // over the foot row (footY 816) when it fits there; a taller one right under the title row, one unit of height one unit of place (no jump)
+    const topF = (want, h) => infoTop(want, h, 900, 15, 66, 870, 816);
+    check('a window over the foot row when it fits between the title row and it; a taller one right under the title row; no jump at the threshold',
+        topF(700, 300) === 816 - 300 && topF(10, 300) === 66 && topF(700, 750) === 66 && topF(700, 751) === 66 && topF(700, 790) === 66 && topF(700, 820) === 900 - 4 - 15 - 820,
+        [topF(700, 300), topF(700, 750), topF(700, 751), topF(700, 790), topF(700, 820)]);
     check('percent close to the number and a decimal comma, as the game\'s Russian texts', gameText('Меткость стрелков барки: +5 %') === 'Меткость стрелков барки: +5%' && gameText('16.6') === '16,6' && gameText('Боезапас +100 % (13 → 26 залпов)') === 'Боезапас +100% (13 → 26 залпов)');
 }
 

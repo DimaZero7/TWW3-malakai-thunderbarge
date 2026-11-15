@@ -222,7 +222,7 @@ try {
     await b.move(2, 2); await sleep(300);
     const screenClip = () => b.eval(`(() => { const r = document.querySelector('#ig_screen').getBoundingClientRect(); return {x: r.left, y: r.top, width: r.width, height: r.height}; })()`);
     const fixShot = async name => shot(name, FIX, await screenClip());
-    const footer = () => b.eval('mtb.panel.view.message.GetStateText()');
+    const footer = () => b.eval('mtb.panel.view.footText()');
     const slotByName = name => b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === ${JSON.stringify(name)}); mtb.panel.view.pan.show(v); const r = v.button.el.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, w: r.width, h: r.height, key: v.node.key}; })()`);
     const endTurn = async () => { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(250); };
     // the treasury set by the page's debug field (saved with the game, as a player's would be)
@@ -295,7 +295,7 @@ try {
         return bad; })()`);
     check('points: the round of every slot is clear of its padlock and level numeral, the unit cards, the «+N» plates, the lines, other slots and every price plate', !roundsClear.length, roundsClear.slice(0, 8));
     await b.click(s0.x, s0.y); await sleep(150);
-    const p2 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Прочный корпус'); return {msg: mtb.panel.view.message.GetStateText(), deny: v.deny.Visible(), state: mtb.M.status(v.node.key).state}; })()`);
+    const p2 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Прочный корпус'); return {msg: mtb.panel.view.footText(), deny: v.deny.Visible(), state: mtb.M.status(v.node.key).state}; })()`);
     check('points: a click on it is refused: the foot line gives the game\'s reason with what is needed and what there is, the slot flashes red, nothing ordered',
         p2.msg === 'Не хватает избытка населения: нужно 2, есть 0.' && p2.deny && p2.state === 'locked', p2);
     await b.move(s0.x, s0.y, 3); await sleep(350);
@@ -324,7 +324,7 @@ try {
         if (want.pts === 1 && before === 0) {      // the first point: still short of 2, a click refused with what there is now
             s0 = await slotByName('Прочный корпус');
             await b.click(s0.x, s0.y); await sleep(150);
-            const p = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Прочный корпус'); return {msg: mtb.panel.view.message.GetStateText(), state: mtb.M.status(v.node.key).state}; })()`);
+            const p = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Прочный корпус'); return {msg: mtb.panel.view.footText(), state: mtb.M.status(v.node.key).state}; })()`);
             check('points: with the first point the click is still refused, the reason gives what there is now', p.msg === 'Не хватает избытка населения: нужно 2, есть 1.' && p.state === 'locked', p);
             await b.move(2, 2); await sleep(150);
         }
@@ -395,7 +395,7 @@ try {
     await goldTo(100000);
     const locked = await slotByName('Склад оружия');
     await b.click(locked.x, locked.y); await sleep(120);
-    const b12 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Склад оружия'); return {msg: mtb.panel.view.message.GetStateText(), reason: mtb.M.reason(v.node.key), deny: v.deny.Visible(), denied: mtb.panel.view.tree.filter(t => t.deny.Visible()).map(t => t.node.name), window: v.info.reason.GetStateText()}; })()`);
+    const b12 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === 'Склад оружия'); return {msg: mtb.panel.view.footText(), reason: mtb.M.reason(v.node.key), deny: v.deny.Visible(), denied: mtb.panel.view.tree.filter(t => t.deny.Visible()).map(t => t.node.name), window: v.info.reason.GetStateText()}; })()`);
     check('B12: a click on a locked slot: the foot line says the window\'s reason, the slot flashes red', b12.msg === b12.reason && /^Требуется постройка/.test(b12.msg) && b12.deny && b12.window.includes(b12.reason), b12);
     await fixShot('B12_locked_click.png');
     await sleep(800);
@@ -421,6 +421,13 @@ try {
                 if (c.x < lock.r && c.x + 23 > lock.l && c.y < lock.b && c.y + 50 > lock.t) bad.push(t.node.name + ': a card over the padlock');
                 if (c.x <= mid + 2 && c.x + 23 >= mid - 2) bad.push(t.node.name + ': a card over the line out of the slot');
             }
+        }
+        // no line turns or ends under a slot's cards or a few units beside them (run 20261115-030121, ss_tree_top: a link into the slot of 3500
+        // turned 5 units left of its first card and ran under the cards, read as a line bending into the card)
+        const cardBoxes = [...v.crew.map(c => c.card), ...v.plates.map(p => p.plate)].map(c => ({l: c.x, r: c.x + 23, t: c.y, b: c.y + 50}));
+        const near = (k, x, y) => (y >= k.t && y <= k.b && x > k.l - 8 && x < k.r + 8) || (x >= k.l && x <= k.r && y > k.t - 3 && y < k.b + 3);
+        for (const l of v.links) for (const [x, y] of l.segs.slice(0, -1).map(s => [s[2], s[3]])) {
+            if (cardBoxes.some(k => near(k, x, y))) bad.push(l.from.slice(-24) + ' -> ' + l.to.slice(-24) + ': a turn at ' + x + ',' + y + ' under or beside a card');
         }
         const tir = v.plates.find(p => p.v.node.name === 'Тир'), pol = v.plates.find(p => p.v.node.name === 'Манекен для учебной стрельбы');
         return {bad, tir: tir && tir.folded, pol: pol && pol.folded}; })()`);
@@ -744,11 +751,18 @@ try {
     await b.move(2, 2); await sleep(150);
     const screenNow = () => b.eval(`(() => { const r = document.querySelector('#ig_screen').getBoundingClientRect(); return {x: r.left, y: r.top, width: r.width, height: r.height}; })()`);
     const goingLook = () => b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.key === '${s.key}'); return {state: mtb.M.status(v.node.key).state, check: v.check.Visible(), padlock: v.padlock.Visible(),
-        grey: v.button.shader === 'set_greyscale_t0' || /grayscale/.test(v.button.el.style.filter), alpha: v.button.colour && v.button.colour[3], plate: v.cost.Visible(), round: v.dev.Visible(), msg: mtb.panel.view.message.GetStateText(),
+        grey: v.button.shader === 'set_greyscale_t0' || /grayscale/.test(v.button.el.style.filter), alpha: v.button.colour && v.button.colour[3], plate: v.cost.Visible(), round: v.dev.Visible(), msg: mtb.panel.view.footText(),
         deny: v.deny.Visible(), options: mtb.panel.view.options, window: v.info.reason.GetStateText(), reason: mtb.M.reason(v.node.key), stands: mtb.game.has_building(v.node.key)}; })()`);
     const d1 = await goingLook();
     check('demolish: the building stands till the turn ends, drawn as built (the check) in the locked slot\'s grey, no padlock, no price, no demolish button; the foot line says when it goes',
         d1.state === 'dismantling' && d1.stands && d1.check && !d1.padlock && d1.grey && d1.alpha === 0x80 && !d1.plate && !d1.round && !(await comp('mtb_ship_demolish')) && /^Снос заказан: «.+» уйд(ёт|ут) в конце хода\.( Закро(ется место|ются места) экипажа «.+»\.)?( .+\.)?$/.test(d1.msg), d1);
+    // N5 (run 20261115-030121, ss_dismantling): a crew place the dismantle closes says so on its «Экипаж» row (grey) and on its tag for the whole turn
+    const closing = await b.eval(`(() => { const v = mtb.panel.view, M = mtb.M; return Object.keys(v.column.rows).map(g => ({g, name: M.place_name(g), closing: M.place_closing(g),
+        row: v.column.rows[g].state.GetStateText(), rowTip: v.column.rows[g].hit.tooltip || '', tag: v.crewAreas[g] ? (v.crewAreas[g].area.tooltip || '') : null})); })()`);
+    const named = [...(d1.msg.match(/Закро(?:ется место|ются места) экипажа (.+?)\./) || ['', ''])[1].matchAll(/«([^»]+)»/g)].map(m => m[1]);
+    check('demolish: every crew place it closes shows «Закроется в конце хода» on its row (grey) with why in the row\'s and the tag\'s tooltip; the others do not',
+        closing.every(c => (named.includes(c.name) === !!c.closing) && (c.closing ? c.row === '[[col:ui_font_faded_grey_beige]]Закроется в конце хода[[/col]]' && c.rowTip === c.closing && (c.tag === null || c.tag.endsWith(c.closing)) : !c.row.includes('Закроется'))),
+        {named, closing});
     await shot('item1_dismantling.png', PTS, {x: s.l - 300, y: s.t - 260, width: 1100, height: 520});
     await b.click(s.x, s.y); await sleep(150);
     const d2 = await goingLook();
@@ -759,7 +773,7 @@ try {
     await shot('item1_dismantling_info.png', PTS, await screenNow());
     await b.move(2, 2);
     { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(250); }
-    check('the demolished building is gone with the turn', await b.eval(`!mtb.game.has_building('${s.key}')`) && !(await comp('mtb_ship_demolish')) && /^Снесено: /.test(await b.eval('mtb.panel.view.message.GetStateText()')), await b.eval('mtb.panel.view.message.GetStateText()'));
+    check('the demolished building is gone with the turn', await b.eval(`!mtb.game.has_building('${s.key}')`) && !(await comp('mtb_ship_demolish')) && /^Снесено: /.test(await b.eval('mtb.panel.view.footText()')), await b.eval('mtb.panel.view.footText()'));
     await shot('order_flow_5_demolished.png', RED, {x: s.l - 300, y: s.t - 260, width: 1100, height: 520});
     // a cancel of an earlier turn's construction: the game asks in its own window (probe 14.11, item 12; the page stands its window in by game.askCancel)
     if (await b.eval(`mtb.M.level('${s.key}').turns >= 2 && mtb.M.status('${s.key}').state === 'open'`)) {
@@ -771,7 +785,7 @@ try {
         await b.click(s.x, s.y); await sleep(150);
         await b.move(s.x, s.y + 1, 3); await sleep(350);
         const a1 = await b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.key === '${s.key}'), st = mtb.M.status(v.node.key); return {state: st.state, asked: !!st.asked, banner: v.turnsBanner.Visible(),
-            dim: v.turnsBanner.colour && v.turnsBanner.colour[3], msg: mtb.panel.view.message.GetStateText(), note: v.info.reason.GetStateText()}; })()`);
+            dim: v.turnsBanner.colour && v.turnsBanner.colour[3], msg: mtb.panel.view.footText(), note: v.info.reason.GetStateText()}; })()`);
         check('a cancel the game asks about: the construction goes on (its banner dimmed), the foot line sends the player to the game\'s window, the building window says the cancel waits there',
             a1.state === 'building' && a1.asked && a1.banner && a1.dim === 0x80 && /ответьте в окне игры/.test(a1.msg) && /Отмена ждёт вашего ответа в окне игры/.test(a1.note), a1);
         await shot('item4_cancel_asked.png', PTS, await screenNow());
@@ -898,7 +912,7 @@ async function fix2() {
     await b.move(2, 2); await sleep(300);
     const clip = () => b.eval(`(() => { const r = document.querySelector('#ig_screen').getBoundingClientRect(); return {x: r.left, y: r.top, width: r.width, height: r.height}; })()`);
     const pic = async (name, c) => b.shot(join(FIX2, name), c || await clip());
-    const footer = () => b.eval('mtb.panel.view.message.GetStateText()');
+    const footer = () => b.eval('mtb.panel.view.footText()');
     const slotByName = name => b.eval(`(() => { const v = mtb.panel.view.tree.find(t => t.node.name === ${JSON.stringify(name)}); if (mtb.panel.view.pan.z === 1) mtb.panel.view.pan.show(v); const r = v.button.el.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, key: v.node.key}; })()`);
     const endTurn = async () => { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(250); };
     // the game set as a campaign would have it: these buildings stand (with what they need), this much gold, the turn's news gone

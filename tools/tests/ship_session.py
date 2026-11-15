@@ -713,6 +713,8 @@ class ShipSession(pp.Probe):
         """After the turn: «Корабль» with the turn's news, the crew list beside the tree, the drawing's own time of the refreshes."""
         out = {}
         self.data("click", {"id": "mtb_tab_ship"})
+        # the player looked at «Корабль»: the tab's «!» goes (the panel's M.ship_seen); the offline replay must do the same (analyse, E)
+        self.actions.append({"do": "ship_seen"})
         self.sleep(0.8)
         self.shoot("ss_ship_after_turn")
         self.data("click", {"id": "mtb_tab_tree"})
@@ -1741,11 +1743,12 @@ return function(Ship, CM, FakeGame, config, start, actions)
     elseif a['do'] == 'cancel' then M.cancel(a.key)
     elseif a['do'] == 'end_turn' then game.end_turn()
     elseif a['do'] == 'demolish' then M.demolish(a.key)
+    elseif a['do'] == 'ship_seen' then M.ship_seen()      -- the session showed «Корабль» (sviews_after_turn)
     -- stood by script (cm:add_building_to_force) in the game: here silently; if the game fires its completion event for it, the panel's news
     -- will say so and differ from this (a finding about add_building_to_force, not about the panel)
     elseif a['do'] == 'stand' then local s = game.snapshot(); s.built[#s.built + 1] = a.key; game.restore(s) end
     local news = M.ship_news()
-    out[i] = {message = M.message(), first_step = M.first_step(), unseen = M.ship_unseen(), news = news and Ship.encode(news) or nil,
+    out[i] = {message = M.message(), first_step = M.first_step(), foot_tail = M.foot_tail and M.foot_tail() or '', waiting = M.waiting(), unseen = M.ship_unseen(), news = news and Ship.encode(news) or nil,
       status = a.key and M.status(a.key).state or nil, crew_upkeep = M.crew_upkeep()}
   end
   return out
@@ -1867,6 +1870,12 @@ def analyse(run_dir):
         report[name] = rep
     # E: the expected texts, the same actions replayed offline from the game's own start
     acts = json.loads((run_dir / "actions.json").read_text(encoding="utf-8")) if (run_dir / "actions.json").exists() else []
+    # a run made before the session recorded it: «Корабль» was shown after the turn (step views_after_turn, ss_ship_after_turn.png), which clears
+    # the tab's «!» (M.ship_seen) — the replay does the same there (run 20261115-030121: «unseen expected True, game False» after the next cancel)
+    if acts and not any(a["do"] == "ship_seen" for a in acts) and (run_dir / "ss_ship_after_turn.png").exists():
+        at = next((i for i, a in enumerate(acts) if a["do"] == "end_turn"), None)
+        if at is not None:
+            acts.insert(at + 1, {"do": "ship_seen"})
     first = run_dir / "dump_fresh_tree.json"
     if acts and first.exists():
         start = json.loads(first.read_text(encoding="utf-8"))["snapshot"]
@@ -1875,6 +1884,8 @@ def analyse(run_dir):
             diffs, notes = [], []
             for i, a in enumerate(acts):
                 w = want[i] if isinstance(want, list) else want.get(str(i + 1), {})
+                if "got" not in a:          # an action of the view (ship_seen): nothing read back
+                    continue
                 for f in ("message", "first_step", "unseen", "news"):
                     if w.get(f) != a["got"].get(f):
                         diffs.append(f"after {a['do']} {str(a.get('key')).removeprefix(pp.PREFIX)}: {f} expected {w.get(f)!r}, game {a['got'].get(f)!r}")
@@ -1883,13 +1894,18 @@ def analyse(run_dir):
                         notes.append(f"after demolish: status expected by the replay {w.get('status')}, the game's panel {a['status']} (the game dismantles at the turn end)")
                     else:
                         diffs.append(f"after {a['do']}: status expected {w.get('status')}, game {a['status']}")
-                foot, msg = a["got"].get("foot"), w.get("message") or w.get("first_step") or ""
-                if foot is not None and foot != msg and not (foot.endswith("…") and msg.startswith(foot[:-1].rstrip())):
+                foot, msg, tail = a["got"].get("foot"), w.get("message") or w.get("first_step") or "", w.get("foot_tail") or ""
+                # the foot row: the whole, or its first part cut with … and, on the second line, the part that says what to wait for (M.foot_tail)
+                first, _, rest = (foot or "").partition("… ")
+                cut_ok = (foot or "").endswith("…") and msg.startswith(foot[:-1].rstrip()) or (rest != "" and msg.startswith(first.rstrip()) and msg.endswith(rest))
+                if foot is not None and foot != msg and not cut_ok:
                     diffs.append(f"after {a['do']}: the foot line «{foot}», expected «{msg}» (or its cut with …)")
+                elif foot is not None and tail and not foot.endswith(tail):
+                    diffs.append(f"after {a['do']}: the foot line «{foot}» lost what the player waits for «{tail}»")
                 if a["got"].get("mark") is not None and w.get("unseen") is not None and a["do"] == "end_turn" and bool(a["got"]["mark"]) != bool(w["unseen"]):
                     diffs.append(f"after the turn: the «!» mark {a['got']['mark']}, expected {w['unseen']} (the tree tab is shown)")
-            report["texts"] = {"expected": want, "game": [a["got"] for a in acts], "differences": diffs, "notes": notes}
-            report["texts"]["status"] = head("ship news, messages, «!» vs the same actions replayed offline (byte for byte)", diffs, len(acts) * 4,
+            report["texts"] = {"expected": want, "game": [a.get("got") for a in acts], "differences": diffs, "notes": notes}
+            report["texts"]["status"] = head("ship news, messages, «!» vs the same actions replayed offline (byte for byte)", diffs, len([a for a in acts if "got" in a]) * 4,
                                              "; ".join(notes))
         except Exception as e:
             report["texts"] = {"status": "failed", "error": str(e)[:2000]}

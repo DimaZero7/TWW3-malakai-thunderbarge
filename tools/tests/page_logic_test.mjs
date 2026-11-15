@@ -282,5 +282,20 @@ const cost = (M, k) => M.level(k).cost;
     game.end_turn();
     check('news: the script-stood building is not the next turn\'s news', !M.ship_news() && !M.ship_unseen() || !(M.ship_news() || {places: []}).places.includes('rifles'), JSON.stringify(M.ship_news()));
 }
+// a command the game applies a moment later: from the click until its verdict the foot line says the command waits, never the last verdict
+// (run 20261115-030121: «Отменено: …» stood under a fresh order twice)
+{
+    const game = new GameSim(data, {...sim, dev_points: 1000, gold: 100000, built: stage.built || sim.built, demolish: stage.demolish_mode, async: true});
+    const M = makeBuildings(data, game, stage.parts);
+    const P = data.prefix, k = P + 'airship_hull_1', name = M.level(k).name;
+    const said = [];
+    M.order(k); said.push(M.message()); game.tick(); said.push(M.message());
+    M.cancel(k); said.push(M.message()); game.tick(); said.push(M.message());
+    M.order(k); said.push(M.message());
+    check('a waiting order or cancel: the foot line says it waits from the click on, then the verdict replaces it',
+        said[0] === `Заказ «${name}» отправлен, ждём ответа игры.` && /^Заказано: /.test(said[1]) && said[2] === `Отмена «${name}» отправлена, ждём ответа игры.`
+        && /^Отменено: /.test(said[3]) && said[4] === `Заказ «${name}» отправлен, ждём ответа игры.`, JSON.stringify(said));
+}
+
 console.log(failed ? `failed: ${failed}` : 'failed: 0');
 process.exit(failed ? 1 : 0);

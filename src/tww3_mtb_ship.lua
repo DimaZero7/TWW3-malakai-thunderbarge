@@ -360,6 +360,8 @@ function Ship.make(config, game, crewModel)
         -- later (CommandResult below)
         if game.issue_building_command(row.key) == 'pending' then
             pending[row.key] = {kind = 'order', cost = cost, dev = dev}
+            -- the foot line from the click on: the wait, never the last verdict (run 20261115-030121)
+            message = 'Заказ «' .. row.name .. '» отправлен, ждём ответа игры.'
             fire()
             return {ok = true, kind = 'pending'}
         end
@@ -419,6 +421,7 @@ function Ship.make(config, game, crewModel)
         if asked(row) then return {ok = false, why = 'Отмена «' .. row.name .. '»: ответьте в окне игры.'} end
         if game.cancel_construction(row.key) == 'pending' then
             pending[row.key] = {kind = 'cancel'}
+            message = 'Отмена «' .. row.name .. '» отправлена, ждём ответа игры.'
             fire()
             return {ok = true, kind = 'pending'}
         end
@@ -785,12 +788,17 @@ function Ship.make(config, game, crewModel)
     end
     -- what the ship has after a demolish of row, before it is done: the levels it takes, the crew places it closes, what of the crew goes (the
     -- rule of dropLocked: an order whose option closes comes back with its gold, a standing crew leaves without)
-    local function afterDemolish(row)
-        local takes = takesOf(row)
+    -- (afterDismantles: the same for every dismantle of the turn at once, M.place_closing)
+    local function afterDismantles(rows)
+        local takes = {}
+        for _, row in ipairs(rows) do for _, r in ipairs(takesOf(row)) do push(takes, r) end end
         local goneKeys = map(takes, function(r) return r.key end)
-        local below = belowOf(row)
-        local back = (#takes == 1 and below) and below.key or nil      -- a dismantle of one level (the page's step_down): the one below stands again
-        local function standsAfter(r) return r.key == back or (stands(r) and not includes(goneKeys, r.key)) end
+        local back = {}     -- a dismantle of one level (the page's step_down): the one below stands again
+        for _, row in ipairs(rows) do
+            local below = belowOf(row)
+            if #takesOf(row) == 1 and below then push(back, below.key) end
+        end
+        local function standsAfter(r) return includes(back, r.key) or (stands(r) and not includes(goneKeys, r.key)) end
         local function opensAfter(g, o) return find((openers[g] or {})[o] or {}, standsAfter) ~= nil end
         local function placeAfter(g)
             local group = groups[g]
@@ -814,6 +822,7 @@ function Ship.make(config, game, crewModel)
         end
         return {takes = takes, places = places, said = said}
     end
+    local function afterDemolish(row) return afterDismantles({row}) end
     local quoted
     demolishSaid = function(row)
         local fx = afterDemolish(row)
@@ -971,6 +980,28 @@ function Ship.make(config, game, crewModel)
         local g = M.growth()
         if g and truthy(g.turns) then return 'Нечего заказать: не хватает ' .. M.POINTS .. ', следующая единица через ' .. turnsText(g.turns) .. '.' end
         return 'Нечего заказать: не хватает ' .. M.POINTS .. '.'
+    end
+    -- the part of the foot line that tells the player what to wait for (M.waiting, at the line's end): the panel never cuts it; '' when none
+    function M.foot_tail()
+        local msg = (truthy(message) and message) or M.first_step() or ''
+        local w = M.waiting()
+        if w and #msg >= #w and ssub(msg, #msg - #w + 1) == w then return w end
+        return ''
+    end
+    -- a crew place that a dismantle ordered this turn closes at the turn's end: the «Экипаж» row's grey note (M.CLOSING) and the tag say so; '' when it stays
+    M.CLOSING = 'Закроется в конце хода'
+    function M.place_closing(g)
+        local tops = {}
+        for _, r in ipairs(levelList) do
+            if game.has_building(r.key) and going(r) then
+                local t = goingTop(r)
+                if not includes(tops, t) then push(tops, t) end
+            end
+        end
+        if #tops == 0 or not includes(afterDismantles(tops).places, g) then return '' end
+        local takes = {}
+        for _, t in ipairs(tops) do for _, r in ipairs(takesOf(t)) do push(takes, r) end end
+        return M.CLOSING .. ': снос ' .. namesOf(takes) .. '.'
     end
     function M.first_step()
         if truthy(message) then return nil end

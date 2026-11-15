@@ -110,6 +110,8 @@ local K = {
     INFO_ROW = 32,
     INFO_PAD = 5,
     UNIT_INFO_W = 290,
+    FOOT_LINE = 20,         -- a line of the foot row when its text takes two (panel.js FOOT_LINE)
+    RELOAD_MAX = 15,        -- the reload's bar: the seconds against the game's ui_unit_stats max_value of stat_reloading (panel.js RELOAD_MAX)
     NODE = 74,
     LINE = 3,
     TREE = 'mtb_tree_node_',
@@ -147,6 +149,65 @@ local function fitLine(c, value)
     end
     c:SetStateText(cutWord(cs, lo) .. '…')
     c:SetTooltipText(value, true)
+end
+
+-- Across (panel.js infoLeft): right of what it stands by when it fits inside the panel, else left of it when that fits inside the panel; fitting on
+-- neither side, against the panel's inner edge; never out of the screen. Offsets from the panel's frame.
+function UI.infoLeft(right, left, w, panelW, frameX, screenW)
+    local lo, hi = 4, panelW - 4 - w
+    local x
+    if right <= hi then x = right elseif left >= lo then x = left else x = max(lo, min(hi, right)) end
+    return max(4 - frameX, min(screenW - 4 - frameX - w, x))
+end
+
+-- The foot row (panel.js footLines): one line in the middle of the row when the whole fits; else two lines, the part that says what to wait for
+-- (M.foot_tail) whole on the second, the rest on the first cut with «…» if it must; a text without such a part runs on to the second line and only
+-- its end is cut. When anything is cut the whole text is the tooltip of both lines.
+function UI.foot_lines(view, msg, tail, w)
+    local a, b = view.message, view.message2
+    a:SetTooltipText('', true)
+    b:SetTooltipText('', true)
+    size(a, w, 2 * K.FOOT_LINE)
+    a:SetStateText(msg)
+    b:SetStateText('')
+    b:SetVisible(false)
+    if msg == '' or width(a) <= w then return end
+    size(a, w, K.FOOT_LINE)
+    size(b, w, K.FOOT_LINE)
+    b:SetVisible(true)
+    local first, second
+    if tail ~= '' and tail ~= msg then
+        first = string.gsub(ssub(msg, 1, #msg - #tail), '%s+$', '')
+        second = tail
+    else
+        local words, from = {}, 1
+        while true do
+            local i = sfind(msg, ' ', from)
+            if not i then words[#words + 1] = ssub(msg, from); break end
+            words[#words + 1] = ssub(msg, from, i - 1)
+            from = i + 1
+        end
+        local k = 1
+        for i = 2, #words do
+            a:SetStateText(table.concat(words, ' ', 1, i))
+            if width(a) <= w then k = i else break end
+        end
+        first = table.concat(words, ' ', 1, k)
+        second = table.concat(words, ' ', k + 1)
+    end
+    fitLine(a, first)
+    fitLine(b, second)
+    local cut = a:GetStateText() ~= first or b:GetStateText() ~= second
+    a:SetTooltipText(cut and msg or '', true)
+    b:SetTooltipText(cut and msg or '', true)
+end
+-- the foot row as the player reads it: both lines (the tests read this)
+function UI.foot_text(view)
+    local out = {}
+    for _, c in ipairs({view.message, view.message2}) do
+        if c:Visible() and c:GetStateText() ~= '' then out[#out + 1] = c:GetStateText() end
+    end
+    return table.concat(out, ' ')
 end
 
 -- The title plate (panel.js titlePlate): the game's panel_title_large.png and its text as one component, the text in the plate's dark field,
@@ -425,13 +486,16 @@ function UI.make_panel(env)
             local fresh = includes(newsPlaces, g)
             row.card:SetGlow(fresh)
             row.name:SetStateText((not st.place) and ('[[col:ui_font_faded_grey_beige]]' .. M.place_name(g) .. '[[/col]]') or (fresh and ('[[col:ui_font_yellow]]' .. M.place_name(g) .. '[[/col]]') or M.place_name(g)))
+            -- a place a dismantle of this turn closes at the turn's end: the grey note instead of its crew, why in its tooltip (M.place_closing)
+            local closing = st.place and M.place_closing(g) or ''
             local line
             if not st.place then line = '[[col:ui_font_faded_grey_beige]]' .. (opener and ('Откроет «' .. opener.name .. '»') or 'Закрыто') .. '[[/col]]'
+            elseif closing ~= '' then line = '[[col:ui_font_faded_grey_beige]]' .. M.CLOSING .. '[[/col]]'
             elseif st.ordered then line = st.ordered.empty and (w.who .. ' ' .. w.leave .. ' в начале хода') or (st.ordered.name .. ': ' .. w.come .. ' в начале хода')
             elseif st.nobody then line = '[[col:ui_font_faded_grey_beige]]' .. w.nobody .. '[[/col]]'
             else line = st.standing.name end
             fitLine(row.state, line)
-            row.hit:SetTooltipText(row.state:GetStateText() ~= line and line or '', true)
+            row.hit:SetTooltipText(closing ~= '' and closing or (row.state:GetStateText() ~= line and line or ''), true)
         end
     end
 
@@ -694,7 +758,7 @@ function UI.make_panel(env)
             end
             if o.range_text then row('range', K.D .. 'icon_stat_range.png', 'Дальность', o.range_text, nil)
             else row('range', K.D .. 'icon_stat_range.png', 'Дальность', num(n.range), n.range / best(function(x) return x.range end)) end
-            row('reload', K.D .. 'icon_stat_reload_time.png', 'Перезарядка, с', num(n.reload), best(function(x) return x.reload end, true) / n.reload)
+            row('reload', K.D .. 'icon_stat_reload_time.png', 'Перезарядка, с', num(n.reload), n.reload / K.RELOAD_MAX)
             if n.seats and n.seats ~= 0 then
                 row('ammo', K.D .. 'icon_stat_ammo.png', 'Боезапас', '', n.volleys / best(function(x) return x.volleys or 0 end))
                 info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, Wd - 48, 20, '')
@@ -752,7 +816,7 @@ function UI.make_panel(env)
             size(info.accuracy, Wd - 28, max(20, linesH))
             info.h = info.base_h + linesH
             size(panel, Wd, info.h)
-            local armyLine = spec.army_building and ('«' .. spec.army_building .. '» открывает этот отряд и для найма в армию') or ''
+            local armyLine = spec.army_building and string.format(cfg.words.army_line, spec.army_building) or ''
             local crewLine = (dyn.reason and dyn.reason ~= '') and ('[[col:red]]' .. dyn.reason .. '[[/col]]') or (dyn.state or '')
             info.stateText:SetStateText(table.concat(filter({crewLine, armyLine}, function(x) return x ~= '' end), '\n'))
             info.has_state = ((dyn.reason and dyn.reason ~= '') or (dyn.state and dyn.state ~= '') or armyLine ~= '') and true or false
@@ -836,7 +900,7 @@ function UI.make_panel(env)
             row('missile_ap', K.D .. 'modifier_icon_armour_piercing.png', 'Бронебойный', str(st.missile_ap * shots), st.missile_ap / max(1, st.missile_damage + st.missile_ap))
             stat('range', 'icon_stat_range.png', 'Дальность')
             stat('ammo', 'icon_stat_ammo.png', 'Боезапас')
-            if st.reload and st.reload ~= 0 then row('reload', K.D .. 'icon_stat_reload_time.png', 'Перезарядка, с', num(st.reload), min(1, 4 / st.reload)) end
+            if st.reload and st.reload ~= 0 then row('reload', K.D .. 'icon_stat_reload_time.png', 'Перезарядка, с', num(st.reload), min(1, st.reload / K.RELOAD_MAX)) end
         end
         y = y + 10
         info.h = y
@@ -1085,6 +1149,8 @@ function UI.make_panel(env)
             v.markIn = ring('lit_needed', 255, 211, 106)
             v.markOut = ring('lit_opened', 145, 231, 50)
             v.deny = ring('refused', 226, 40, 40)
+            -- the author's option (cfg.options.short_slot_marked, off by default): a slot short only of gold or points keeps a muted red rim
+            if cfg.options.short_slot_marked then v.shortRim = ring('short', 226, 40, 40); v.shortRim:SetOpacity(cfg.options.short_slot_rim) end
             b.on_enter = function() view.hoverSlot = v; fillInfo(v); placeInfo(v); lightLinks() end
             b.on_leave = function() if view.hoverSlot == v then view.hoverSlot = nil end; lightLinks() end
             v.turnsBanner = image(b, 'turns_banner', K.D .. 'turns_banner_queued.png', -6, K.NODE - 20, K.NODE + 12, 24)
@@ -1350,13 +1416,9 @@ function UI.make_panel(env)
                 local cardL = s.x + (c.card.x - c.v.button.x) * s.k
                 local cardR = cardL + K.CARD_W * s.k
                 local cy = s.y + (c.cardY - c.v.button.y + K.CARD_H / 2) * s.k
-                local minX = 4 - F.x
-                local maxX = (rootC and rootC:Width() or F:Width()) - 4 - F.x - K.UNIT_INFO_W
-                local px = cardR + 10
-                if px > maxX then px = min(s.x - 18, cardL) - 10 - K.UNIT_INFO_W end
-                px = max(minX, min(maxX, px))
-                -- as a building's window: inside the panel when it fits there (infoTop)
-                c.info.place(px, view.infoTop(cy - c.info.total / 2, c.info.total, rootC and rootC:Height() or F:Height(), F.y, view.area and view.area.y or (4 - F.y), F:Height()))
+                local px = UI.infoLeft(cardR + 10, min(s.x - 18, cardL) - 10 - K.UNIT_INFO_W, K.UNIT_INFO_W, F:Width(), F.x, rootC and rootC:Width() or F:Width())
+                -- as a building's window: inside the panel and over its foot row when it fits there (infoTop)
+                c.info.place(px, view.infoTop(cy - c.info.total / 2, c.info.total, rootC and rootC:Height() or F:Height(), F.y, view.area and view.area.y or (4 - F.y), F:Height(), view.footY and (view.footY - 2) or nil))
             end
         end
     end
@@ -1375,10 +1437,10 @@ function UI.make_panel(env)
     end
     -- frameH: the panel's height: the window's foot inside the panel when the window fits between the title row and the panel's foot, else 4 above
     -- the screen's foot (panel.js infoTop)
-    local function infoTop(want, h, screenH, frameY, headY, frameH)
+    local function infoTop(want, h, screenH, frameY, headY, frameH, footY)
         frameH = frameH or (screenH - frameY)
-        local inPanel = frameH - 4 - h
-        local maxY = inPanel >= headY and inPanel or (screenH - 4 - frameY - h)
+        footY = footY or (frameH - 4)
+        local maxY = max(footY - h, min(headY, screenH - 4 - frameY - h))
         local minY = maxY >= headY and headY or (4 - frameY)
         return max(minY, min(maxY, want))
     end
@@ -1388,12 +1450,9 @@ function UI.make_panel(env)
         local frm = v.info.tip.parent
         local rootC = frm.parent
         local on = slotOnFrame(v)
-        local x = on.x + (K.NODE + 17) * on.k + 10
         local w = v.info.w
-        if frm.x + x + w > rootC:Width() - 4 then x = on.x - 18 - 10 - w end
-        x = min(x, rootC:Width() - 4 - frm.x - w)
-        x = max(4 - frm.x, x)
-        at(v.info.tip, x, infoTop(on.y + (K.NODE + 28) * on.k - v.info.h, v.info.h, rootC:Height(), frm.y, view.area.y, frm:Height()))
+        local x = UI.infoLeft(on.x + (K.NODE + 17) * on.k + 10, on.x - 18 - 10 - w, w, frm:Width(), frm.x, rootC:Width())
+        at(v.info.tip, x, infoTop(on.y + (K.NODE + 28) * on.k - v.info.h, v.info.h, rootC:Height(), frm.y, view.area.y, frm:Height(), view.footY and (view.footY - 2) or nil))
     end
 
     -- ---------------- the slots' states (panel.js refreshTree) ----------------
@@ -1442,6 +1501,8 @@ function UI.make_panel(env)
             local goldShort = poor and M.game.treasury() < cost
             v.cost:SetVisible(row ~= nil and not built and not building)
             v.costRed:SetVisible(goldShort)
+            -- the option of a slot short only of gold or points: its plate dimmed and the muted red rim while it lasts
+            if v.shortRim then v.shortRim:SetVisible(poor); v.cost:SetOpacity(poor and cfg.options.short_slot_plate or 255) end
             v.costText:SetStateText(row and (goldShort and ('[[col:red]]' .. str(cost) .. '[[/col]]') or str(cost)) or '')
             -- the points by the slot, as the game's: red when the horde has too few
             v.dev:SetVisible(row ~= nil and dev > 0 and not built and not building)
@@ -1512,6 +1573,9 @@ function UI.make_panel(env)
             if ordered then tip = ordered.empty and (w.who .. ' ' .. w.leave .. ' в начале хода') or (ordered.name .. ': в найме, ' .. w.come .. ' в начале хода')
             elseif not nobody then tip = standing.name .. ': ' .. (standing.unit_card and (str(standing.unit_card.men) .. ' ' .. w.at .. ', ') or '') .. 'содержание ' .. str(standing.upkeep) .. ' за ход' end
         end
+        -- a place a dismantle of this turn closes at the turn's end: its tag says so too (M.place_closing)
+        local closing = (shown and not c.open) and M.place_closing(g) or ''
+        if closing ~= '' then tip = tip ~= '' and (tip .. '. ' .. closing) or closing end
         c.area:SetTooltipText(tip, true)
         for _, slot in ipairs(c.slots) do
             local o, idx = nil, 0
@@ -1660,8 +1724,7 @@ function UI.make_panel(env)
         view.fitBtn.button:SetVisible(zoom)
         view.fitBtn.label:SetStateText(view.pan.z < 1 and 'Вблизи' or 'Всё дерево')
         view.fitBtn.button:SetTooltipText(view.pan.z < 1 and 'Вернуть дерево в обычный размер' or 'Показать всё дерево целиком', true)
-        size(view.message, (zoom and (view.fitBtn.button.x - 24) or (view.area.x + view.area.w - 14)) - view.message.x, view.message:Height())
-        fitLine(view.message, M.message() or M.first_step() or '')
+        UI.foot_lines(view, M.message() or M.first_step() or '', M.foot_tail(), (zoom and (view.fitBtn.button.x - 24) or (view.area.x + view.area.w - 14)) - view.message.x)
         -- what the mouse was on and is gone now (a tab, a closed choice, Esc): its windows with it (src/tww3_mtb_ship_uic.lua check_hover)
         if env.ui and env.ui.check_hover then env.ui.check_hover() end
     end
@@ -1884,6 +1947,11 @@ function UI.make_panel(env)
     at(strip, area.x, foot_y)
     view.fitBtn = makeButton(frame, K.FIT, area.x + area.w - fit_w - 2, foot_y + 2, fit_w, foot_hh - 4, 'Всё дерево')
     view.message = text(frame, 'message', 'text_copper', area.x + 14, foot_y, area.w - fit_w - 40, foot_hh, '')
+    -- its second line, when the text needs two (footLines)
+    view.message2 = text(frame, 'message_2', 'text_copper', area.x + 14, foot_y + K.FOOT_LINE, area.w - fit_w - 40, K.FOOT_LINE, '')
+    view.message2:SetVisible(false)
+    view.footY = foot_y
+    view.footText = function() return UI.foot_text(view) end
 
     view.root = backdrop
     view.scale = scale

@@ -15,7 +15,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import * as T from '../web/js/tree_model.mjs';
 import * as FX from '../web/js/effects_model.mjs';
-import {TEXT, GAME_COLOURS} from '../web/js/ui_text.mjs';
+import {TEXT, GAME_COLOURS, WORDS, OPTIONS} from '../web/js/ui_text.mjs';
 import {REPO, readJson, inputs, pageLevels, rekey} from './ship_config.mjs';
 
 const clone = v => JSON.parse(JSON.stringify(v));
@@ -63,8 +63,16 @@ export function uiConfig(inp = inputs()) {
     const cw = rows.length ? Math.max(...Object.values(pos).map(p => p.x)) + NODE + 17 + 4 : 0;
     const ch = rows.length ? Math.max(...Object.values(pos).map(p => p.y)) + NODE + 22 + 12 : 0;
     const blocked = T.slotsBlock(Object.values(pos));
+    // the cards over each slot (panel.js slotItems, the same steps as rowOut below): a line never turns under them (tree_model.mjs slotsAround)
+    const slotItems = r => {
+        const list = (r.unlocks_new || r.unlocks).map(u => ({...u, g: levels.groups[u.group]})).filter(u => u.g && u.g.options[u.option] && u.g.options[u.option].unit_card && u.option !== u.g.mount);
+        const army = (r.units_new || r.units || []).map(k => armyAll[k]).filter(Boolean);
+        return [...list.map(u => ({crew: true, u})), ...army.map(u => ({crew: false, tier: u.tier, u}))];
+    };
+    const cardsTotal = new Map(rows.map(r => { const {shown, folded} = T.slotCards(slotItems(r)); return [pos[r.key], shown.length + (folded.length ? 1 : 0)]; }));
+    const around = T.slotsAround(Object.values(pos), c => cardsTotal.get(c) || 0);
     const links = [];
-    for (const r of rows) for (const p of r.requires) if (pos[p]) links.push({from: p, to: r.key, colour: r.branch, segs: T.linkSegments(pos[p], pos[r.key], blocked)});
+    for (const r of rows) for (const p of r.requires) if (pos[p]) links.push({from: p, to: r.key, colour: r.branch, segs: T.linkSegments(pos[p], pos[r.key], blocked, around)});
     const marks = T.lineMarks(links);
     const cuts = new Map();
     for (const c of marks.crossings) (cuts.get(c.h) || cuts.set(c.h, []).get(c.h)).push(c.x);
@@ -128,7 +136,7 @@ export function uiConfig(inp = inputs()) {
 
     return clean({
         _about: 'Made by tools/ship_ui_config.mjs from the page\'s inputs as web/js/main.js builds its screen. Read by src/tww3_mtb_ship_ui.lua. Do not edit.',
-        text: TEXT, colours: GAME_COLOURS,
+        text: TEXT, colours: GAME_COLOURS, words: WORDS, options: OPTIONS,
         kinds, crew_kinds: FX.CREW_KINDS,
         data: {art: {size: data.art.size, layers: data.art.layers}, groups: groupsOut, group_order: groupOrder, army_units: armyOut, rows: rowOut, links: linkOut,
                lines: pieces, junctions: marks.junctions, content: [cw, ch]},

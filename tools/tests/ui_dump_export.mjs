@@ -33,6 +33,10 @@ const CAMPAIGNS = {
     pending: {about: 'a new campaign; the game applies a command a moment later (sim async): a click orders, the order waits for the game', sim: {async: true}, steps: []},
     pending_cancel: {about: 'the first hull ordered and taken; the game applies a command a moment later (sim async): a click cancels, the cancel waits for the game',
                      sim: {async: true}, steps: [['order', 'airship_hull_1']]},
+    // the session of 15.11 (run 20261115-030121): the nests ordered, the beer hall's line dismantled, the turn ended: a turn report of several
+    // sentences that ends with what the player waits for (the foot row's two lines, M.foot_tail)
+    report: {about: 'the hull II and the beer hall II stand; the pirates hired, the nests ordered with the last point; the turn ended',
+             steps: [['points', 1], ['build', 'airship_hull_2'], ['build', 'beer_hall_2'], ['gold', 16000], ['crew', 'rifles', 'pirates'], ['order', 'mtb_nest_1'], ['end_turn']]},
     full: {about: 'every building of the tree stands, a crew at every place, Malakai on the right side',
            steps: [['build_all'], ['gold', 20000], ['crew', 'rifles', 'thunderers'], ['crew', 'cannons', 'organ'], ['crew', 'bombs', 'fire'], ['crew', 'cupolas', 'axes'],
                    ['crew', 'harpoon', 'on'], ['end_turn'], ['side', 'right']]},
@@ -56,6 +60,12 @@ const STATES = [
     // a command the game has not applied yet (st.pending): the window's instruction line is the model's words for the wait (M.pending_note)
     ['pending_order_tree', 'pending', [['click', {slot: 'airship_hull_1'}], ['hover', {slot: 'airship_hull_1'}]]],
     ['pending_cancel_tree', 'pending_cancel', [['click', {slot: 'airship_hull_1'}], ['hover', {slot: 'airship_hull_1'}]]],
+    // the window of a slot of the rightmost column: left of the slot, inside the panel (run 20261115-030121, ss_info_corner)
+    ['mid_tree_corner', 'mid', [['show', {slot: 'engines_1'}], ['hover', {slot: 'engines_1'}]]],
+    // a place a dismantle closes at the turn's end: its tag on the drawing says so (M.place_closing)
+    ['dismantling_ship', 'dismantling', [['click', 'mtb_tab_ship']]],
+    // the turn's report in the foot row: two lines, what the player waits for whole on the second
+    ['report_tree', 'report', []],
     ['full_tree', 'full', []],
     // a player scrolls a slot into the tree's window before the mouse is on it (show: the tree moved as a click on the slot moves it, pan.show)
     ['full_tree_info', 'full', [['show', {slot: 'mtb_guns_3'}], ['hover', {slot: 'mtb_guns_3'}]]],

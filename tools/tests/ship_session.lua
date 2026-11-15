@@ -139,7 +139,8 @@ local function panel_state(keys)
     out.tab = v.tab
     out.options = v.options
     out.pan = v.pan and v.pan.state() or nil
-    out.foot = v.message and v.message:GetStateText() or nil
+    -- the foot row as the player reads it: both its lines (src/tww3_mtb_ship_ui.lua UI.foot_text)
+    out.foot = v.footText and v.footText() or (v.message and v.message:GetStateText()) or nil
     out.foot_tooltip = v.message and v.message.tooltip or nil
     out.gold_text = v.gold and v.gold:GetStateText() or nil
     out.points_text = (v.points and v.points.visible) and v.points:GetStateText() or nil
