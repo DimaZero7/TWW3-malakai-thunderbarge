@@ -73,7 +73,8 @@ export function crewSources(data, has, standing = has) {
     for (const r of rows) {
         const own = (r.effects || []).filter(e => e && crewKinds.includes(e.kind));
         // a tree of the constructor: a line of levels acts by the level that stands (its full set), the levels are not added up
-        if ((data.tree_rows ? standing : has)(r.key)) for (const e of own) out.push({effect: e, from: r.name});
+        // pending: the battle does not apply it yet (tree_model.mjs gameData: the port's rule, stage 5)
+        if ((data.tree_rows ? standing : has)(r.key)) for (const e of own) out.push(e.pending ? {effect: e, from: r.name, pending: true} : {effect: e, from: r.name});
         if (!standing(r.key)) continue;
         const says = (kind, g) => own.some(e => e.kind === kind && (e.target === 'all' || !e.target || e.target === g));
         const mult = (data.ammo_mod || {})[r.key];

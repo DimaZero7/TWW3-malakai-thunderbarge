@@ -37,6 +37,12 @@ export class GameSim {
         // the game asks before it cancels a construction of an earlier turn (probe 14.11, item 12). The page has no game window: off there (the
         // cancel is taken at once); the vectors turn it on and answer it (answer_cancel)
         this.askCancel = !!sim.ask_cancel;
+        // GAME: the adapter's crew_pays (Malakai on the barge, the places written): the page has no such state and no method; a vector that
+        // gives sim.crew_pays has one (the turn's upkeep is then taken only while it says true)
+        if (sim.crew_pays !== undefined) {
+            this.crewPays = !!sim.crew_pays;
+            this.crew_pays = () => this.crewPays;
+        }
         this.built = new Set(sim.built.map(s => this.prefix + s));
         this.queue = new Map();             // level key -> {turns_left, paid, dev, turn}
         this.dismantles = new Set();        // the keys whose Dismantle was given this turn: they stand until the turn ends
@@ -206,6 +212,15 @@ export class GameSim {
         if (!row) return false;
         for (const k of [...this.built]) if (this.levels[k] && this.levels[k].chain === row.chain) this.built.delete(k);
         this.built.add(key);
+        return true;
+    }
+
+    // A building gone without an event the mod hears (the stock horde tab's dismantle, a script): its line's slot empty at once
+    script_remove(key) {
+        this.tick();
+        const row = this.levels[key];
+        if (!row) return false;
+        for (const k of [...this.built]) if (this.levels[k] && this.levels[k].chain === row.chain) this.built.delete(k);
         return true;
     }
 

@@ -869,7 +869,8 @@ async function walkCaps() {
     await clickCanvasEmpty(); await sleep(100); await pick('cargo_hold_1');
     await savedOk();
 
-    // ---- in the game: the riflemen's panel counts the hold's ammunition, says where it comes from ----
+    // ---- in the game: the riflemen's panel tells the hold's ammunition; the battle does not apply a group's own ammunition yet (stage 5: the port's
+    // rule, tree_model.mjs crewPort), so the number stays the battle's and the line is grey, «— в бою пока не действует» ----
     await toGame();
     await resetGame();
     await buildTo('Трюм');
@@ -877,13 +878,13 @@ async function walkCaps() {
     await b.move(card.x, card.y, 4); await sleep(350);
     const ammo = await visibleText('value_ammo');
     const lines = await visibleText('accuracy');
-    // the expectation from the export, by the mod's rule (the group's whole times the bonus, floor(x + 0.5), shared by its seats): no number written in
-    // the group's whole (the mod rounds it) for the 11 riflemen as the number, a place's share in the note, the bonus line base → whole
-    const want = await b.eval(`(async () => { const C = await import('/js/crew_model.mjs'), o = mtb.panel.view.data.groups.rifles.options.pirates, a = C.crewAmmo(o.numbers, 30, o.unit_card.men);
-        return {total: a.total, base: a.base, note: C.ammoShare(a, 'rifles', 'на стрелка')}; })()`);
+    // the expectation from the export, by the mod's rule (the group's whole, floor(x + 0.5), shared by its seats): the battle's whole for the 11
+    // riflemen as the number (the hold's +30 not in it), a place's share in the note, the bonus line grey and saying it does not act in battle yet
+    const want = await b.eval(`(async () => { const C = await import('/js/crew_model.mjs'), o = mtb.panel.view.data.groups.rifles.options.pirates, a = C.crewAmmo(o.numbers, 0, o.unit_card.men);
+        return {total: a.total, note: C.ammoShare(a, 'rifles', 'на стрелка')}; })()`);
     const ammoNote = await visibleText('ammo_note');
-    check('caps: game: the pirates\' ammunition with the hold\'s +30 %: the group\'s whole as the mod counts it, its share a rifleman, green, from «Трюм»',
-        ammo === String(want.total) && ammoNote === want.note && lines.includes(`(${want.base} → ${want.total})`) && /Боезапас \+30 ?%/.test(lines) && /Трюм/.test(lines), {ammo, ammoNote, lines, want});
+    check('caps: game: the pirates\' ammunition with the hold\'s +30 %: the number and its share are the battle\'s; the line «Боезапас +30% — в бою пока не действует»',
+        ammo === String(want.total) && ammoNote === want.note && /Боезапас \+30 ?% — в бою пока не действует/.test(lines) && !lines.includes('→'), {ammo, ammoNote, lines, want});
     await b.shot(join(SHOTS, 'caps_effect_group.png'));
     const panelIn = await b.eval(`(() => { const p = [...document.querySelectorAll('#screen .unit_parchment')].find(x => x.offsetParent !== null); const r = p.getBoundingClientRect(), root = document.querySelector('#screen .root').getBoundingClientRect(); return r.top >= root.top - 1 && r.bottom <= root.bottom + 1 && r.left >= root.left - 1 && r.right <= root.right + 1; })()`);
     check('caps: game: the unit\'s panel inside the screen', panelIn);

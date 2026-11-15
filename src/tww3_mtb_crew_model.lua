@@ -9,7 +9,7 @@
 --   lose(state, ctx) -> {state, gold, lost}                 a building is gone
 --   held(state) -> gold                                     what the waiting order holds
 --   crew_sources(config, has, standing) -> [{effect, from, mod}]   what acts on the crew's shooting (web/js/crew_model.mjs crewSources)
---   crew_bonuses(sources, group) -> {kind = {pct, from}}           the percents of one group (web/js/effects_model.mjs crewBonuses)
+--   crew_bonuses(sources, group) -> {kind = {pct, battle, from}}   the percents of one group, all and those the battle applies (effects_model.mjs crewBonuses)
 --   apply_pct(base, pct, kind)                                     a number with a bonus (effects_model.mjs applyPct)
 --   crew_places(n, men), crew_ammo(n, pct, men), plural(v, forms), ammo_share(a, group, per)
 --
@@ -87,7 +87,8 @@ function M.crew_sources(config, has, standing)
     for _, r in ipairs(config.sources) do
         local own = r.effects
         local acts = config.tree and standing or has
-        if acts(r.key) then for _, e in ipairs(own) do out[#out + 1] = {effect = e, from = r.name} end end
+        -- pending: the battle does not apply it yet (the port's rule, stage 5)
+        if acts(r.key) then for _, e in ipairs(own) do out[#out + 1] = {effect = e, from = r.name, pending = e.pending == true or nil} end end
         if standing(r.key) then
             local function says(kind, g)
                 for _, e in ipairs(own) do if e.kind == kind and targets(e, g) then return true end end
@@ -117,13 +118,14 @@ end
 
 function M.crew_bonuses(sources, group)
     local out = {}
-    for _, k in ipairs(M.CREW_KINDS) do out[k] = {pct = 0, from = {}} end
+    for _, k in ipairs(M.CREW_KINDS) do out[k] = {pct = 0, battle = 0, from = {}} end
     for _, s in ipairs(sources) do
         local e = s.effect
         if IS_CREW[e.kind] and targets(e, group) then
             out[e.kind].pct = out[e.kind].pct + e.value
+            if not s.pending then out[e.kind].battle = out[e.kind].battle + e.value end
             local f = out[e.kind].from
-            f[#f + 1] = {name = s.from, value = e.value, mod = not not s.mod}
+            f[#f + 1] = {name = s.from, value = e.value, mod = not not s.mod, pending = not not s.pending}
         end
     end
     return out

@@ -99,7 +99,7 @@ export function uiConfig(inp = inputs()) {
         const card = item => (item.crew ? {crew: true, group: item.u.group, option: item.u.option, army: !!item.u.army} : {crew: false, unit: item.u.key});
         // the building's window (panel.js fileInfo): its texts are the tree's, made here once
         const D = 'ui/skins/default/';
-        const effects = [...(r.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good !== false})),
+        const effects = [...(r.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good !== false, pending: !!e.pending})),
                          ...(r.parts_new || r.parts || []).map(p => {
                              const spec = p.part && partsInfo[p.part];
                              return {icon: 'ui/campaign ui/effect_bundles/general_ability.png', good: true, text: `Вид на корабле: ${p.part ? (spec ? spec.name : p.part) : p.name || 'новая деталь'}`};

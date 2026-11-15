@@ -786,6 +786,17 @@ function Ship.make(config, game, crewModel)
         end
         return said
     end
+    -- the same for a building gone without an event the model hears (the bridge, src/tww3_mtb_crew.lua: after a load, a battle, a turn start),
+    -- told on the panel's line as the events tell it; true when some crew went
+    function M.drop_locked()
+        if not TREE then return false end
+        local said = dropLocked()
+        if #said > 0 then
+            message = 'Постройки больше нет: ' .. join(said, '; ') .. '.'
+            fire()
+        end
+        return #said > 0
+    end
     -- what the ship has after a demolish of row, before it is done: the levels it takes, the crew places it closes, what of the crew goes (the
     -- rule of dropLocked: an order whose option closes comes back with its gold, a standing crew leaves without)
     -- (afterDismantles: the same for every dismantle of the turn at once, M.place_closing)
@@ -1024,7 +1035,8 @@ function Ship.make(config, game, crewModel)
                 else push(came, nameOf(g, crew[g].standing) .. ' ' .. M.crew_words(g).came) end
             end
         end
-        local upkeep = M.crew_upkeep()
+        -- no upkeep while the crew cannot serve (Malakai on foot, the places not written: the adapter's crew_pays; the page's game has none)
+        local upkeep = (game.crew_pays == nil or game.crew_pays()) and M.crew_upkeep() or 0
         setGold(game.treasury() - upkeep)
         local said = {}
         if #came > 0 then push(said, join(came, '; ')) end

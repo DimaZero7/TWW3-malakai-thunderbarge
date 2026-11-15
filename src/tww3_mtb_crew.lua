@@ -779,37 +779,29 @@ function B.migrate()
     return true
 end
 
--- A building gone without an event the model hears (the stock horde tab's dismantle, a load, a battle): what the model's lose() does on its own
--- events (src/tww3_mtb_crew_model.lua: an order of a closed option back with its gold, a standing crew of one gone without), for every place whose
--- option no standing building opens now. Only while the horde and the barge are there: a wounded Malakai has no force, and nothing is decided.
--- SEAM: a model with drop_locked() (patch P2, src/tww3_mtb_ship.lua) does it itself, with its own words on the panel.
+-- A building gone without an event the model hears (the stock horde tab's dismantle, a load, a battle): the model's drop_locked()
+-- (src/tww3_mtb_ship.lua: its lose() for every place whose option no standing building opens now, an order of a closed option back with its
+-- gold, a standing crew of one gone without, and the panel's line saying so). Only while the horde and the barge are there: a wounded Malakai
+-- has no force, and nothing is decided.
 function B.lose(reason)
     local S = B.S
     if not (S and new_panel()) then return false end
     local model = S.M
-    if model.drop_locked then return model.drop_locked() end
     local okc, carried = pcall(model.carried)
     if not (okc and carried) or standing_levels() == nil then return false end
-    local CM = S.modules and S.modules() and S.modules().CM
-    if not CM then return false end
-    local any = false
+    local before = {}
+    for _, st in ipairs(model.crew_snapshot()) do before[st.group] = st end
+    local any = model.drop_locked()
+    if not any then return false end
     for _, st in ipairs(model.crew_snapshot()) do
-        local g = st.group
-        if owned(g) then
-            local open = {}
-            for _, o in ipairs(model.crew_options(g)) do open[o.key] = o.unlocked == true end
-            local ctx = {start = model_empty(model, g), gold = S.game.treasury(), unlocked = function(o) return open[o] == true end}
-            local r = CM.lose({standing = st.standing, order = st.order}, ctx)
-            if #r.lost > 0 then
-                model.set_crew_silently({{group = g, standing = r.state.standing, order = r.state.order}})
-                if r.gold ~= ctx.gold then S.game.treasury_mod(r.gold - ctx.gold) end
-                for _, l in ipairs(r.lost) do log('bridge ' .. tostring(reason) .. ': ' .. g .. ' ' .. l.kind .. ' ' .. l.option .. ' gone with its building, back ' .. tostring(l.back)) end
-                any = true
-            end
+        local was = before[st.group]
+        if was and (was.standing ~= st.standing or (was.order and was.order.option) ~= (st.order and st.order.option)) then
+            log('bridge ' .. tostring(reason) .. ': ' .. st.group .. ' ' .. tostring(was.standing) .. '/' .. tostring(was.order and was.order.option)
+                .. ' -> ' .. tostring(st.standing) .. '/' .. tostring(st.order and st.order.option) .. ', gone with its building')
         end
     end
-    if any then save_model() end
-    return any
+    save_model()
+    return true
 end
 
 -- The screen of the new panel (src/tww3_mtb_crew_ui.lua ship_screen: started once, the same the HUD's button opens): the bridge listens to its

@@ -287,14 +287,16 @@ export function proposal(e, ctx = {}) {
 }
 
 // ---- what the crew's shooting gets from the buildings that stand ----
-// sources: [{effect, from: the building's name, mod?: true for the mod's own number of a mod building (ammo_mod, boost)}]. -> {kind: {pct, from:
-// [{name, value}]}} for the crew kinds, the percents of every source that acts on this group added up (the game adds effects of one kind).
+// sources: [{effect, from: the building's name, mod?: true for the mod's own number of a mod building (ammo_mod, boost), pending?: true for an effect
+// the battle does not apply yet (stage 5)}]. -> {kind: {pct, battle, from: [{name, value, mod, pending}]}} for the crew kinds: pct the percents of
+// every source that acts on this group added up (the game adds effects of one kind), battle the same of those the battle applies now.
 export function crewBonuses(sources, group) {
-    const out = Object.fromEntries(CREW_KINDS.map(k => [k, {pct: 0, from: []}]));
-    for (const {effect: e, from, mod} of sources) {
+    const out = Object.fromEntries(CREW_KINDS.map(k => [k, {pct: 0, battle: 0, from: []}]));
+    for (const {effect: e, from, mod, pending} of sources) {
         if (!isCrew(e) || !(e.target === 'all' || !e.target || e.target === group)) continue;
         out[e.kind].pct += e.value;
-        out[e.kind].from.push({name: from, value: e.value, mod: !!mod});
+        if (!pending) out[e.kind].battle += e.value;
+        out[e.kind].from.push({name: from, value: e.value, mod: !!mod, pending: !!pending});
     }
     return out;
 }

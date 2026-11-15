@@ -468,6 +468,17 @@ export function makeBuildings(data, game, parts) {
         }
         return said;
     };
+    // the same for a building gone without an event the model hears (GAME: the bridge, src/tww3_mtb_crew.lua: after a load, a battle, a turn
+    // start), told on the panel's line as the events tell it; true when some crew went
+    M.drop_locked = () => {
+        if (!data.tree_rows) return false;
+        const said = dropLocked();
+        if (said.length) {
+            message = 'Постройки больше нет: ' + said.join('; ') + '.';
+            fire();
+        }
+        return said.length > 0;
+    };
     // What the ship has after a demolish of row, before it is done: the levels it takes, the crew places it closes, and what of the crew goes (the
     // same rule as dropLocked: an order whose option closes comes back with its gold, a standing crew leaves without)
     const afterDemolish = row => afterDismantles([row]);
@@ -630,7 +641,8 @@ export function makeBuildings(data, game, parts) {
             delete notes[g];
             came.push(crew[g].standing === emptyOf(g) ? M.crew_words(g).left : `${nameOf(g, crew[g].standing)} ${M.crew_words(g).came}`);
         }
-        const upkeep = M.crew_upkeep();
+        // no upkeep while the crew cannot serve (GAME: the adapter's crew_pays, Malakai on foot, the places not written; the page's game has none)
+        const upkeep = (game.crew_pays === undefined || game.crew_pays()) ? M.crew_upkeep() : 0;
         game.gold -= upkeep;        // GAME: cm:treasury_mod; the page lets the treasury go below zero
         let crewLine = [came.length ? came.join('; ') : '', upkeep ? `содержание экипажа: ${upkeep} золота` : ''].filter(Boolean).join(', ');
         crewLine = crewLine ? crewLine[0].toUpperCase() + crewLine.slice(1) + '.' : null;

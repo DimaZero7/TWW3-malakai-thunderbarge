@@ -74,6 +74,12 @@ export const GAME_COLOURS = {
 export const WORDS = {
     // a unit's panel of a card that stands for a crew and the army's unit at once (tree_model.mjs oneCardPerUnit): both facts in one sentence
     army_line: '«%s» открывает этот отряд в экипаже и для найма в армию.',
+    // a crew's bonus the battle does not apply yet (stage 5: the port's rule, tree_model.mjs crewPort): its line in the grey caption colour with this
+    // at the end (the unit panel: «Дальность стрельбы +10% — в бою пока не действует», its buildings named in their windows; the building window); a line of several sources, some applied: the total, then what the battle uses
+    // («Дальность +20% (в бою +10%)»); the values of the stats are the battle's
+    bonus_pending: ' — в бою пока не действует',
+    bonus_in_battle: 'в бою %s',
+    bonus_pending_colour: 'ui_font_faded_grey_beige',
 };
 
 // Switches of the screen's look for the author to judge, the same on the page and in the mod (cfg.options)

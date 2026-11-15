@@ -11,7 +11,7 @@ every step the answer must hold:
   * the numbers the panel shows (crew bonuses and ammunition) equal what the battle applies, except the known gaps: the tree's effects the port
     skips (build/tree/tree_rows.json, port.as = skip: stage 5) and the mod's own sources of the screen's data the battle has not. The gaps are
     listed with how often each was seen; anything else is a mismatch.
---break NAME breaks the packed crew module on purpose (upkeep_twice, no_sync, bay, malakai, old_turn) to show the replay catching it.
+--break NAME breaks the packed crew module on purpose (upkeep_twice, no_sync, no_drop, bay, malakai, old_turn) to show the replay catching it.
 Exit 1 on any mismatch.
 """
 import argparse
@@ -41,6 +41,7 @@ BREAKS = {
                      ("                M.sync_abilities()\n                core:get_tm():real_callback(bridge_guarded('turn'",
                       "                M.sync_abilities()\n                M.pay_upkeep()\n                core:get_tm():real_callback(bridge_guarded('turn'")],
     "no_sync": [("    if sig == B.applied then return false end", "    if true then return false end")],
+    "no_drop": [("    local any = model.drop_locked()", "    local any = false")],
     "bay": [("if of_model and spec.mount and saved == spec.mount and not M.mount_ready(group)", "if false and of_model")],
     "malakai": [("M.MALAKAI_AT_RAIL = true", "M.MALAKAI_AT_RAIL = false")],
     "old_turn": [("            if new_panel() then\n                -- the model's own turn start", "            if false then\n                -- the model's own turn start"),

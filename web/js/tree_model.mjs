@@ -793,7 +793,62 @@ export function gameData(design, data) {
     const chains = [];
     for (const r of rows) { let c = chains.find(x => x.key === r.chain); if (!c) chains.push(c = {key: r.chain, levels: []}); c.levels.push(r); }
     for (const c of chains) c.levels.sort((a, b) => a.level - b.level);
+    // a crew's effect the battle does not apply yet (tools/tree_export.mjs port.as = skip, stage 5): pending, the panel says so
+    const boosts = crewBoosts(design, chains.map(c => ({ids: c.levels.map(r => r.node), first: c.levels[0].node})), Object.keys(data.groups || {}));
+    for (const r of rows) r.effects = r.effects.map(e => (crewPort(e, r.node, boosts).as === 'skip' ? {...e, pending: true} : e));
     return {...data, hull: [], chains, hull_tiers, tree_rows: rows, key_of: keyOf};
+}
+
+// ---- what the battle applies of the crew's effects (the port's rule, tools/tree_export.mjs port.as; docs/design/port-to-game.md 8.6) ----
+const CREW_EFFECT_KINDS = ['ammo', 'accuracy', 'range', 'reload', 'damage'];
+// The boosts: an accuracy or range of one group that comes from one line only, levels in order, never taken back on a higher level (the group's own
+// projectile rows per level). lines: [{ids: [node ids, first level first], first}] (gameData's chains). -> {boostOf: {group: {line, levels, steps}},
+// boostSkip: Set of 'node|kind|group' that cannot be a boost}
+export function crewBoosts(design, lines, groupKeys) {
+    const fullOf = Object.fromEntries(design.nodes.map(n => [n.id, resolve(design, n.id).full]));
+    const lineAt = {};
+    for (const l of lines) l.ids.forEach((id, i) => { lineAt[id] = {line: l, level: i}; });
+    const boostOf = {}, boostSkip = new Set();
+    for (const g of groupKeys) {
+        const kinds = {};
+        for (const kind of ['accuracy', 'range']) {
+            const carriers = design.nodes.filter(n => fullOf[n.id].effects.some(x => x.e.kind === kind && x.e.target === g));
+            if (!carriers.length) continue;
+            const ls = new Set(carriers.map(n => lineAt[n.id].line.first));
+            const line = ls.size === 1 ? lineAt[carriers[0].id].line : null;
+            // from its first carrier up, every level of the line carries it (a level that takes it back cannot: the built list keeps the lower level)
+            const ok = line && (() => { const i0 = line.ids.findIndex(id => carriers.some(c => c.id === id)); return line.ids.slice(i0).every(id => carriers.some(c => c.id === id)); })();
+            if (ok) kinds[kind] = line; else carriers.forEach(n => boostSkip.add(`${n.id}|${kind}|${g}`));
+        }
+        const ks = Object.keys(kinds);
+        if (!ks.length) continue;
+        const line = kinds[ks[0]];
+        for (const k of ks.slice(1)) if (kinds[k] !== line) { design.nodes.forEach(n => boostSkip.add(`${n.id}|${k}|${g}`)); delete kinds[k]; }
+        const ids = line.ids.filter(id => Object.keys(kinds).some(k => fullOf[id].effects.some(x => x.e.kind === k && x.e.target === g)));
+        boostOf[g] = {line: line.first, levels: ids, steps: ids.map(id => {
+            const step = {};
+            for (const x of fullOf[id].effects) {
+                if (x.e.target !== g || !kinds[x.e.kind]) continue;
+                if (x.e.kind === 'accuracy') step.calibration_area = Math.round((1 - x.e.value / 100) * 1e6) / 1e6;
+                if (x.e.kind === 'range') step.effective_range = Math.round((1 + x.e.value / 100) * 1e6) / 1e6;
+            }
+            return step;
+        })};
+    }
+    return {boostOf, boostSkip};
+}
+// What a crew's effect of level `id` becomes in the game: {as: 'ammo_mod', mult} (one multiplier for all groups), {as: 'boost', group, step},
+// {as: 'skip', why: 'ammo_group' | 'crew_lines' | its kind (reload, damage)}: not in the battle until stage 5; {as: null}: not a crew's effect
+export function crewPort(e, id, {boostOf, boostSkip}) {
+    if (!e || !CREW_EFFECT_KINDS.includes(e.kind)) return {as: null};
+    const target = e.target || 'all';
+    if (e.kind === 'ammo') return target === 'all' ? {as: 'ammo_mod', mult: Math.round((1 + (Number(e.value) || 0) / 100) * 1e6) / 1e6} : {as: 'skip', why: 'ammo_group'};
+    if (e.kind === 'accuracy' || e.kind === 'range') {
+        const b = boostOf[target];
+        return b && b.levels.includes(id) && !boostSkip.has(`${id}|${e.kind}|${target}`) && b.steps[b.levels.indexOf(id)][e.kind === 'accuracy' ? 'calibration_area' : 'effective_range'] !== undefined
+            ? {as: 'boost', group: target, step: b.levels.indexOf(id) + 1} : {as: 'skip', why: 'crew_lines'};
+    }
+    return {as: 'skip', why: e.kind};
 }
 
 // ---- lines of levels: a node continues its previous level (prev), the game's chain of levels ----

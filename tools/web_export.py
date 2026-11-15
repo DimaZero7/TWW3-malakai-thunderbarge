@@ -177,18 +177,27 @@ def page_tables(stock):
     return build.derive_campaign(stock, {k: [dict(r) for r in v] for k, v in t.items()})
 
 
-def crew_data(stock, t=None, unit_pictures=None):
+def crew_data(stock, t=None, unit_pictures=None, tree=None):
     """What the airship screen's logic reads besides the tree, one source for the page (build/web/data.json, export_data) and for the build
     (tools/build.py: build/tree/crew_data.json, read by tools/ship_config.mjs): the crew groups with their kinds, hire, upkeep and numbers, the
     ammunition multipliers, the art of the places, and the tier rule of data/tree_port.json (web/js/tree_model.mjs engineTiers locks a level by it).
     t: page_tables(stock), made here when not given. The game's pictures the unit cards name are appended to unit_pictures.
-    data/crew_options.json as it is: crew_options.CONFIG before tools/build.py puts the tree's building sections in."""
+    data/crew_options.json as it is: crew_options.CONFIG before tools/build.py puts the tree's building sections in, except the groups' boosts and the
+    ammunition multipliers: those are the author's tree's (tree: tools/tree_port.export, build/tree/tree_rows.json crew_config; made here when not
+    given), what the battle applies, not the old mod's own numbers (the guns' «Сигнальная система / сеть» are not in the tree)."""
     if t is None:
         t = page_tables(stock)
     if unit_pictures is None:
         unit_pictures = []
     config = crew_options.CONFIG
     prefix = config["buildings_prefix"]
+    if tree is None:
+        tree = tree_port.export(stock)
+    # the tree's crew config names a level by its mod key (mtb_...); the page names it by the node (web/js/tree_model.mjs gameData: the node's mod_key,
+    # else tree_<id>), and tools/ship_config.mjs rekey turns the page's keys into the mod's
+    page_short = {r["short"]: r.get("mod_key") or "tree_" + r["id"] for r in tree["levels"]}
+    tree_boost = {g: {"buildings": [page_short.get(s, s) for s in b["buildings"]], "steps": b["steps"]} for g, b in tree["crew_config"]["boost"].items()}
+    tree_ammo_mod = {page_short.get(s, s): m for s, m in tree["crew_config"]["ammo_mod"].items()}
     # The game's own unit card of a crew option, as the army panel shows the unit it is taken from (upkeep_from): the picture of unit_variants.unit_card,
     # the category icon of main_units.ui_unit_group_land, the number of men aboard. Copies of the game's pictures go to build/web/game only.
     variant_card = {r["unit"]: r["unit_card"] for r in stock["unit_variants"]}
@@ -261,9 +270,10 @@ def crew_data(stock, t=None, unit_pictures=None):
     for group_key, group in config["groups"].items():
         groups[group_key] = {"name": group["ui"]["name"], "about": group["ui"]["about"], "start": group["start"], "seats": len(group["seats"]),
                              "mount": group.get("mount"), "mount_name": group.get("mount_name"), "card_frame": group.get("card_frame"),
-                             # buildings that make the group shoot tighter: the spread of its shots times this (data/crew_options.json, boost)
-                             "boost": [{"building": prefix + b, "spread": step["calibration_area"], "range": step.get("effective_range")}
-                                       for b, step in zip(group["boost"]["buildings"], group["boost"]["steps"])] if group.get("boost") else [],
+                             # buildings that make the group shoot tighter or further: the spread of its shots times this, its range times that
+                             # (the tree's boosts, tools/tree_export.mjs crew_config: what the battle applies)
+                             "boost": [{"building": prefix + b, "spread": step.get("calibration_area"), "range": step.get("effective_range")}
+                                       for b, step in zip(tree_boost[group_key]["buildings"], tree_boost[group_key]["steps"])] if group_key in tree_boost else [],
                              "requires": prefix + group["requires"]["building"] if group.get("requires") else None,
                              "options": {k: {"name": (o.get("ui") or {}).get("name", k), "about": (o.get("ui") or {}).get("about", ""),
                                              "hidden": bool((o.get("ui") or {}).get("hidden") or (o.get("ui") or {}).get("none")),
@@ -276,7 +286,7 @@ def crew_data(stock, t=None, unit_pictures=None):
                                              # the crew's own weapon as the mod builds it (the numbers of the mod's panel, crew_ui.group_numbers)
                                              "numbers": crew_ui.group_numbers(crew_tables, group_key, k, o, group),
                                              "upkeep": crew_ui.upkeep(o, stock), "hire": crew_ui.hire(o, stock)} for k, o in group["options"].items()}}
-    return {"prefix": prefix, "ammo_mod": {prefix + k: v for k, v in config["ammo_mod"].items()}, "groups": groups,
+    return {"prefix": prefix, "ammo_mod": {prefix + k: v for k, v in tree_ammo_mod.items()}, "groups": groups,
             "art": json.loads((REPO / "data" / "crew_ui_art.json").read_text(encoding="utf-8")),
             "tree_tiers": json.loads((REPO / "data" / "tree_port.json").read_text(encoding="utf-8"))["tiers"],
             # the rule of the development points a level costs (В2): the page's model locks by the same points as the game (tree_model.gameData)

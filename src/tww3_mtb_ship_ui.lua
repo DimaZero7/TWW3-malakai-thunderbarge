@@ -642,7 +642,9 @@ function UI.make_panel(env)
                 row.icon:SetVisible(e ~= nil); row.text:SetVisible(e ~= nil)
                 if e then
                     row.icon:SetImagePath(e.icon or (K.D .. 'replenishement_positive.png'), 0)
-                    row.text:SetStateText('[[col:' .. (e.good == false and 'red' or 'green') .. ']]' .. gameText(e.text) .. '[[/col]]')
+                    -- a crew's effect the battle does not apply yet: grey, «— в бою пока не действует» (cfg.words)
+                    if e.pending then row.text:SetStateText('[[col:' .. cfg.words.bonus_pending_colour .. ']]' .. gameText(e.text) .. cfg.words.bonus_pending .. '[[/col]]')
+                    else row.text:SetStateText('[[col:' .. (e.good == false and 'red' or 'green') .. ']]' .. gameText(e.text) .. '[[/col]]') end
                     y = y + entry(row.icon, K.INFO_X, 24, row.text, K.INFO_TX, y)
                 end
             end
@@ -781,7 +783,8 @@ function UI.make_panel(env)
                 if pct and pct ~= 0 then return '[[col:' .. (better(kind, pct) and 'green' or 'red') .. ']]' .. t .. '[[/col]]' end
                 return t
             end
-            local ammoPct = bonus.ammo and bonus.ammo.pct or 0
+            -- the values are the battle's (a bonus it does not apply yet is told in the lines below, not counted in the number)
+            local ammoPct = bonus.ammo and bonus.ammo.battle or 0
             local ammo = n.ammo and CM.crew_ammo(n, ammoPct, o.unit_card and o.unit_card.men or 0) or {}
             info.ammo = ammo
             if info.ammoNote then
@@ -791,23 +794,34 @@ function UI.make_panel(env)
             for _, kind in ipairs({'range', 'reload'}) do
                 local b, r = bonus[kind], info.rows[kind]
                 if r and not (kind == 'range' and (o.range_text or ab)) then
-                    local pct = b and b.pct or 0
+                    local pct = b and b.battle or 0
                     r.value:SetStateText(colour(kind, pct, num((pct ~= 0) and CM.apply_pct(base[kind], pct, kind) or base[kind])))
                 end
             end
             if info.rows.damage and not ab then
                 local b = bonus.damage
                 local d0 = (n.damage + n.ap) * n.shots * n.volley
-                local pct = b and b.pct or 0
+                local pct = b and b.battle or 0
                 info.rows.damage.value:SetStateText(colour('damage', pct, num((pct ~= 0) and CM.apply_pct(d0, pct, 'damage') or d0)))
             end
+            -- a line a kind: the total of its sources; none applied in battle yet: grey, «— в бою пока не действует»; some: what the battle uses beside it
+            local function signedPct(v) return (v > 0 and '+' or (v < 0 and '-' or '')) .. fxnum(abs(v)) .. '%' end
             local lines = {}
             for _, k in ipairs(CREW_KINDS) do
-                if bonus[k] and bonus[k].pct and bonus[k].pct ~= 0 and (k ~= 'ammo' or (n.ammo and n.ammo ~= 0)) then
-                    local pct = bonus[k].pct
-                    local signed = (pct > 0 and '+' or (pct < 0 and '-' or '')) .. fxnum(abs(pct)) .. '%'
-                    local from = table.concat(map(bonus[k].from, function(f) return f.name end), ', ')
-                    push(lines, colour(k, pct, gameText(KINDS[k].name .. ' ' .. signed) .. (k == 'ammo' and (' (' .. str(ammo.base) .. ' → ' .. str(ammo.total) .. ')') or '') .. ': ' .. from))
+                local b = bonus[k]
+                if b and ((b.pct and b.pct ~= 0) or (b.battle and b.battle ~= 0)) and (k ~= 'ammo' or (n.ammo and n.ammo ~= 0)) then
+                    local head = gameText(KINDS[k].name .. ' ' .. signedPct(b.pct))
+                    local from = ': ' .. table.concat(map(b.from, function(f) return f.name end), ', ')
+                    local all, some = true, false
+                    for _, f in ipairs(b.from) do if f.pending then some = true else all = false end end
+                    -- (its buildings not named: the panel would outgrow the screen; the building window names them, grey too)
+                    if all then push(lines, '[[col:' .. cfg.words.bonus_pending_colour .. ']]' .. head .. cfg.words.bonus_pending .. '[[/col]]')
+                    else
+                        local said = {}
+                        if some then push(said, string.format(cfg.words.bonus_in_battle, signedPct(b.battle))) end
+                        if k == 'ammo' then push(said, str(ammo.base) .. ' → ' .. str(ammo.total)) end
+                        push(lines, colour(k, b.battle, head .. (#said > 0 and (' (' .. table.concat(said, ', ') .. ')') or '') .. from))
+                    end
                 end
             end
             info.accuracy:SetStateText(table.concat(lines, '\n'))

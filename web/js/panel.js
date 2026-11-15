@@ -687,7 +687,9 @@ function fillInfoTip(t, content) {
             row.icon.SetVisible(!!e); row.text.SetVisible(!!e);
             if (!e) return;
             row.icon.SetImagePath(e.icon || 'ui/skins/default/replenishement_positive.png', 0);
-            row.text.SetStateText(`[[col:${e.good === false ? 'red' : 'green'}]]${gameText(e.text)}[[/col]]`);
+            // a crew's effect the battle does not apply yet: grey, «— в бою пока не действует» (WORDS)
+            row.text.SetStateText(e.pending ? `[[col:${WORDS.bonus_pending_colour}]]${gameText(e.text)}${WORDS.bonus_pending}[[/col]]`
+                : `[[col:${e.good === false ? 'red' : 'green'}]]${gameText(e.text)}[[/col]]`);
             y += entry(row.icon, INFO_X, 24, row.text, INFO_TX, y);
         });
         const block = (icon, title, list, rows) => {
@@ -846,7 +848,8 @@ function unitInfo(parent, id, spec, flags = {}) {
         const colour = (kind, pct, t) => (pct ? `[[col:${better(kind, pct) ? 'green' : 'red'}]]${t}[[/col]]` : t);
         // the ammunition: the mod's Lua rounds the group's whole (floor(x + 0.5)) and the places share it, so a bonus smaller than a volley a place is
         // not lost (6 a pirate, +15%: 76 for the eleven, about 7 each); the group's whole is the number, the share beside it
-        const ammoPct = bonus.ammo ? bonus.ammo.pct : 0, ammo = crewAmmo(n, ammoPct, o.unit_card ? o.unit_card.men : 0);
+        // the values are the battle's (a bonus it does not apply yet is told in the lines below, not counted in the number)
+        const ammoPct = bonus.ammo ? bonus.ammo.battle : 0, ammo = crewAmmo(n, ammoPct, o.unit_card ? o.unit_card.men : 0);
         info.ammo = ammo;
         if (info.ammoNote) {
             info.rows.ammo.value.SetStateText(colour('ammo', ammoPct, String(ammo.total)));
@@ -855,15 +858,20 @@ function unitInfo(parent, id, spec, flags = {}) {
         for (const kind of ['range', 'reload']) {
             const b = bonus[kind], r = info.rows[kind];
             if (!r || (kind === 'range' && (o.range_text || ab))) continue;
-            r.value.SetStateText(colour(kind, b ? b.pct : 0, num(b && b.pct ? FX.applyPct(base[kind], b.pct, kind) : base[kind])));
+            r.value.SetStateText(colour(kind, b ? b.battle : 0, num(b && b.battle ? FX.applyPct(base[kind], b.battle, kind) : base[kind])));
         }
         if (info.rows.damage && !ab) {
             const b = bonus.damage, d0 = (n.damage + n.ap) * n.shots * n.volley;
-            info.rows.damage.value.SetStateText(colour('damage', b ? b.pct : 0, num(b && b.pct ? FX.applyPct(d0, b.pct, 'damage') : d0)));
+            info.rows.damage.value.SetStateText(colour('damage', b ? b.battle : 0, num(b && b.battle ? FX.applyPct(d0, b.battle, 'damage') : d0)));
         }
-        const lines = FX.CREW_KINDS.filter(k => bonus[k] && bonus[k].pct && (k !== 'ammo' || n.ammo)).map(k => colour(k, bonus[k].pct,
-            gameText(`${FX.KINDS[k].name} ${FX.signedPct(bonus[k].pct, false)}`) + (k === 'ammo' ? ` (${ammo.base} → ${ammo.total})` : '')
-            + `: ${bonus[k].from.map(f => f.name).join(', ')}`));
+        // a line a kind: the total of its sources; none applied in battle yet: grey, «— в бою пока не действует»; some: what the battle uses beside it
+        const lines = FX.CREW_KINDS.filter(k => bonus[k] && (bonus[k].pct || bonus[k].battle) && (k !== 'ammo' || n.ammo)).map(k => {
+            const b = bonus[k], head = gameText(`${FX.KINDS[k].name} ${FX.signedPct(b.pct, false)}`), from = `: ${b.from.map(f => f.name).join(', ')}`;
+            // (its buildings not named: the panel would outgrow the screen; the building window names them, grey too)
+            if (b.from.every(f => f.pending)) return `[[col:${WORDS.bonus_pending_colour}]]${head}${WORDS.bonus_pending}[[/col]]`;
+            const said = [b.from.some(f => f.pending) ? WORDS.bonus_in_battle.replace('%s', FX.signedPct(b.battle, false)) : '', k === 'ammo' ? `${ammo.base} → ${ammo.total}` : ''].filter(Boolean);
+            return colour(k, b.battle, head + (said.length ? ` (${said.join(', ')})` : '') + from);
+        });
         info.accuracy.SetStateText(lines.join('\n'));
         info.bonusLines = lines;
         const linesH = lines.length ? Math.max(20, info.accuracy.TextDimensions()[1] + 4) : 0;
@@ -1445,7 +1453,7 @@ function fileInfo(view, row, card, reason) {
         title: row.name, chain: '', description: row.text,
         // the game's effects in full for the level; what appears on the ship with it a line each, only on the level that first brings it in its line
         // (tree_model.mjs newOnLevel: «Вид на корабле» is the page's own note, not an effect of the game)
-        effects: [...(row.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good})),
+        effects: [...(row.effects || []).filter(e => e.text).map(e => ({icon: e.icon || D + 'replenishement_positive.png', text: e.text, good: e.good, pending: !!e.pending})),
                   ...(row.parts_new || row.parts || []).map(p => {
                       const spec = p.part && (view.data.parts_all || {})[p.part];
                       return {icon: 'ui/campaign ui/effect_bundles/general_ability.png', good: true,

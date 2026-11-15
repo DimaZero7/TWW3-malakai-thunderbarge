@@ -155,35 +155,10 @@ const SKIP_WHY = {
 // game effects the tree names whose stock row of a stock-key level stays as it is (not overridden, not zeroed)
 const keepStock = new Set([E.KINDS.influence.game]);
 
-// ---- the boosts: an accuracy or range of one group that comes from one line only, levels in order, never taken back on a higher level ----
+// ---- the boosts: an accuracy or range of one group that comes from one line only (web/js/tree_model.mjs crewBoosts: the page marks by the same rule
+// what the battle does not apply yet) ----
 const fullOf = Object.fromEntries(design.nodes.map(n => [n.id, T.resolve(design, n.id).full]));
-const boostOf = {}, boostSkip = new Set();
-for (const g of Object.keys(groups)) {
-    const kinds = {};
-    for (const kind of ['accuracy', 'range']) {
-        const carriers = design.nodes.filter(n => fullOf[n.id].effects.some(x => x.e.kind === kind && x.e.target === g));
-        if (!carriers.length) continue;
-        const ls = new Set(carriers.map(n => lineOf[n.id].line.first));
-        const line = ls.size === 1 ? lineOf[carriers[0].id].line : null;
-        // from its first carrier up, every level of the line carries it (a level that takes it back cannot: the built list keeps the lower level)
-        const ok = line && (() => { const i0 = line.ids.findIndex(id => carriers.some(c => c.id === id)); return line.ids.slice(i0).every(id => carriers.some(c => c.id === id)); })();
-        if (ok) kinds[kind] = line; else carriers.forEach(n => boostSkip.add(`${n.id}|${kind}|${g}`));
-    }
-    const ks = Object.keys(kinds);
-    if (!ks.length) continue;
-    const line = kinds[ks[0]];
-    for (const k of ks.slice(1)) if (kinds[k] !== line) { design.nodes.forEach(n => boostSkip.add(`${n.id}|${k}|${g}`)); delete kinds[k]; }
-    const ids = line.ids.filter(id => Object.keys(kinds).some(k => fullOf[id].effects.some(x => x.e.kind === k && x.e.target === g)));
-    boostOf[g] = {line: line.first, levels: ids, steps: ids.map(id => {
-        const step = {};
-        for (const x of fullOf[id].effects) {
-            if (x.e.target !== g || !kinds[x.e.kind]) continue;
-            if (x.e.kind === 'accuracy') step.calibration_area = Math.round((1 - x.e.value / 100) * 1e6) / 1e6;
-            if (x.e.kind === 'range') step.effective_range = Math.round((1 + x.e.value / 100) * 1e6) / 1e6;
-        }
-        return step;
-    })};
-}
+const crewBoosts = T.crewBoosts(design, lines, Object.keys(groups));
 const abilities = Object.keys(crewOptions.abilities).filter(k => !k.startsWith('_'));
 
 // ---- the levels ----
@@ -221,11 +196,9 @@ for (const l of lines) for (const [li, id] of l.ids.entries()) {
         else if (['horde_cost', 'campaign_movement', 'sight'].includes(done.kind)) p = gameRow(E.KINDS[done.kind].game, done.value, E.KINDS[done.kind].scope || null, done);
         else if (done.kind === 'influence') p = {as: 'skip', why: SKIP_WHY.influence};
         else if (done.kind === 'ability') p = abilities.includes(done.target) ? {as: 'ability', ability: done.target} : {as: 'skip', why: SKIP_WHY.ability_unknown};
-        else if (done.kind === 'ammo') p = done.target === 'all' ? {as: 'ammo_mod', mult: Math.round((1 + done.value / 100) * 1e6) / 1e6} : {as: 'skip', why: SKIP_WHY.ammo_group};
-        else if (done.kind === 'accuracy' || done.kind === 'range') {
-            const b = boostOf[done.target];
-            p = b && b.levels.includes(id) && !boostSkip.has(`${id}|${done.kind}|${done.target}`) && b.steps[b.levels.indexOf(id)][done.kind === 'accuracy' ? 'calibration_area' : 'effective_range'] !== undefined
-                ? {as: 'boost', group: done.target, step: b.levels.indexOf(id) + 1} : {as: 'skip', why: SKIP_WHY.crew_lines};
+        else if (['ammo', 'accuracy', 'range'].includes(done.kind)) {
+            p = T.crewPort(done, id, crewBoosts);
+            if (p.as === 'skip') p = {as: 'skip', why: SKIP_WHY[p.why]};
         } else p = {as: 'skip', why: SKIP_WHY[done.kind] || 'not ported'};
         if (p.as === 'boost' || p.as === 'ammo_mod') p.text_effect = textLine(x, done);
         if (p.as === 'skip') skipped.push({from: x.from, id: e.id, kind: done.kind || 'text', target: done.target || null, value: done.value ?? null, text: done.text, why: p.why});
@@ -312,7 +285,7 @@ for (const r of out) {
         if (e.port.as === 'ability') (abilityBy[e.port.ability] ||= []).push(r.short);
     }
 }
-const boost = Object.fromEntries(Object.entries(boostOf).map(([g, b]) => [g, {buildings: b.levels.map(short), steps: b.steps}]));
+const boost = Object.fromEntries(Object.entries(crewBoosts.boostOf).map(([g, b]) => [g, {buildings: b.levels.map(short), steps: b.steps}]));
 const crewConfig = {buildings, auto_active: autoActive, ammo_mod: ammoMod, boost, abilities: abilityBy, names};
 
 // ---- counts and the file ----

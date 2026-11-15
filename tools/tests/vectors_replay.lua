@@ -97,7 +97,7 @@ return function(Ship, CM, Fake)
             end
             local bonus = CM.crew_bonuses(sources, G)
             for _, kind in ipairs(CM.CREW_KINDS) do
-                put(c .. '.bonus.' .. kind, num(bonus[kind].pct) .. ' ' .. join(bonus[kind].from, ', ', function(f) return (f.mod and '*' or '') .. f.name .. ':' .. num(f.value) end))
+                put(c .. '.bonus.' .. kind, num(bonus[kind].pct) .. '/' .. num(bonus[kind].battle) .. ' ' .. join(bonus[kind].from, ', ', function(f) return (f.mod and '*' or '') .. (f.pending and '~' or '') .. f.name .. ':' .. num(f.value) end))
             end
             for _, op in ipairs(group.options) do
                 if op.ammo ~= nil then
@@ -150,6 +150,9 @@ return function(Ship, CM, Fake)
         elseif act == 'points' then game.set_dev(a.points); return ''
         elseif act == 'answer_cancel' then return tostring(game.answer_cancel(a.yes))
         elseif act == 'script_stand' then return tostring(game.script_stand(k))
+        elseif act == 'script_remove' then return tostring(game.script_remove(k))
+        elseif act == 'drop_locked' then return tostring(M.drop_locked())
+        elseif act == 'crew_pays' then game.set_crew_pays(a.pays); return ''
         elseif act == 'debug_build' then M.debug_build_to(k); return ''
         elseif act == 'game_dismantle' then return tostring(game.dismantle(k))
         elseif act == 'chosen_old' then M.set_crew_chosen_silently(true); return ''

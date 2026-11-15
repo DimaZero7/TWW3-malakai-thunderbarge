@@ -151,9 +151,11 @@ return function(Ship, CM, Fake, VR, CREW, load_crew, X)
         W = w
         w.step = w.step + 1
         local ret
-        if a['do'] == 'reload' then reload(w); ret = '' else ret = VR.apply(w, a) end
+        if a['do'] == 'reload' then reload(w); ret = ''
+        elseif a['do'] == 'drop_locked' then ret = tostring(w.C.bridge.lose('test') and true or false)      -- the bridge, as after a load or a battle
+        else ret = VR.apply(w, a) end
         -- a level stood by a script: the game tells nobody (no event), the seats follow at the next change, the turn start or the battle's start
-        w.script_stood = a['do'] == 'script_stand'
+        w.script_stood = a['do'] == 'script_stand' or a['do'] == 'script_remove'      -- (a level gone without an event: the same)
         R.tick(w)
         return ret
     end
@@ -212,6 +214,14 @@ return function(Ship, CM, Fake, VR, CREW, load_crew, X)
                         if f.mod then known = not X.battle_mod[f.name .. '|' .. kind .. '|' .. g.key]
                         else known = X.unapplied[f.name .. '|' .. kind .. '|' .. g.key] or X.unapplied[f.name .. '|' .. kind .. '|all'] end
                         if known then unapplied = unapplied + f.value; push(names, (f.mod and '*' or '') .. f.name .. ' ' .. f.value) end
+                        -- the panel's own mark (P4: «в бою пока не действует») is the known gap, no more, no less
+                        if (known and true or false) ~= (f.pending and true or false) then
+                            push(out, 'pending ' .. kind .. ' ' .. g.key .. ' ' .. f.name .. ': the panel ' .. tostring(f.pending) .. ', the battle lacks it ' .. tostring(known and true or false))
+                        end
+                    end
+                    -- what the panel says the battle uses is what the battle applies
+                    if b.battle ~= applied[kind] then
+                        push(out, 'battle ' .. kind .. ' ' .. g.key .. ': the panel says ' .. b.battle .. ' in battle, the battle ' .. applied[kind])
                     end
                     if b.pct ~= applied[kind] then
                         if b.pct - unapplied == applied[kind] then

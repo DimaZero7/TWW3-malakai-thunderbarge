@@ -108,7 +108,7 @@ export function luaConfig({levels, parts, words, per}) {
         hull_tiers: Object.entries(levels.hull_tiers || {}).map(([key, tier]) => ({key, tier})),
         // crewSources walks the tree's rows in the tree's order (not the chains'); only the crew's kinds of effects matter to it
         sources: (levels.tree_rows || all).map(r => ({key: r.key, name: r.name,
-            effects: (r.effects || []).filter(e => e && CREW_KINDS.includes(e.kind)).map(e => ({kind: e.kind, target: e.target || '', value: e.value}))})),
+            effects: (r.effects || []).filter(e => e && CREW_KINDS.includes(e.kind)).map(e => ({kind: e.kind, target: e.target || '', value: e.value, ...(e.pending ? {pending: true} : {})}))})),
         ammo_mod: Object.entries(levels.ammo_mod || {}).map(([key, mult]) => ({key, mult})),
         groups: Object.entries(levels.groups).map(([key, g]) => ({
             key, name: g.name, start: g.start, mount: g.mount || undefined, per: per[key] || undefined, words: words[key] || undefined,
@@ -129,11 +129,26 @@ export function tierMismatches(levels, treeRows) {
     return levels.tree_rows.filter(r => r.tier !== engine[r.node]).map(r => `«${r.name}» (${r.node}): the page locks by tier ${r.tier}, the game by ${engine[r.node]}`);
 }
 
+// The crew's effects the page marks pending (tree_model.mjs gameData) against those the port skips (tree_rows.json port.as = skip): [text], none when
+// one rule made both
+export function pendingMismatches(levels, treeRows) {
+    const byNode = Object.fromEntries(treeRows.levels.map(r => [r.id, r]));
+    const out = [];
+    for (const r of levels.tree_rows) {
+        const port = (byNode[r.node] ? byNode[r.node].effects : []).filter(e => CREW_KINDS.includes(e.kind)).map(e => e.port.as === 'skip');
+        const page = (r.effects || []).filter(e => e && CREW_KINDS.includes(e.kind)).map(e => !!e.pending);
+        if (JSON.stringify(port) !== JSON.stringify(page)) out.push(`«${r.name}» (${r.node}): the page ${JSON.stringify(page)}, the port ${JSON.stringify(port)}`);
+    }
+    return out;
+}
+
 // The author's tree in the mod's keys: {page (for the JS model), config (for the Lua)}
 export function authorConfig(inp = inputs()) {
     const built = pageLevels(inp);
     const bad = tierMismatches(built.levels, inp.treeRows);
     if (bad.length) throw new Error('tiers: ' + bad.join('; '));
+    const off = pendingMismatches(built.levels, inp.treeRows);
+    if (off.length) throw new Error('pending: ' + off.join('; '));
     const page = rekey(built, inp.treeRows);
     return {page, config: luaConfig(page)};
 }

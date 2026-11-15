@@ -26,6 +26,8 @@ function Fake.new(config, sim)
     local async = sim.async and true or false
     local commands = {}
     local askCancel = sim.ask_cancel and true or false
+    -- the adapter's crew_pays: only when the vector gives sim.crew_pays (the page's game has no such method otherwise)
+    local crewPays = sim.crew_pays
     local demolishMode = sim.demolish or 'chain'
     local levels, levelList = {}, {}
     for _, r in ipairs(config.levels) do
@@ -224,6 +226,20 @@ function Fake.new(config, sim)
         dropChain(row, function() return true end)
         built[key] = true
         return true
+    end
+
+    -- a building gone without an event the mod hears (the stock horde tab's dismantle, a script): its line's slot empty at once
+    function G.script_remove(key)
+        G.tick()
+        local row = levels[key]
+        if not row then return false end
+        dropChain(row, function() return true end)
+        return true
+    end
+    if crewPays ~= nil then
+        crewPays = crewPays and true or false
+        function G.crew_pays() return crewPays end
+        function G.set_crew_pays(v) crewPays = v and true or false end
     end
 
     function G.snapshot()

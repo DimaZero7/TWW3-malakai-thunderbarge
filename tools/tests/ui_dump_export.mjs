@@ -37,6 +37,11 @@ const CAMPAIGNS = {
     // sentences that ends with what the player waits for (the foot row's two lines, M.foot_tail)
     report: {about: 'the hull II and the beer hall II stand; the pirates hired, the nests ordered with the last point; the turn ended',
              steps: [['points', 1], ['build', 'airship_hull_2'], ['build', 'beer_hall_2'], ['gold', 16000], ['crew', 'rifles', 'pirates'], ['order', 'mtb_nest_1'], ['end_turn']]},
+    // the crew's bonuses the battle does not apply yet (stage 5): the riflemen with the dummies (accuracy applied; range and reload not yet) and the
+    // cargo hatch (ammunition: all crews' x2 applied); the bombs with the torpedo gallery (their own +30 not yet: the total and the battle's)
+    bonus: {about: 'the pirates and the bombs aboard; the dummies, the cargo hatch and the torpedo gallery stand: bonuses the battle applies, does not yet, and both',
+            steps: [['points', 6], ['build', 'airship_hull_3'], ['build', 'beer_hall_1'], ['build', 'crew_weapons_1'], ['build', 'cargo_hold_3'],
+                    ['build', 'mtb_hatches_1'], ['build', 'mtb_torpedoes_1'], ['gold', 6000], ['crew', 'rifles', 'pirates'], ['crew', 'bombs', 'stock'], ['end_turn']]},
     full: {about: 'every building of the tree stands, a crew at every place, Malakai on the right side',
            steps: [['build_all'], ['gold', 20000], ['crew', 'rifles', 'thunderers'], ['crew', 'cannons', 'organ'], ['crew', 'bombs', 'fire'], ['crew', 'cupolas', 'axes'],
                    ['crew', 'harpoon', 'on'], ['end_turn'], ['side', 'right']]},
@@ -66,6 +71,10 @@ const STATES = [
     ['dismantling_ship', 'dismantling', [['click', 'mtb_tab_ship']]],
     // the turn's report in the foot row: two lines, what the player waits for whole on the second
     ['report_tree', 'report', []],
+    // P4: a unit panel with bonus lines the battle applies, does not apply yet (grey) and both (the total and the battle's); a building window with them
+    ['bonus_tree_unit', 'bonus', [['hover', 'mtb_crew_card_beer_hall_1_pirates']]],
+    ['bonus_tree_info', 'bonus', [['hover', {slot: 'crew_weapons_1'}]]],
+    ['bonus_ship_pick_unit', 'bonus', [['click', 'mtb_tab_ship'], ['click', 'mtb_crew_area_bombs'], ['hover', 'mtb_crew_card_pick_bombs:stock']]],
     ['full_tree', 'full', []],
     // a player scrolls a slot into the tree's window before the mouse is on it (show: the tree moved as a click on the slot moves it, pan.show)
     ['full_tree_info', 'full', [['show', {slot: 'mtb_guns_3'}], ['hover', {slot: 'mtb_guns_3'}]]],

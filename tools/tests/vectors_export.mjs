@@ -19,13 +19,14 @@ import {makeBuildings, turnsText} from '../../web/js/barge_buildings.js';
 import * as C from '../../web/js/crew_model.mjs';
 import * as FX from '../../web/js/effects_model.mjs';
 import * as T from '../../web/js/tree_model.mjs';
-import {REPO, readJson, inputs, pageLevels, rekey, luaConfig} from '../ship_config.mjs';
+import {REPO, readJson, inputs, pageLevels, rekey, luaConfig, pendingMismatches} from '../ship_config.mjs';
 
 const OUT = path.join(REPO, 'build', 'vectors');
 const WALKS = 200, WALK_STEPS = 60, WALKS_PER_FILE = 25;
 const inp = inputs();
 const sim0 = readJson('web/data/sim.json');
 const author = rekey(pageLevels(inp), inp.treeRows);
+{ const off = pendingMismatches(author.levels, inp.treeRows); if (off.length) throw new Error('pending: ' + off.join('; ')); }
 const authorConfig = luaConfig(author);
 const stage = author.stage;
 const prefix = authorConfig.prefix;
@@ -100,7 +101,7 @@ function observe(w) {
         o[`crew.${G}.options`] = opts.map(x => x.key + (x.unlocked ? '+' : '-') + (x.building ? '@' + sk(x.building.key) : '')).join(',');
         for (const x of opts) { const p = M.crew_preview(G, x.key); o[`crew.${G}.${x.key}.preview`] = p.kind + ':' + (p.bad ? '!' : '') + p.text; }
         const bonus = FX.crewBonuses(sources, G);
-        for (const kind of FX.CREW_KINDS) o[`crew.${G}.bonus.${kind}`] = num(bonus[kind].pct) + ' ' + bonus[kind].from.map(f => (f.mod ? '*' : '') + f.name + ':' + num(f.value)).join(', ');
+        for (const kind of FX.CREW_KINDS) o[`crew.${G}.bonus.${kind}`] = num(bonus[kind].pct) + '/' + num(bonus[kind].battle) + ' ' + bonus[kind].from.map(f => (f.mod ? '*' : '') + (f.pending ? '~' : '') + f.name + ':' + num(f.value)).join(', ');
         for (const [k, op] of Object.entries(group.options)) {
             if (!op.numbers || op.numbers.ammo === undefined || op.numbers.ammo === null) continue;
             const a = C.crewAmmo(op.numbers, bonus.ammo.pct, op.unit_card ? op.unit_card.men : 0);
@@ -137,6 +138,9 @@ function apply(w, a) {
     case 'points': game.dev = a.points; return '';
     case 'answer_cancel': return String(game.answer_cancel(a.yes));
     case 'script_stand': return String(game.script_stand(k));
+    case 'script_remove': return String(game.script_remove(k));
+    case 'drop_locked': return String(M.drop_locked());     // GAME: the bridge's lose (src/tww3_mtb_crew.lua) after a load, a battle, a turn start
+    case 'crew_pays': game.crewPays = !!a.pays; return '';
     case 'debug_build': M.debug_build_to(k); return '';
     case 'game_dismantle': return String(game.dismantle(k));
     case 'chosen_old': M.set_crew_chosen_silently(true); return '';
@@ -563,6 +567,38 @@ const buildAll = S => { for (const k of levelsOf()) S.run({do: 'debug_build', ke
     add('tests', S);
 }
 {
+    // P2: a building gone without an event the model hears (the horde tab, a script): the bridge's lose is the model's drop_locked, said on the panel
+    const S = scenario('crew_groups 4b: a building gone without an event: drop_locked takes its crew off and says so; nothing more the second time', crewSpec());
+    buildAll(S);
+    const line = authorConfig.levels.filter(r => openersOf('cannons', groupOf('cannons').mount).includes(r.key));
+    const top = line[line.length - 1];
+    const only = S.M.crew_options('cannons').find(o => !o.empty && openersOf('cannons', o.key).length === 1 && openersOf('cannons', o.key)[0] === top.key);
+    S.run({do: 'set_crew', group: 'cannons', option: only.key});
+    S.run({do: 'end_turn'});
+    const hatch = authorConfig.levels.filter(r => openersOf('bombs', groupOf('bombs').mount).includes(r.key))[0];
+    S.run({do: 'set_crew', group: 'bombs', option: S.M.crew_options('bombs').find(o => !o.empty).key});
+    S.run({do: 'script_remove', key: top.key});
+    S.run({do: 'script_remove', key: hatch.key});
+    S.run({do: 'drop_locked'});
+    S.run({do: 'drop_locked'});
+    S.run({do: 'end_turn'});
+    add('tests', S);
+}
+{
+    // P1: no upkeep while the crew cannot serve (the adapter's crew_pays false: Malakai on foot, the places not written)
+    const S = scenario('crew: no upkeep while the crew cannot serve (crew_pays false), then taken again', authorSpec({gold: 100000, demolish: stage.demolish_mode, crew_pays: false}));
+    S.run({do: 'debug_build', key: byMod('crew_weapons_1')});
+    S.run({do: 'debug_build', key: byMod('beer_hall_1')});
+    S.run({do: 'set_crew', group: 'rifles', option: 'quarrellers'});
+    S.run({do: 'end_turn'});
+    S.run({do: 'end_turn'});
+    S.run({do: 'crew_pays', pays: true});
+    S.run({do: 'end_turn'});
+    S.run({do: 'crew_pays', pays: false});
+    S.run({do: 'end_turn'});
+    add('tests', S);
+}
+{
     const S = scenario('crew_groups 5: the riflemen\'s place comes with the first building that opens a kind; an old save\'s single hint flag', crewSpec());
     S.run({do: 'debug_build', key: openersOf('rifles', 'pirates')[0]});
     S.run({do: 'chosen_old'});
@@ -725,13 +761,13 @@ const units = [];
     const sourcesCase = (dataLike, built, groups) => {
         const has = k => built.includes(k);
         const src = C.crewSources(dataLike, has, has);
-        const cfg = {tree: !!dataLike.tree_rows, sources: dataLike.tree_rows.map(r => ({key: r.key, name: r.name, effects: (r.effects || []).filter(e => e && FX.CREW_KINDS.includes(e.kind)).map(e => ({kind: e.kind, target: e.target || '', value: e.value}))})),
+        const cfg = {tree: !!dataLike.tree_rows, sources: dataLike.tree_rows.map(r => ({key: r.key, name: r.name, effects: (r.effects || []).filter(e => e && FX.CREW_KINDS.includes(e.kind)).map(e => ({kind: e.kind, target: e.target || '', value: e.value, ...(e.pending ? {pending: true} : {})}))})),
             ammo_mod: Object.entries(dataLike.ammo_mod || {}).map(([key, mult]) => ({key, mult})),
             groups: Object.entries(dataLike.groups || {}).map(([key, g]) => ({key, boost: (g.boost || []).map(b => ({building: b.building, ...(typeof b.spread === 'number' ? {spread: b.spread} : {}), ...(typeof b.range === 'number' ? {range: b.range} : {})}))}))};
         for (const g of groups) units.push({fn: 'bonuses', config: cfg, built, group: g, want: FX.crewBonuses(src, g)});
     };
     sourcesCase({ammo_mod: {K_cargo: 1.15}, groups: {rifles: {boost: [{building: 'K_dummy', spread: 0.95, range: null}]}, cannons: {boost: [{building: 'K_sig', spread: 0.9, range: 1.1}]}},
-        tree_rows: [{key: 'K_cargo', name: 'Трюм', effects: [{kind: 'ammo', target: 'cannons', value: 25}]}, {key: 'K_dummy', name: 'Манекен', effects: [{text: 'Меткость стрелков: +5 %'}]},
+        tree_rows: [{key: 'K_cargo', name: 'Трюм', effects: [{kind: 'ammo', target: 'cannons', value: 25}, {kind: 'reload', target: 'all', value: -10, pending: true}]}, {key: 'K_dummy', name: 'Манекен', effects: [{text: 'Меткость стрелков: +5 %'}]},
                     {key: 'K_sig', name: 'Сигналы', effects: [{kind: 'range', target: 'all', value: 20}]}, {key: 'K_far', name: 'Не стоит', effects: [{kind: 'ammo', target: 'all', value: 50}]}]},
         ['K_cargo', 'K_dummy', 'K_sig'], ['rifles', 'cannons', 'bombs']);
     const d = T.emptyDesign();
