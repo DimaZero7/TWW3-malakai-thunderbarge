@@ -145,12 +145,29 @@ def tint_files():
 
 
 def m(l, t, r, b):
-    return f"{l:.2f},{t:.2f},{r:.2f},{b:.2f}"
+    """A picture's 9-slice edges as the game reads a margin: top, right, bottom, left (CSS order; the game's own layouts: separator_skull2.png
+    "0,50,0,50" with its ornaments left and right, turns_banner_queued.png "0,40,0,30" with the hourglass in its left 30). Written l, t, r, b
+    before: the separator got 50 at its top and bottom on a 14 high picture, and the game drew past it the neighbours of the picture in its texture
+    (a white gunsight and a dark stroke under every rule: runs/20261115-012811-ship_panel, defect 4)."""
+    return f"{t:.2f},{r:.2f},{b:.2f},{l:.2f}"
+
+
+# The pictures most components of the screen show (a slot's parts, the lines, the cost plates): each has a picture layout img_<stem> of its own,
+# made with it, so the game is not asked to SetImagePath once per component (the first sessions: 1502 calls, 0.345 s of the 2.1 s opening). The same
+# list is src/tww3_mtb_ship_uic.lua PRESET_IMAGES; tools/ui_layout_check.py builds through it (a missing layout fails there).
+PRESET_IMAGES = [D + n + ".png" for n in (
+    "building_frame", "building_frame_hover", "building_frame_plain", "building_frame_selected", "building_frame_selected_hover", "constructing_1",
+    "icon_check_green", "padlock", "icon_treasury", "turns_banner_queued", "icon_banner_bg", "red_text_banner_shadow", "unit_cat_holder_round",
+    "unit_cat_holder_round_fill", "icon_hourglass", "unit_card_build_frame")] + ["ui/tww3_mtb/web/tree_line.png"]
+
+
+def preset_layout(path):
+    return "img_" + path.rsplit("/", 1)[-1][:-4]
 
 
 # layout -> (what it is, its xml)
 def layouts():
-    return {
+    return {**{preset_layout(p): (f"the picture {p}, made with its component", image(preset_layout(p), p)) for p in PRESET_IMAGES},
         "panel_ground": ("the panel's ground: the game's panel_back_tile.png in one piece, 9-slice", image("panel_ground", D + "panel_back_tile.png", m(10, 10, 10, 10))),
         "tree_pane": ("the working area's stone", image("tree_pane", D + "panel_back_tile_stone.png", m(8, 8, 8, 8))),
         "tree_page": ("the «Постройки» tab's page", holder("tree_page")),
@@ -185,7 +202,7 @@ def text_layout(key, spec):
     wrap = "Never split" if spec.get("nowrap") else None
     valign = "Top" if spec.get("valign") == "top" else "Center"
     leading = max(0, round((spec.get("line") or 0) - spec["size"] * 1.25)) if spec.get("line") else 1
-    out = crew_ui.text_layout(key, spec["cat"], spec["pt"], spec["colour"].upper() + "FF", align, wrap, leading, valign)
+    out = crew_ui.text_layout(key, spec["cat"], spec["pt"], spec["colour"].upper() + "FF", align, wrap, leading, valign, spec.get("preset") or "")
     if spec.get("outline"):
         # the game's black outline round the letters (building_frame.twui.xml, dy_num_points_required: text_outline_t0)
         mark = f'fontcat_name="{spec["cat"]}"'

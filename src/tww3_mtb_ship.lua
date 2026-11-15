@@ -10,9 +10,12 @@
 --                  treasury(), treasury_mod(delta), turn(), has_building(key), standing(key), under_construction(key) -> turns | nil,
 --                  issue_building_command(key), cancel_construction(key), dismantle(key) -> bool, on(event, fn); debug_complete(key) (debug only);
 --                  optional (the page's model works without them): cost(key), dev_cost(key), development_points() -> number | nil,
---                  dismantling(key), cancel_asked(key), refusal(key) -> the game's reason of a refused order | nil.
+--                  growth() -> {now, per_turn, need, turns, max} | nil, dismantling(key), dismantle_takes(key) -> the keys a Dismantle takes,
+--                  cancel_asked(key), refusal(key) -> the game's reason of a refused order | nil.
+--                  issue_building_command / cancel_construction may answer 'pending': the game applies the command a moment later and tells
+--                  CommandResult {key, kind} then (the model says nothing till then).
 --                  Events: FactionTurnEnd, BuildingDemolished {key} (before FactionTurnStart), FactionTurnStart, MilitaryForceBuildingCompleteEvent
---                  {building} (after it), CancelAnswered {key, cancelled}
+--                  {building} (after it), CancelAnswered {key, cancelled}, CommandResult {key, kind = 'order' | 'cancel'}
 --     crew_model   src/tww3_mtb_crew_model.lua
 --   Ship.save_state(M, view) -> {saved key = string}      Ship.load_state(M, get) -> view      (get(key) -> the saved string or nil)
 --
@@ -264,8 +267,33 @@ function Ship.make(config, game, crewModel)
     -- the game's words for the points of a horde's building (local_ru: «Недостаточно избытка населения», «Требуемый избыток населения»)
     M.POINTS = 'избытка населения'
     M.POINTS_NOM = 'избыток населения'
+    -- the horde's growth as the game counts it (AccumulatedGrowth, GrowthPerTurn, GrowthThresholdForPoint, TurnsUntilNextGrowthPoint,
+    -- HasMaxDevelopmentPoints): {now, per_turn, need, turns, max}; nil when the game does not say
+    function M.growth()
+        if game.growth then return game.growth() end
+        return nil
+    end
     -- a building being dismantled: the game takes it at the end of the turn, it stands till then
     local function going(row) return (game.dismantling and game.dismantling(row.key)) and true or false end
+    -- what a dismantle of a level takes (the game: the slot's whole building, its lower levels with it; run 20261115-012811), the top first
+    local function takesOf(row)
+        local keys = game.dismantle_takes and game.dismantle_takes(row.key) or {row.key}
+        local out = {}
+        for _, k in ipairs(keys) do local l = M.level(k); if l then push(out, l) end end
+        return out
+    end
+    -- the standing level of a line being dismantled (its mark), and the names of what goes with it
+    local function goingTop(row)
+        local chain = M.chain(row.chain)
+        if chain then
+            for i = #chain.levels, 1, -1 do
+                if game.standing(chain.levels[i].key) then return chain.levels[i] end
+            end
+        end
+        return row
+    end
+    local function namesOf(rows) return join(map(rows, function(r) return '«' .. r.name .. '»' end), ', ') end
+    local function goesText(rows) return namesOf(rows) .. ' ' .. (#rows > 1 and 'уйдут' or 'уйдёт') .. ' в конце хода' end
     local function goingNeeds(row)
         local list = {}
         local below = belowOf(row)
@@ -274,19 +302,40 @@ function Ship.make(config, game, crewModel)
         return filter(list, function(r) return game.has_building(r.key) and going(r) end)
     end
 
-    -- {state = built | dismantling | building | open | locked | unknown, turns, asked, why, missing, poor, short}
+    -- a command the game applies a moment later (the slot read right after it still shows the old state, run 20261115-012811; the adapter reads
+    -- it again on the game's next ticks and tells CommandResult {key, kind}): till then nothing is said, the slot shows it waiting.
+    -- key -> {kind = 'order' | 'cancel', cost, dev}
+    local pending = {}
+    function M.pending(key)
+        local row = M.level(key)
+        if row and pending[row.key] then return pending[row.key].kind end
+        return nil
+    end
+    -- the building window's instruction line while a command waits for the game (instead of «Щелчок — …»); '' when nothing waits
+    function M.pending_note(key)
+        local st = M.status(key)
+        if st.pending == 'order' then return 'Заказ отправлен, ждём ответа игры.' end
+        if st.pending == 'cancel' then return 'Строится, осталось ' .. turnsText(st.turns) .. '. Отмена отправлена, ждём ответа игры.' end
+        return ''
+    end
+
+    -- {state = built | dismantling | building | open | locked | unknown, turns, asked, pending, why, missing, poor, short}
     function M.status(key)
         local row = M.level(key)
         if not row then return {state = 'unknown', why = 'Нет в выгрузке: ' .. key} end
         if game.has_building(row.key) then
-            if going(row) then return {state = 'dismantling', why = 'Сносится: постройка уйдёт в конце хода'} end
+            if going(row) then return {state = 'dismantling', why = 'Сносится: ' .. goesText(takesOf(goingTop(row)))} end
             return {state = 'built'}
         end
         local turns = game.under_construction(row.key)
+        local p = pending[row.key]
         if turns ~= nil then
-            if game.cancel_asked and game.cancel_asked(row.key) then return {state = 'building', turns = turns, asked = true} end
-            return {state = 'building', turns = turns}
+            local st = {state = 'building', turns = turns}
+            if game.cancel_asked and game.cancel_asked(row.key) then st.asked = true end
+            if p then st.pending = p.kind end
+            return st
         end
+        if p and p.kind == 'order' then return {state = 'building', turns = row.turns, pending = 'order'} end
         local missing = M.missing(row.key)
         if #missing > 0 then return {state = 'locked', why = M.requires_text(missing), missing = missing} end
         local gone = goingNeeds(row)
@@ -301,24 +350,33 @@ function Ship.make(config, game, crewModel)
         return {state = 'open'}
     end
 
+    local ordered       -- below: the order's outcome read from the game, said
     function M.order(key)
         local row = M.level(key)
         local before = M.status(key)
         if before.state ~= 'open' then return {ok = false, why = before.why or 'Нельзя заказать'} end
         local cost, dev = M.cost(row.key), M.dev(row.key)
-        -- GAME: the order is the game's command (src/tww3_mtb_game.lua); the game takes the gold and the points
-        game.issue_building_command(row.key)
-        -- check after the order: the game may refuse it while answering ok. Read the slot again; the game's reason when it gives one
+        -- GAME: the order is the game's command (src/tww3_mtb_game.lua); the game takes the gold and the points. 'pending': it is applied a moment
+        -- later (CommandResult below)
+        if game.issue_building_command(row.key) == 'pending' then
+            pending[row.key] = {kind = 'order', cost = cost, dev = dev}
+            fire()
+            return {ok = true, kind = 'pending'}
+        end
+        local out = ordered(row, cost, dev)
+        fire()
+        return out
+    end
+    -- check after the order: the game may refuse it while answering ok. Read the slot again; the game's reason when it gives one
+    function ordered(row, cost, dev)
         if game.under_construction(row.key) == nil then
             local why = game.refusal and game.refusal(row.key) or nil
             message = 'Заказ «' .. row.name .. '» не прошёл: ' .. (truthy(why) and why or 'игра его не приняла') .. '.'
-            fire()
             return {ok = false, why = message}
         end
         local points = ''
         if dev > 0 then points = ' и ' .. num(dev) .. ' ед. ' .. M.POINTS end
         message = 'Заказано: «' .. row.name .. '», ' .. num(cost) .. ' золота' .. points .. ', готово через ' .. turnsText(row.turns) .. '.'
-        fire()
         return {ok = true}
     end
 
@@ -346,21 +404,37 @@ function Ship.make(config, game, crewModel)
         return 'Отменено: «' .. row.name .. '», ' .. back .. '.'
     end
     local function asked(row) return (game.cancel_asked and game.cancel_asked(row.key)) and true or false end
-    function M.cancel(key)
-        local row = M.level(key)
-        if game.under_construction(row.key) == nil then return {ok = false} end
-        if asked(row) then return {ok = false, why = 'Отмена «' .. row.name .. '»: ответьте в окне игры.'} end
-        game.cancel_construction(row.key)
+    local function uncancelled(row)
         if game.under_construction(row.key) ~= nil then
             if asked(row) then message = 'Отмена «' .. row.name .. '»: ответьте в окне игры.'
             else message = 'Отмена «' .. row.name .. '» не прошла: игра её не приняла.' end
-            fire()
             return {ok = false, why = message}
         end
         message = cancelled(row)
-        fire()
         return {ok = true}
     end
+    function M.cancel(key)
+        local row = M.level(key)
+        if game.under_construction(row.key) == nil or pending[row.key] then return {ok = false} end
+        if asked(row) then return {ok = false, why = 'Отмена «' .. row.name .. '»: ответьте в окне игры.'} end
+        if game.cancel_construction(row.key) == 'pending' then
+            pending[row.key] = {kind = 'cancel'}
+            fire()
+            return {ok = true, kind = 'pending'}
+        end
+        local out = uncancelled(row)
+        fire()
+        return out
+    end
+    -- the game applied a waiting command (or the adapter gave up waiting): what it did is read now, and said
+    game.on('CommandResult', function(ctx)
+        local row = M.level(ctx.key)
+        local p = row and pending[row.key]
+        if not p then return end
+        pending[row.key] = nil
+        if p.kind == 'order' then ordered(row, p.cost, p.dev) else uncancelled(row) end
+        fire()
+    end)
     game.on('CancelAnswered', function(ctx)
         local row = M.level(ctx.key)
         if not row then return end
@@ -385,7 +459,12 @@ function Ship.make(config, game, crewModel)
             end
             return {ok = false, why = 'Сначала снесите «' .. (top and top.name or 'верхний уровень') .. '»: он стоит на этой постройке'}
         end
-        local needing = filter(levelList, function(l) return includes(needsOf(l), row.key) and game.has_building(l.key) end)
+        -- what stands on any level the dismantle takes (the game takes the lower levels of the line with it)
+        local takes = map(takesOf(row), function(r) return r.key end)
+        local needing = filter(levelList, function(l)
+            if includes(takes, l.key) or not game.has_building(l.key) then return false end
+            return find(needsOf(l), function(k) return includes(takes, k) end) ~= nil
+        end)
         if #needing > 0 then return {ok = false, why = 'Сначала снесите «' .. needing[1].name .. '»: ей нужна эта постройка'} end
         local chain = M.chain(row.chain)
         local busy = chain and find(chain.levels, function(l) return game.under_construction(l.key) ~= nil end)
@@ -393,18 +472,26 @@ function Ship.make(config, game, crewModel)
         return {ok = true}
     end
 
+    local demolishSaid      -- below, with the crew: what a demolish takes, as a sentence
     function M.demolish(key)
         local row = M.level(key)
         if not M.can_demolish(key).ok then return {ok = false, why = M.can_demolish(key).why} end
         -- GAME: Dismantle after its CanDismantle; the building stands until the turn ends, then BuildingDemolished. guess: no gold back
+        local said = demolishSaid(row)
         if not game.dismantle(row.key) then
             message = 'Снос «' .. row.name .. '» не прошёл: игра его не приняла.'
             fire()
             return {ok = false, why = message}
         end
-        message = 'Снос заказан: «' .. row.name .. '» уйдёт в конце хода.'
+        message = 'Снос заказан: ' .. said
         fire()
         return {ok = true}
+    end
+    -- what a demolish will take, said before it is confirmed (the round button's tooltip) and when it is ordered: every level that goes, the crew
+    -- places it closes, the crew and the orders that go with them. '' when it cannot be demolished
+    function M.demolish_preview(key)
+        if not M.can_demolish(key).ok then return '' end
+        return 'Снос: ' .. demolishSaid(M.level(key))
     end
 
     -- ---- the stage of a part of the drawing: pencil, build, ink; none for a part not connected ----
@@ -446,8 +533,17 @@ function Ship.make(config, game, crewModel)
         turnLine = (s and s.turn_line and type(s.turn_line.text) == 'string') and {turn = tonumber(s.turn_line.turn), text = s.turn_line.text} or nil
     end
 
-    -- every level a building needs, all the way down, the deepest first
+    -- every level a building needs, all the way down, the deepest first. It reads only the tree (no game state): kept per key while no extra
+    -- requirement is set (in the game none ever is), a copy handed out (the panel asks ~2000 times a refresh: the session's profile)
+    local needsMemo = {}
+    local walkNeeds
     function M.needs_all(key)
+        if next(M.extra_requires) ~= nil then return walkNeeds(key) end
+        local m = needsMemo[key]
+        if not m then m = walkNeeds(key); needsMemo[key] = m end
+        return copy(m)
+    end
+    function walkNeeds(key)
         local out, seen = {}, {}
         local function walk(k)
             local row = M.level(k)
@@ -687,24 +783,79 @@ function Ship.make(config, game, crewModel)
         end
         return said
     end
+    -- what the ship has after a demolish of row, before it is done: the levels it takes, the crew places it closes, what of the crew goes (the
+    -- rule of dropLocked: an order whose option closes comes back with its gold, a standing crew leaves without)
+    local function afterDemolish(row)
+        local takes = takesOf(row)
+        local goneKeys = map(takes, function(r) return r.key end)
+        local below = belowOf(row)
+        local back = (#takes == 1 and below) and below.key or nil      -- a dismantle of one level (the page's step_down): the one below stands again
+        local function standsAfter(r) return r.key == back or (stands(r) and not includes(goneKeys, r.key)) end
+        local function opensAfter(g, o) return find((openers[g] or {})[o] or {}, standsAfter) ~= nil end
+        local function placeAfter(g)
+            local group = groups[g]
+            if not group or not M.carried() then return false end
+            if group.mount then return opensAfter(g, group.mount) end
+            for _, o in ipairs(group.option_order) do
+                if o ~= group.start and opensAfter(g, o) then return true end
+            end
+            return false
+        end
+        local places, said = {}, {}
+        for _, g in ipairs(groupOrder) do
+            local after = placeAfter(g)
+            if M.crew_place(g) and not after then push(places, g) end
+            local function open(o) return o == emptyOf(g) or (after and opensAfter(g, o)) end
+            local st = stateOf(g)
+            if st.order and st.order.option ~= emptyOf(g) and not open(st.order.option) then
+                push(said, 'заказ на ' .. nameOf(g, st.order.option) .. ' снимут, ' .. num(st.order.paid) .. ' золота вернётся')
+            end
+            if st.standing ~= emptyOf(g) and not open(st.standing) then push(said, nameOf(g, st.standing) .. ' сойдут с корабля, найм не вернётся') end
+        end
+        return {takes = takes, places = places, said = said}
+    end
+    local quoted
+    demolishSaid = function(row)
+        local fx = afterDemolish(row)
+        local s = goesText(fx.takes) .. '.'
+        if #fx.places > 0 then
+            s = s .. ' ' .. (#fx.places > 1 and 'Закроются места экипажа' or 'Закроется место экипажа') .. ' ' .. quoted(map(fx.places, M.place_name)) .. '.'
+        end
+        if #fx.said > 0 then s = s .. ' ' .. upper_first(join(fx.said, '; ')) .. '.' end
+        return s
+    end
     -- a building gone at the end of the turn (the adapter tells it at Malakai's turn start, before FactionTurnStart): its crew goes with it, the
-    -- turn's line says so
+    -- turn's line says so: every level that went, the crew places that closed, the crew that left
     local gone = {}
     local shipWas
     local shipNow
     local function goneText()
         if #gone == 0 then return nil end
-        local said = {}
-        for _, g in ipairs(gone) do for _, x in ipairs(g.said) do push(said, x) end end
-        local s = 'Снесено: ' .. join(map(gone, function(g) return '«' .. g.name .. '»' end), ', ') .. '.'
+        local said, places = {}, {}
+        for _, g in ipairs(gone) do
+            for _, x in ipairs(g.said) do push(said, x) end
+            for _, x in ipairs(g.places) do push(places, x) end
+        end
+        local s = 'Снесено: ' .. join(map(gone, function(g) return g.names end), ', ') .. '.'
+        if #places > 0 then
+            s = s .. ' ' .. (#places > 1 and 'Закрыты места экипажа' or 'Закрыто место экипажа') .. ' ' .. quoted(map(places, M.place_name)) .. '.'
+        end
         if #said > 0 then s = s .. ' Постройки больше нет: ' .. join(said, '; ') .. '.' end
         return s
     end
     game.on('BuildingDemolished', function(ctx)
         local said = dropLocked()
         local row = M.level(ctx.key)
-        push(gone, {name = row and row.name or ctx.key, said = said})
-        shipWas = shipNow()
+        -- the places it closed: open in the ship of the turn's end, closed now
+        local now = shipNow()
+        local was = shipWas or now
+        local places = filter(was.places, function(g) return not includes(now.places, g) end)
+        push(gone, {names = row and namesOf(takesOf(row)) or ('«' .. ctx.key .. '»'), places = places, said = said})
+        -- the baseline of the turn's news loses what went, and gains nothing: the game has already put this turn's completions in their slots (they
+        -- are told after FactionTurnStart, run 20261115-012811), so a place they open is still news then
+        shipWas = {parts = filter(was.parts, function(p) return includes(now.parts, p) end),
+                   places = filter(was.places, function(g) return includes(now.places, g) end),
+                   kinds = filter(was.kinds or {}, function(k) return includes(now.kinds, k) end)}
         message = goneText()
         fire()
     end)
@@ -749,7 +900,7 @@ function Ship.make(config, game, crewModel)
     end
     local TAG = {rifles = 'Стрелки', cannons = 'Орудия', bombs = 'Бомбы', cupolas = 'Гнёзда', harpoon = 'Гарпун'}
     function M.place_name(g) return TAG[g] or (groups[g] and groups[g].name) or g end
-    local function quoted(list) return join(map(list, function(s) return '«' .. s .. '»' end), ', ') end
+    quoted = function(list) return join(map(list, function(s) return '«' .. s .. '»' end), ', ') end
     local NEW_KINDS = {
         rifles = function(l, one) return 'Для стрелков теперь ' .. (one and 'открыт отряд' or 'открыты отряды') .. ' ' .. l .. '.' end,
         cannons = function(l) return 'В порты теперь можно поставить ' .. l .. '.' end,
@@ -807,10 +958,24 @@ function Ship.make(config, game, crewModel)
     -- the ship as it was when the player ended the turn: the turn's news are told against it (a script's building of the turn is no news)
     game.on('FactionTurnEnd', function() shipWas = shipNow() end)
     -- the one obvious first step of a fresh campaign: nothing built, nothing ordered, nothing said yet
+    -- nothing can be ordered and points are what is missing: what the player waits for, in the game's words (local_ru: «Численность этой орды
+    -- растет со временем»; the horde's growth makes the surplus: GrowthThresholdForPoint, TurnsUntilNextGrowthPoint). nil otherwise
+    function M.waiting()
+        local short = false
+        for _, r in ipairs(levelList) do
+            local st = M.status(r.key)
+            if st.state == 'open' then return nil end
+            if st.short then short = true end
+        end
+        if not short then return nil end
+        local g = M.growth()
+        if g and truthy(g.turns) then return 'Нечего заказать: не хватает ' .. M.POINTS .. ', следующая единица через ' .. turnsText(g.turns) .. '.' end
+        return 'Нечего заказать: не хватает ' .. M.POINTS .. '.'
+    end
     function M.first_step()
         if truthy(message) then return nil end
         for _, r in ipairs(levelList) do
-            if game.has_building(r.key) or game.under_construction(r.key) ~= nil then return nil end
+            if game.has_building(r.key) or game.under_construction(r.key) ~= nil then return M.waiting() end
         end
         local first = find(levelList, function(r) return #M.missing(r.key) == 0 end)
         if not first then return nil end
@@ -838,6 +1003,8 @@ function Ship.make(config, game, crewModel)
         local g = goneText()
         if g then push(parts, g) end
         if s ~= '' then push(parts, upper_first(s) .. '.') end
+        local w = M.waiting()
+        if w then push(parts, w) end
         message = #parts > 0 and join(parts, ' ') or nil
         gone = {}
         turnLine = message and {turn = game.turn(), text = message} or nil

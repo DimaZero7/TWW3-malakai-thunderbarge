@@ -113,7 +113,8 @@ local function build()
     local ok, err = xpcall(function()
         S.ui = mods.Uic.new(LAYOUTS, mods.cfg.text)
         S.root = S.ui.root(ROOT)
-        S.panel = mods.UI.make_panel{root = S.root, M = S.M, cfg = mods.cfg, CM = mods.CM, Ship = mods.Ship, flags = {}, keep = {tab = S.keep.tab, pan = S.keep.scroll}, host = host()}
+        S.panel = mods.UI.make_panel{root = S.root, M = S.M, cfg = mods.cfg, CM = mods.CM, Ship = mods.Ship, flags = {}, keep = {tab = S.keep.tab, pan = S.keep.scroll}, host = host(), ui = S.ui,
+                                       profile = mods.Uic.ENGINE.profile}
         -- the cross closes (the page is the whole page and has none to close): it takes the click in the game
         S.panel.view.close:SetInteractive(true)
         -- the dim over the map (the page's CSS .backdrop: 150 of 255, as the old panel sets it [игра])
@@ -168,6 +169,7 @@ function S.open()
     -- the game's advisor out of the way while the panel is open (src/tww3_mtb_ship_uic.lua ENGINE.hide_advisor), again when it gives new advice
     local E = S.ui.ENGINE
     S.advisor = {restore = E.hide_advisor(), came = false}
+    S.hud = E.hide_hud and E.hide_hud() or nil
     core:add_listener('tww3_mtb_ship_advice', 'AdviceIssued', function() return S.shown == true end, guarded(function()
         S.advisor.came = true
         E.hide_advisor()
@@ -186,6 +188,7 @@ local function quiet()
     pcall(function() cm:release_escape_key_with_callback(ESCAPE) end)
     timers_on(false)
     if S.advisor then local a = S.advisor; S.advisor = nil; a.restore(a.came) end
+    if S.hud then local h = S.hud; S.hud = nil; h() end
 end
 
 -- closed: hidden and kept, its hover windows and choices gone

@@ -94,12 +94,15 @@ export function rekey(page, treeRows) {
 export function luaConfig({levels, parts, words, per}) {
     const all = [...levels.hull, ...levels.chains.flatMap(c => c.levels)];
     const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+    // «Рост орды: +N» of a level (the game's wh_main_effect_hordebuilding_growth_core in its full list of effects: web/js/game_sim.js growthOf)
+    const growth = {};
+    for (const r of levels.tree_rows || []) growth[r.key] = (r.effects || []).filter(e => e && e.effect === 'wh_main_effect_hordebuilding_growth_core').reduce((s, e) => s + (e.value || 0), 0);
     const out = {
         _about: 'Made by tools/ship_config.mjs from the author\'s tree as the page builds it (web/js/main.js) in the mod\'s keys. Read by src/tww3_mtb_ship.lua and src/tww3_mtb_crew_model.lua. Do not edit.',
         prefix: levels.prefix,
         tree: !!levels.tree_rows,
         levels: all.map(r => ({key: r.key, name: r.name, chain: r.chain, level: r.level, tier: r.tier || 0, cost: r.cost, turns: r.turns, dev: r.dev || 0,
-                               requires: [...r.requires], unlocks: (r.unlocks || []).map(u => ({group: u.group, option: u.option})),
+                               growth: growth[r.key] || 0, requires: [...r.requires], unlocks: (r.unlocks || []).map(u => ({group: u.group, option: u.option})),
                                parts: (r.parts || []).filter(p => p && p.part).map(p => p.part)})),
         chains: levels.chains.map(c => ({key: c.key, levels: c.levels.map(r => r.key)})),
         hull_tiers: Object.entries(levels.hull_tiers || {}).map(([key, tier]) => ({key, tier})),

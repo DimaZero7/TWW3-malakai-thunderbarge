@@ -54,7 +54,7 @@ PAGE = 250                               # rows of a dump per remote call
 # Per step: seconds before the step is cut off (the next one goes on). The open builds ~3800 components (probe item 8 times 1500).
 BUDGET = {"census": 60, "smoke": 120, "gates_fresh": 60, "requirement": 150, "agree": 120, "agree_after_turn": 120, "load": 150, "configure": 30, "frames_closed": 30, "open": 240, "frames_open": 30, "diag": 90,
           "dump_fresh_tree": 300, "dump_fresh_tree_info": 300, "dump_fresh_ship": 300, "order": 60, "cancel": 60, "order_again": 60, "tabs": 60, "info": 60,
-          "unit": 60, "picker": 90, "scroll": 90, "close_reopen": 120, "escape": 60, "save": 60, "opacity": 30, "fit": 120, "demolish": 90, "order_long": 60,
+          "unit": 60, "picker": 90, "scroll": 90, "close_reopen": 120, "escape": 60, "save": 60, "opacity": 30, "fit": 120, "views": 90, "views_after_turn": 60, "demolish": 90, "order_long": 60,
           "turn": END_TURN_LIMIT + 120, "dump_after_turn": 300, "cancel_previous": 120, "save_final": 60, "simulated": 30, "finish": 60, "battle_orders": 900,
           "resize_log": 30, "points": 120, "hover_shots": 90}
 RISKY = {"fit": "«Всё дерево»: the binding lays ~3000 components out again at the scale (ENGINE.scale_by_layout): CPU, not bindings",
@@ -216,7 +216,8 @@ class ShipSession(pp.Probe):
 
     def sleep(self, seconds):
         if self.fake:
-            self.send("return fake_tick()", 5)      # the fake's timers (the game's real callbacks) run at a sleep
+            # the fake's timers (the game's real callbacks) run at a sleep, a tick for each 100 ms of it (the adapter counts its waits so)
+            self.send(f"return fake_ticks({max(1, round(seconds * 10))})", 5)
         else:
             time.sleep(seconds)
 
@@ -365,6 +366,19 @@ class ShipSession(pp.Probe):
         return (f"{p.get('total_calls')} calls, {p.get('total_seconds', 0):.3f} s in the game's UIComponent; heaviest: "
                 + ", ".join(f"{k} {p['calls'].get(k)} / {v:.3f} s" for k, v in top))
 
+    @staticmethod
+    def logic_text(l):
+        """Where an open's time went besides the game's UIComponent calls: the model (src/tww3_mtb_ship.lua, its outermost calls: the adapter's
+        reads inside), the adapter's context reads, and what is left for the drawing's own Lua (ship_session.lua prof_read)."""
+        if not l:
+            return "no logic profile"
+        f = lambda v: f"{v:.3f}" if isinstance(v, (int, float)) else str(v)
+        tops = lambda rows: ", ".join(f"{r['name']} {r['calls']} / {f(r['seconds'])} s" for r in (rows or [])[:5]) or "none"
+        return (f"LOGIC: wall {f(l.get('wall'))} s = UIComponent {f(l.get('ui_seconds'))} + model {f(l.get('model_outer'))} ({l.get('model_outer_calls')} outer calls; "
+                f"heaviest {tops(l.get('model_top'))}) + the drawing's own Lua {f(l.get('drawing_own'))}; inside the model the adapter read the game "
+                f"{l.get('adapter_reads')} times in {f(l.get('adapter_read_seconds'))} s (functions: {tops(l.get('adapter_fn'))}; expressions: "
+                f"{tops(l.get('adapter_expr'))})")
+
     def sopen(self):
         d = self.data("open", {}, 200)
         if not d.get("ok"):
@@ -378,7 +392,8 @@ class ShipSession(pp.Probe):
         return status, (f"opened by {d.get('how')}: {d.get('count')} components in {d.get('build_seconds', 0):.2f} s cpu ({d.get('seconds', 0):.2f} s with the call); "
                         f"root {d.get('root')}; texts measured by the game's TextDimensions {m.get('game')}, by the characters {m.get('chars')} "
                         f"(0 measured: the layout used the estimate), empty {m.get('empty')}; tab {d['state'].get('tab')}; foot «{d['state'].get('foot')}»; "
-                        f"header points «{d['state'].get('points_text')}»; reused {d.get('reused')}; PROFILE: {self.profile_text(d.get('profile'))}"), d
+                        f"header points «{d['state'].get('points_text')}»; reused {d.get('reused')}; PROFILE: {self.profile_text(d.get('profile'))}; "
+                        f"{self.logic_text(d.get('logic'))}"), d
 
     # -- b. a dump, paged, written to the run folder
     def dump(self, name, keys=None, only=None, look=None):
@@ -491,7 +506,7 @@ class ShipSession(pp.Probe):
     def click_sim(self, id_, keys, done):
         """A click by the game's own event (SimulateLClick on our component: ComponentLClickUp reaches the panel's listener, probe 14.11 item 5),
         read 1.5 s later; only if it did nothing, the listener's own function. Returns (state, way)."""
-        self.data("click", {"id": id_, "keys": keys, "way": "simulate"}, 30)
+        self.right_after = self.data("click", {"id": id_, "keys": keys, "way": "simulate"}, 30).get("state")
         self.sleep(1.5)
         st = self.data("state", {"keys": keys})
         if done(st):
@@ -508,7 +523,7 @@ class ShipSession(pp.Probe):
         have, need = g.get("points"), g.get("dev") or 0
         short_dev = need - (have or 0) if need else 0
         short_gold = (g.get("cost") or 0) - (g.get("gold") or 0)
-        text = f"before: points {have}, the level asks {need}; gold {g.get('gold')}, cost {g.get('cost')}; IsActive {g.get('active')} (enough {g.get('enough')}, afford {g.get('afford')}, locked by level {g.get('locked_by_level')}); selected {g.get('selected')}; the panel {(g.get('panel') or {}).get('state')}"
+        text = f"before: points {have}, the level asks {need}; gold {g.get('gold')}, cost {g.get('cost')}; IsActive {g.get('active')} (enough {g.get('enough')}, afford {g.get('afford')}, locked by level {g.get('locked_by_level')}); the panel {(g.get('panel') or {}).get('state')}"
         if short_dev > 0 or short_gold > 0:
             gave = self.data("give", {"dev": max(0, short_dev), "gold": max(0, short_gold) + (1000 if short_gold > 0 else 0)})
             self.gifts.append({"step": label, "key": key, **gave})
@@ -531,7 +546,8 @@ class ShipSession(pp.Probe):
         return out
 
     def record(self, what, key, before, after):
-        self.actions.append({"do": what, "key": key, "gold_before": (before.get("treasury") or {}).get("game"),
+        self.actions.append({"do": what, "key": key, "gold_before": (before.get("treasury") or {}).get("game"), "points_before": before.get("points"),
+                             "growth_before": (before.get("growth") or {}).get("now"),
                              "got": {k: after.get(k) for k in ("message", "first_step", "unseen", "news", "foot", "mark", "crew_upkeep", "turn")},
                              "status": ((after.get("levels") or {}).get(key) or {}).get("status", {}).get("state") if key else None,
                              "treasury": after.get("treasury")})
@@ -553,19 +569,24 @@ class ShipSession(pp.Probe):
             lv = after["levels"][k]
             paid = (before["treasury"].get("game") or 0) - (after["treasury"].get("game") or 0)
             ok = lv["status"].get("state") == "building" and lv.get("under_construction") is not None and any(c.get("level") == k for c in lv.get("construction") or [])
+            # DEFECT 1 of 20261115-012811: the order went in and the panel said it did not. Now: nothing said until the game applies it, then the truth
+            ra = getattr(self, "right_after", None) or {}
+            ra_lv = (ra.get("levels") or {}).get(k) or {}
+            said_ok = str(after.get("message") or "").startswith("Заказано: «")
             same_t = after["treasury"].get("game") == after["treasury"].get("adapter")
             game_cost = (cost.get("cost") or {}).get("v")
             answer = (f"{self.node['name']} ({k.removeprefix(pp.PREFIX)}) by {way}: status {lv['status'].get('state')}, adapter turns {lv.get('under_construction')}, "
                       f"game construction (slot re-read) {lv.get('construction')}; paid {paid} (the tree says {self.node.get('cost')}, the game's CreateCost {game_cost}, "
                       f"CreateTime {(cost.get('time') or {}).get('v')}); treasury game {after['treasury'].get('game')} adapter {after['treasury'].get('adapter')}; "
-                      f"message «{after.get('message')}»; foot «{after.get('foot')}»")
+                      f"message «{after.get('message')}»; foot «{after.get('foot')}»; RIGHT AFTER THE CLICK (the game not yet applied): status "
+                      f"{ra_lv.get('status')}, message «{ra.get('message')}»")
             ctrl = None
             if not ok:
                 ctrl = self.control(k, gates.get("slot"))
                 answer += (f"; CONTROL by the probe's helper, same building, slot {gates.get('slot')}: {'TAKEN (the adapter differs)' if ctrl.get('taken') else 'refused too (the game refuses it: see the gates)'}")
             answer = gtext + "; " + answer
-            status = "ok" if ok and same_t and paid == self.node.get("cost") else ("differs" if ok else "failed")
-            return status, answer, {"before": before, "way": way, "cost": cost, "after": after, "gates": gates, "control": ctrl}
+            status = "ok" if ok and same_t and paid == self.node.get("cost") and said_ok else ("differs" if ok else "failed")
+            return status, answer, {"before": before, "way": way, "cost": cost, "after": after, "right_after": ra, "gates": gates, "control": ctrl}
         return fn
 
     def scancel(self):
@@ -573,16 +594,18 @@ class ShipSession(pp.Probe):
         if not k:
             return "skipped", "nothing ordered", {}
         before = self.data("state", {"keys": [k]})
-        self.data("click", {"id": f"mtb_tree_node_{self.node['index']}", "keys": [k]}, 30)
+        ra = self.data("click", {"id": f"mtb_tree_node_{self.node['index']}", "keys": [k]}, 30).get("state") or {}
         self.sleep(1.5)
         after = self.data("state", {"keys": [k]})
         self.record("cancel", k, before, after)
         lv = after["levels"][k]
         back = (after["treasury"].get("game") or 0) - (before["treasury"].get("game") or 0)
         ok = lv["status"].get("state") == "open" and not lv.get("construction")
-        answer = (f"status {lv['status'].get('state')}, construction {lv.get('construction')}; gold back {back} (paid {self.node.get('cost')}); "
-                  f"message «{after.get('message')}»")
-        return ("ok" if ok and back == self.node.get("cost") else "differs" if ok else "failed"), answer, {"before": before, "after": after}
+        said_ok = str(after.get("message") or "").startswith("Отменено: «")
+        answer = (f"status {lv['status'].get('state')}, construction {lv.get('construction')}; gold back {back} (paid {self.node.get('cost')}); points "
+                  f"{before.get('points')} -> {after.get('points')}; message «{after.get('message')}»; right after the click: status "
+                  f"{((ra.get('levels') or {}).get(k) or {}).get('status')}, message «{ra.get('message')}»")
+        return ("ok" if ok and back == self.node.get("cost") and said_ok else "differs" if ok else "failed"), answer, {"before": before, "right_after": ra, "after": after}
 
     def stabs(self):
         out = {}
@@ -594,22 +617,31 @@ class ShipSession(pp.Probe):
                                             f"{out['tree'].get('tab')}"), out
 
     def sinfo(self):
-        idx = self.node["index"] if self.key else 0
-        h = self.data("hover", {"id": f"mtb_tree_node_{idx}"})
+        # the first slot the mouse can be on (the panel lets a slot outside the tree's window take no hover: src/tww3_mtb_ship_uic.lua reachable)
+        first = self.node["index"] if self.key else 0
+        nodes = self.data("nodes")["nodes"]
+        for idx in [first] + [n["index"] for n in nodes if n["index"] != first][:40]:
+            h = self.data("hover", {"id": f"mtb_tree_node_{idx}", "profile": True})
+            if h.get("hovered") == f"mtb_tree_node_{idx}":
+                break
         self.sleep(0.8)
         self.shoot("ss_info_window")
         info = h.get("info")
         self.data("hover", {"id": "frame"})
-        return ("ok" if info else "failed"), f"hover on mtb_tree_node_{idx}: hovered {h.get('hovered')}, building window {info or 'NOT shown'}", h
+        return ("ok" if info else "failed"), (f"hover on mtb_tree_node_{idx}: hovered {h.get('hovered')}, building window {info or 'NOT shown'}; "
+                                              f"{self.logic_text(h.get('logic'))}"), h
 
     def sunit(self):
         ids = self.data("ids", {"prefix": "mtb_crew_card_"})["ids"]
         ids = [i for i in ids if not i.startswith("mtb_crew_card_pick_")]
         army = self.data("ids", {"prefix": "mtb_army_card_"})["ids"]
-        target = (ids or army or [None])[0]
-        if not target:
+        if not (ids or army):
             return "info", "no unit card on the tree", {}
-        h = self.data("hover", {"id": target})
+        # the first card the mouse can be on (one outside the tree's window takes no hover)
+        for target in (ids + army)[:30]:
+            h = self.data("hover", {"id": target})
+            if h.get("unit") or h.get("hovered") == target:
+                break
         self.sleep(0.8)
         self.shoot("ss_unit_panel")
         self.data("hover", {"id": "frame"})
@@ -653,10 +685,47 @@ class ShipSession(pp.Probe):
         moved = [s for s in steps if s["pan"] != before.get("pan")]
         return ("ok" if moved or not bars else "differs"), f"bars {bars}; pan before {before.get('pan')}; after each click {[(s['id'], s['pan']) for s in steps]}", {"steps": steps}
 
+    def sviews(self):
+        """The pictures the reviewer of 20261115-012811 asked for, each isolated: the tree at its very top and bottom, a slot short of points not
+        hovered, a building window near the bottom right corner; the drawing's own time by section (src/tww3_mtb_ship_ui.lua profile)."""
+        out = {"drawing_profile_before": self.data("drawing_profile").get("profile")}
+        self.data("click", {"id": "mtb_tab_tree"})
+        for where in ("bottom", "top"):
+            out[where] = self.data("pan", {"where": where})
+            self.sleep(0.6)
+            self.shoot(f"ss_tree_{where}")
+        out["short"] = self.data("pan", {"status": "short"})
+        self.sleep(0.6)
+        self.shoot("ss_short_unhovered")
+        out["bottom_again"] = self.data("pan", {"where": "bottom"})
+        c = self.data("corner_slot")
+        if c.get("id"):
+            out["corner"] = self.data("hover", {"id": c["id"]})
+            self.sleep(0.6)
+            self.shoot("ss_info_corner")
+            self.data("hover", {"id": "frame"})
+        out["drawing_profile"] = self.data("drawing_profile").get("profile")
+        ok = all(out.get(k, {}).get("pan") for k in ("bottom", "top"))
+        return ("ok" if ok else "differs"), (f"bottom {out['bottom'].get('pan')}, top {out['top'].get('pan')}, a short slot shown {out['short'].get('shown')}, "
+                                             f"corner window {(out.get('corner') or {}).get('info')}"), out
+
+    def sviews_after_turn(self):
+        """After the turn: «Корабль» with the turn's news, the crew list beside the tree, the drawing's own time of the refreshes."""
+        out = {}
+        self.data("click", {"id": "mtb_tab_ship"})
+        self.sleep(0.8)
+        self.shoot("ss_ship_after_turn")
+        self.data("click", {"id": "mtb_tab_tree"})
+        self.sleep(0.6)
+        self.shoot("ss_crew_list_after_turn")
+        out["drawing_profile"] = self.data("drawing_profile").get("profile")
+        return "ok", "«Корабль» and the crew list after the turn shot; the drawing's profile kept", out
+
     def sfit(self):
         self.data("profile_mark")
         r = self.data("click", {"id": "mtb_tree_fit"}, 120)
-        prof = self.data("profile_read").get("profile")
+        pr = self.data("profile_read")
+        prof, logic = pr.get("profile"), pr.get("logic")
         self.sleep(1.0)
         self.shoot("ss_whole_tree")
         # a slot's building window over the whole tree made smaller (the window keeps the game's size)
@@ -668,7 +737,7 @@ class ShipSession(pp.Probe):
         a, b = r["state"], r2["state"]
         ok = (a.get("pan") or {}).get("z", 1) < 1 and (b.get("pan") or {}).get("z") == 1
         return ("ok" if ok else "differs"), (f"«Всё дерево»: z {(a.get('pan') or {}).get('z')} label «{a.get('fit_label')}» in {r.get('seconds', 0):.2f} s "
-                                             f"(PROFILE: {self.profile_text(prof)}); hover there: window {h.get('info') or 'NOT shown'}; "
+                                             f"(PROFILE: {self.profile_text(prof)}; {self.logic_text(logic)}); hover there: window {h.get('info') or 'NOT shown'}; "
                                              f"«Вблизи»: z {(b.get('pan') or {}).get('z')} label «{b.get('fit_label')}» in {r2.get('seconds', 0):.2f} s"), {"fit": r, "profile": prof, "hover": h, "back": r2}
 
     def sclose(self):
@@ -682,7 +751,8 @@ class ShipSession(pp.Probe):
         ok = not c.get("is_open") and not c.get("root_visible") and r.get("ok") and after.get("tab") == before.get("tab") and after.get("pan") == before.get("pan") and r.get("reused")
         return ("ok" if ok else "differs"), (f"after the cross: open {c.get('is_open')}, our root left {c.get('root_left')} (on the screen {c.get('root_visible')}); reopened {r.get('ok')} in "
                                              f"{r.get('build_seconds', 0):.2f} s, shown again without a rebuild (S.reused) {r.get('reused')}; tab {before.get('tab')} -> {after.get('tab')}, "
-                                             f"pan {before.get('pan')} -> {after.get('pan')}; PROFILE of the reopen: {self.profile_text(r.get('profile'))}"), {"closed": c, "reopen": r}
+                                             f"pan {before.get('pan')} -> {after.get('pan')}; PROFILE of the reopen: {self.profile_text(r.get('profile'))}; "
+                                             f"{self.logic_text(r.get('logic'))}"), {"closed": c, "reopen": r}
 
     def sescape(self):
         e = self.data("escape", {})
@@ -866,7 +936,9 @@ class ShipSession(pp.Probe):
         if state == "dismantling":
             look["hover"] = self.slot_look("dismantling", node, "dismantling_tree", "a slot being dismantled")
             look["click"] = self.data("click", {"id": f"mtb_tree_node_{node['index']}", "keys": [k]})
-        answer = (hull_txt + f"{k.removeprefix(pp.PREFIX)} (slot {slot}): CanDismantle before {can.get('can')}; round button shown; after it the panel says "
+        self.dismantled["points"] = before.get("points")
+        answer = (hull_txt + f"{k.removeprefix(pp.PREFIX)} (slot {slot}): CanDismantle before {can.get('can')}; round button shown, the panel's preview "
+                  f"«{((before.get('levels') or {}).get(k) or {}).get('demolish_preview')}»; after it the panel says "
                   f"«{read['state'].get('message')}», status {state} (expected dismantling); the game: slot model {read.get('model_slot')}, "
                   f"IsDismantling {read.get('dismantling')}, building {read.get('building')}; a dialogue_box present {dlg.get('present')} (on the screen {dlg.get('open')}, "
                   f"{dlg.get('text')}); the turn step reads the slot at the turn start; a click on it then: «{((look.get('click') or {}).get('state') or {}).get('message')}»; "
@@ -942,13 +1014,20 @@ class ShipSession(pp.Probe):
                   f"mark {after.get('mark')}, unseen {after.get('unseen')}; message «{after.get('message')}»; events in order, with the panel's status of the order "
                   f"right after each: {seen}; upkeep: {upkeep} (new model's treasury_mod {[c.get('amount') for c in new]}, old pay_upkeep deltas "
                   f"{[c.get('delta') for c in old]}, old treasury_mod {[c.get('amount') for c in old_tm]}; new model's upkeep {before.get('crew_upkeep')})" + dis_txt +
-                  f"; DEVELOPMENT POINTS of the turn (the page's dev_income guess): {pts_before.get('points')} -> {pts_after.get('points')}, "
-                  f"MilitaryForceDevelopmentPointChange events {sum(1 for e in evs if e['event'] == 'MilitaryForceDevelopmentPointChange')}")
+                  f"; DEVELOPMENT POINTS and GROWTH of the turn (the game's horde browser expressions): points {pts_before.get('points')} -> {pts_after.get('points')}, "
+                  f"growth {pts_before.get('growth')} -> {pts_after.get('growth')}, its parts before {pts_before.get('growth_parts')}; the adapter's growth "
+                  f"{pts_before.get('adapter_growth')} -> {pts_after.get('adapter_growth')}; the panel waits for: «{pts_after.get('waiting')}»; "
+                  f"MilitaryForceDevelopmentPointChange events {sum(1 for e in evs if e['event'] == 'MilitaryForceDevelopmentPointChange')}"
+                  + (f"; points around the dismantle (the game's raze refund multiplier 0.8): {dis.get('points')} before it, {pts_after.get('points')} after the turn" if dis else ""))
         status = "ok" if back and lv.get("status", {}).get("state") == "built" and upkeep != "BOTH charge" else ("differs" if back else "failed")
         return status, answer, {"before": before, "after": after, "money": money, "watch": watch, "closed": closed, "reopen": r, "points": [pts_before, pts_after]}
 
     # -- the cancel of an earlier turn's order: the game asks; the window is answered by script (test only) and must be gone afterwards
     def scancel_previous(self):
+        """DEFECT 2 of 20261115-012811: the window «Отменить строительство» was on the screen (ss_cancel_dialog.png) but a dialogue_box found by
+        name was the HUD's hidden one (hud_campaign > rush_confirmation_holder > dialogue_box), so the adapter said «не прошла» and the session
+        did not answer. Now: the adapter waits (pending, then asked), the window is taken from the game's events where they give it, its parents
+        named; the tick answered by script (test only); gold, points and events before and after the answer."""
         n = getattr(self, "long", None)
         if not n:
             return "skipped", "no order of two turns was left for the turn", {}
@@ -957,45 +1036,60 @@ class ShipSession(pp.Probe):
         if before["levels"][k]["status"].get("state") != "building":
             return "info", f"{k} is no longer under construction after the turn ({before['levels'][k]['status']})", before
         self.data("watch_on", {"keys": [k]})
+        self.data("panels_on")
         pts0 = self.data("points")
-        self.data("click", {"id": f"mtb_tree_node_{n['index']}", "keys": [k], "way": "direct"})
+        ra = self.data("click", {"id": f"mtb_tree_node_{n['index']}", "keys": [k], "way": "direct"}).get("state") or {}
         self.sleep(1.5)
         asked = self.data("state", {"keys": [k]})
-        dlg = self.data("dialog")
+        dlg = self.data("dialog", {"guid": True})
         self.shoot("ss_cancel_dialog")
         if asked["levels"][k]["status"].get("asked"):
             self.dump("asked", keys=[k], only=[f"mtb_tree_node_{n['index']}", f"mtb_tree_node_dev_{n['index']}", f"mtb_tree_node_cost_{n['index']}", "frame/message"],
                       look={"index": n["index"], "key": k, "page": "asked_tree", "title": "a cancel waiting for the game's window"})
+        pts1 = self.data("points")
         answered, after = None, asked
         if dlg.get("open"):
             answered = self.data("dialog_answer", {"button": "tick"})
-            self.sleep(2.0)          # the adapter reads the slot every 250 ms until the window closes (src/tww3_mtb_game.lua cancel_construction)
+            self.sleep(2.0)          # the adapter reads the slot every 250 ms while the window waits (src/tww3_mtb_game.lua ask)
             after = self.data("state", {"keys": [k]})
-        gone = not self.data("dialog").get("open")
+        dlg2 = self.data("dialog")
+        gone = not dlg2.get("open")
         ev = self.data("watch_read").get("events")
         self.data("watch_off")
         if not gone:
             self.data("dialog_answer", {"button": "cancel"})
             self.sleep(1.0)
             gone = not self.data("dialog").get("open")
-        pts1 = self.data("points")
+        self.data("panels_off")
+        pts2 = self.data("points")
         self.record("cancel", k, before, after)
         g0, g1, g2 = before["treasury"].get("game"), asked["treasury"].get("game"), after["treasury"].get("game")
-        answer = (f"{n['name']}: after the panel's click: dialog {'OPEN' if dlg.get('open') else 'none'} ({dlg.get('text')}; tick {dlg.get('tick')}), the panel says «{asked.get('message')}» "
-                  f"while its status is {asked['levels'][k]['status']} (expected building, asked); gold {g0} -> {g1} before the answer -> {g2} after the tick (paid {n.get('cost')}); "
-                  f"points {pts0.get('points')} -> {pts1.get('points')}; the panel after the answer «{after.get('message')}», status {after['levels'][k]['status'].get('state')}, "
-                  f"slot {after['levels'][k].get('construction')}; events {[e['event'] for e in ev or []]}; no window left afterwards: {gone}")
+        win = dlg.get("window") or {}
+        answer = (f"{n['name']}: right after the panel's click: status {((ra.get('levels') or {}).get(k) or {}).get('status')}, message «{ra.get('message')}»; "
+                  f"1.5 s later: the panel says «{asked.get('message')}», status {asked['levels'][k]['status']} (expected building, asked); "
+                  f"the window {'ON THE SCREEN by ' + str(dlg.get('way')) if dlg.get('open') else 'NOT FOUND'} (id {win.get('id')}, parents «{win.get('parents')}», "
+                  f"text «{win.get('text')}», tick {win.get('tick')}); a dialogue_box by name: {dlg.get('by_name')}; ok_group {dlg.get('ok_group')}; FindByGuid {dlg.get('by_guid')}; the game's panel events {dlg.get('panels')}; "
+                  f"answered {answered}; gold {g0} -> {g1} before the answer -> {g2} after the tick (paid {n.get('cost')}); points {pts0.get('points')} -> "
+                  f"{pts1.get('points')} -> {pts2.get('points')}; the panel after the answer «{after.get('message')}», status "
+                  f"{after['levels'][k]['status'].get('state')}, slot {after['levels'][k].get('construction')}; events {[e['event'] for e in ev or []]}; "
+                  f"no window left afterwards: {gone}")
         refunded = g2 is not None and g1 is not None and g2 - g1 == n.get("cost")
-        return ("ok" if gone and refunded else "info"), answer, {"before": before, "asked": asked, "dialog": dlg, "answered": answered, "after": after, "events": ev}
+        status = "ok" if gone and refunded and str(after.get("message") or "").startswith("Отменено: «") else ("differs" if dlg.get("open") else "failed")
+        return status, answer, {"before": before, "right_after": ra, "asked": asked, "dialog": dlg, "answered": answered, "after": after, "dialog_after": dlg2,
+                                "events": ev, "points": [pts0, pts1, pts2]}
 
     # -- orders after a battle, cleanly: a chain not in the force into an empty slot before (control) and after one battle
     def sbattle_orders(self):
         nodes = self.data("nodes")["nodes"]
         busy = set(self.data("pp", {"item": "slots"}).get("slots") or [])
-        chains_busy = {n["chain"] for n in nodes if n["key"] in busy}
-        cands = [n for n in nodes if n["state"] == "open" and not n.get("hull") and n["chain"] not in chains_busy]
+        building = {n["key"] for n in nodes if n["state"] in ("building", "dismantling")}
+        chains_busy = {n["chain"] for n in nodes if n["key"] in busy or n["key"] in building}
+        # the session of 15.11 found none: after its turn the force had 0 points, every building «short» (locked by points only); ensure gives
+        # the points and the gold by script, as for the other orders
+        cands = [n for n in nodes if (n["state"] == "open" or n.get("short") or n.get("poor")) and not n.get("hull") and n["chain"] not in chains_busy]
+        cands.sort(key=lambda n: (n["state"] != "open", n.get("turns") or 1))
         if not cands:
-            return "info", "no open building of a chain not in the force", {}
+            return "info", f"no building of a chain not in the force is open or short of points / gold only: {[(n['key'].removeprefix(pp.PREFIX), n['state']) for n in nodes][:12]}", {}
         k = cands[0]["key"]
         res = {"key": k}
 
@@ -1062,10 +1156,12 @@ class ShipSession(pp.Probe):
                  ("save", "the state saved through the adapter and read back by Ship.load_state", self.ssave("before the turn")),
                  ("opacity", "SetOpacity / PropagateOpacity on a parent that has an image", self.sopacity),
                  ("fit", "«Всё дерево» and back", self.sfit),
+                 ("views", "the tree at its top and bottom, a short slot not hovered, a window at the bottom right; the drawing's own time", self.sviews),
                  ("demolish", "the demolish path (beer hall II), issued before the turn, no dialog open", self.sdemolish),
                  ("order_long", "an order of two turns or more, left for the turn", self.sorder_long),
                  ("turn", "ONE turn end by script; the events as the panel sees them; the upkeep; the dismantle's end", self.sturn),
                  ("dump_after_turn", "the panel after the turn dumped", self.sdump("after_turn", page_state=False)),
+                 ("views_after_turn", "«Корабль» with the turn's news and the crew list, after the turn", self.sviews_after_turn),
                  ("agree_after_turn", "the panel's verdict on every building against the game's, after the turn", self.sagree("after the turn")),
                  ("cancel_previous", "the cancel of the earlier turn's order: the game's window, answered, gold, events; none left after", self.scancel_previous),
                  ("save_final", "saved and read back after the turn", self.ssave("at the end")),
@@ -1146,12 +1242,42 @@ local pairs, ipairs, tonumber, type, pcall, loadstring = pairs, ipairs, tonumber
 local U = getmetatable(core:get_ui_root())
 for _, m in ipairs({'SetInteractive', 'SetTooltipText', 'SetCurrentStateImageColour', 'SetCurrentStateImageOpacity', 'ShaderTechniqueSet', 'ShaderVarsSet',
   'RegisterTopMost', 'PropagateOpacity'}) do if not U[m] then U[m] = function() end end end
+-- as the game's UIComponent: Parent() an address, VisibleFromRoot() false when any parent is hidden, a click's event carries the component
+function U:Parent() return self._parent and self._parent._addr or nil end
+function U:VisibleFromRoot() local u = self; while u do if not u._vis then return false end; u = u._parent end; return true end
+function U:SimulateLClick() fake_fire('ComponentLClickUp', nil, {string = self._id, component = self._addr}) end
+local function make(parent, id, visible) local u = UIComponent(parent:CreateComponent(id, 'x')); if visible == false then u:SetVisible(false) end; return u end
+-- the HUD's own hidden confirmation (ui/campaign ui/hud_campaign.twui.xml: hud_campaign > rush_confirmation_holder (hidden) > dialogue_box >
+-- text_holder, both_group > button_tick, button_cancel): made first, so a search by name finds it before any popup (session 15.11)
+do
+  local hud = make(core:get_ui_root(), 'hud_campaign')
+  local db = make(make(hud, 'rush_confirmation_holder', false), 'dialogue_box')
+  make(db, 'text_holder')
+  local both = make(db, 'both_group')
+  make(both, 'button_tick'); make(both, 'button_cancel')
+end
+-- the game's popup (ui/common ui/dialogue_box.twui.xml): dialogue_box > dy_text, purchase_options (hidden) > button_cancel, both_group >
+-- button_tick, button_cancel, ok_group (hidden) > button_tick; at the end of the root
+local function popup(text)
+  local db = make(core:get_ui_root(), 'dialogue_box')
+  make(db, 'dy_text'):SetStateText(text)
+  make(make(db, 'purchase_options', false), 'button_cancel')
+  local both = make(db, 'both_group')
+  make(both, 'button_tick'); make(both, 'button_cancel')
+  make(make(db, 'ok_group', false), 'button_tick')
+  return db
+end
 local FACTION, SUBTYPE = 'wh3_dlc25_dwf_malakai', 'wh3_dlc25_dwf_malakai_makaisson'
 local LEVELS = {}
 function fake_set_levels(rows) for _, r in ipairs(rows) do LEVELS[r.key] = r end end
 local N = 19
 local slots, items, gold, turn, saved, escape, dismantling = {}, {}, 4000, 1, {}, {}, {}
 local dev = 0           -- the horde's development points: 0 at the start of a campaign (session 14.11)
+-- the horde's growth (game_sim.js): the game's 20 a point, at most 50 points; per turn the standing levels' «Рост орды» (config growth)
+local growth, NEED, MAXDEV = 0, 20, 50
+local function growth_per_turn() local s = 0; for i = 0, N - 1 do local r = LEVELS[slots[i]]; if r then s = s + (r.growth or 0) end end; return s end
+-- the game applies a command a moment later (session 15.11): the commands wait for the next fake_tick
+local commands = {}
 for i = 0, N - 1 do slots[i] = '' end
 slots[0] = 'wh3_dlc25_dwarf_spirit_of_grungni_airship_hull_1'
 local faction
@@ -1211,6 +1337,13 @@ common = {
       end
       return nil
     end
+    if has(expr, 'HordeContext.AccumulatedGrowth') then return growth end
+    if has(expr, 'HordeContext.GrowthPerTurn') then return growth_per_turn() end
+    if has(expr, 'HordeContext.GrowthThresholdForPoint') then return NEED end
+    if has(expr, 'HordeContext.TurnsUntilNextGrowthPoint') then local per = growth_per_turn(); if per <= 0 or dev >= MAXDEV then return 0 end; return math.ceil((NEED - growth) / per) end
+    if has(expr, 'HordeContext.HasMaxDevelopmentPoints') then return dev >= MAXDEV end
+    if has(expr, 'GrowthFactorList.At(0).StringValue') then return 'Постройки' end
+    if has(expr, 'GrowthFactorList.At(0).IntValue') then return growth_per_turn() end
     if has(expr, 'HordeContext.DevelopmentPoints') then return dev end
     if n then
       if has(expr, 'IsContextValid(') and has(expr, 'ConstructionItemContext') then return items[n] ~= nil end
@@ -1226,21 +1359,25 @@ common = {
     return nil
   end,
   call_context_command = function(obj, id, expr)
+    -- applied at the next fake_tick, as the game applies it a moment later (session 15.11)
+    commands[#commands + 1] = function() fake_command(obj, id, expr) end
+  end,
+  get_localised_string = function(k) return 'text of ' .. k end}
+function fake_command(obj, id, expr)
     local n = slot_n(expr)
     local key = string.match(expr, '"CcoBuildingLevelRecord", "([^"]+)"')
     if n and has(expr, 'IssueCommandForBuildingBrowser') and key then
       if items[n] and items[n].turn < turn then
-        -- a construction of an earlier turn: the game asks first (probe 14.11, item 12); the tick cancels with the refund
-        local root = core:get_ui_root()
-        if not find_uicomponent(root, 'dialogue_box') then
-          local db = UIComponent(root:CreateComponent('dialogue_box', 'ui/common ui/dialogue_box'))
-          UIComponent(db:CreateComponent('button_tick', 'x')); UIComponent(db:CreateComponent('button_cancel', 'x'))
-          local slot = n
-          core:add_listener('fake_dialog', 'ComponentLClickUp', function(c) return c.string == 'button_tick' or c.string == 'button_cancel' end, function(c)
-            if c.string == 'button_tick' and items[slot] then gold = gold + items[slot].paid; dev = dev + (items[slot].dev or 0); items[slot] = nil; fire('MilitaryForceBuildingCancelled', ours()) end
-            db:Destroy(); core:remove_listener('fake_dialog')
-          end, false)
-        end
+        -- a construction of an earlier turn: the game asks first in its popup (probe 14.11, item 12; session 15.11); the tick cancels with the refund
+        local db = popup('Строительство еще не окончено. Вы действительно хотите отменить возведение этой постройки?')
+        local slot = n
+        core:add_listener('fake_dialog', 'ComponentLClickUp', function(c) return c.string == 'button_tick' or c.string == 'button_cancel' end, function(c)
+          local ok, b = pcall(UIComponent, c.component)
+          local mine = ok and b and b._parent and b._parent._parent == db
+          if not mine then return end
+          if c.string == 'button_tick' and items[slot] then gold = gold + items[slot].paid; dev = dev + (items[slot].dev or 0); items[slot] = nil; fire('MilitaryForceBuildingCancelled', ours()) end
+          db:Destroy(); core:remove_listener('fake_dialog')
+        end, true)
       elseif items[n] then gold = gold + items[n].paid; dev = dev + (items[n].dev or 0); items[n] = nil; fire('MilitaryForceBuildingCancelled', ours())
       else
         local r = LEVELS[key] or {cost = 1000, turns = 1}
@@ -1251,14 +1388,15 @@ common = {
     elseif n and has(expr, '.Dismantle') then
       dismantling[n] = true       -- the building stands until the turn ends (probe 14.11, item 12; runs of 03.11)
     end
-  end,
-  get_localised_string = function(k) return 'text of ' .. k end}
+end
 -- the timers: a real callback runs at the next fake_tick (the driver's sleep), as the game's runs a moment later
 local queue, repeats = {}, {}
 local tm = {real_callback = function(self, fn, ms, name) queue[#queue + 1] = fn end,
   repeat_real_callback = function(self, fn, ms, name) repeats[name or fn] = fn end, remove_real_callback = function(self, name) repeats[name] = nil end}
 core.get_tm = function() return tm end
 function fake_tick()
+  local c = commands; commands = {}
+  for _, fn in ipairs(c) do fn() end
   local q = queue; queue = {}
   for _, fn in ipairs(q) do pcall(fn) end
   local r = {}
@@ -1266,9 +1404,13 @@ function fake_tick()
   for _, fn in ipairs(r) do pcall(fn) end
   return #q
 end
+function fake_ticks(n) local m = 0; for _ = 1, n do m = m + fake_tick() end; return m end
 -- a turn: ours ends, the constructions count down, the completions come BEFORE our turn start (the order the adapter must cope with), then it
 function fake_end_turn()
+  fake_tick()
   fire('FactionTurnEnd', ours())
+  growth = growth + growth_per_turn()
+  while growth >= NEED do growth = growth - NEED; if dev < MAXDEV then dev = dev + 1 end end
   turn = turn + 1
   local done = {}
   for n, it in pairs(items) do it.turns = it.turns - 1; if it.turns <= 0 then done[#done + 1] = n end end
@@ -1575,15 +1717,26 @@ def text_measures(rows, measures):
 
 REPLAY_LUA = r"""
 return function(Ship, CM, FakeGame, config, start, actions)
-  local game = FakeGame.new(config, {turn = start.turn, gold = start.gold, income = 0, demolish = 'chain', built = {}})
+  -- the game's points and growth at the start (the horde's own growth: the game's per turn less the standing levels' «Рост орды»): the turns of
+  -- the replay make the points by the fake's rule, so a turn line that differs is the growth rule differing from the game's
+  local g = start.growth
+  local base = 0
+  if g then
+    base = g.per_turn or 0
+    for _, k in ipairs(start.built or {}) do for _, l in ipairs(config.levels) do if l.key == k then base = base - (l.growth or 0) end end end
+  end
+  local game = FakeGame.new(config, {turn = start.turn, gold = start.gold, income = 0, demolish = 'chain', built = {}, dev_points = start.dev,
+    growth = g and g.now or 0, growth_base = base, growth_threshold = g and g.need or 20})
   local q = {}
-  for _, x in ipairs(start.queue or {}) do local r = nil; for _, l in ipairs(config.levels) do if l.key == x.key then r = l end end; q[#q + 1] = {key = x.key, turns_left = x.turns_left or 1, paid = r and r.cost or 0} end
-  game.restore({turn = start.turn, gold = start.gold, built = start.built, queue = q})
+  for _, x in ipairs(start.queue or {}) do local r = nil; for _, l in ipairs(config.levels) do if l.key == x.key then r = l end end; q[#q + 1] = {key = x.key, turns_left = x.turns_left or 1, paid = r and r.cost or 0, dev = x.dev or 0} end
+  game.restore({turn = start.turn, gold = start.gold, dev = start.dev, growth = g and g.now or 0, built = start.built, queue = q})
   local M = Ship.make(config, game, CM)
   Ship.load_state(M, function(k) return start.saved[k] end)
   local out = {}
   for i, a in ipairs(actions) do
     if a.gold_before then game.set_gold(a.gold_before) end
+    if a.points_before ~= nil then game.set_dev(a.points_before) end
+    if a.growth_before ~= nil then game.set_growth(a.growth_before) end
     if a['do'] == 'order' then M.order(a.key)
     elseif a['do'] == 'cancel' then M.cancel(a.key)
     elseif a['do'] == 'end_turn' then game.end_turn()
@@ -1718,7 +1871,7 @@ def analyse(run_dir):
     if acts and first.exists():
         start = json.loads(first.read_text(encoding="utf-8"))["snapshot"]
         try:
-            want = ulc.py(rt.execute(REPLAY_LUA)(Ship, CM, FakeGame, config, to_lua(start), to_lua([{k: v for k, v in a.items() if k in ("do", "key", "gold_before")} for a in acts])))
+            want = ulc.py(rt.execute(REPLAY_LUA)(Ship, CM, FakeGame, config, to_lua(start), to_lua([{k: v for k, v in a.items() if k in ("do", "key", "gold_before", "points_before", "growth_before")} for a in acts])))
             diffs, notes = [], []
             for i, a in enumerate(acts):
                 w = want[i] if isinstance(want, list) else want.get(str(i + 1), {})

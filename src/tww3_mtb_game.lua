@@ -6,22 +6,31 @@
 --   game.cost(key), game.dev_cost(key)   the gold and the development points the game takes for a level (CreateCost / DevelopmentPointCost
 --                                        from Malakai's context; the data's when the game does not answer)
 --   game.development_points()            the horde's development points now («избыток населения»; nil when not readable)
+--   game.growth()                        the horde's growth: {now, per_turn, need, turns, max} (AccumulatedGrowth, GrowthPerTurn,
+--                                        GrowthThresholdForPoint, TurnsUntilNextGrowthPoint, HasMaxDevelopmentPoints); nil when not readable
 --   game.has_building(key)               the level or a higher one of its line stands in the horde's slots
 --   game.standing(key)                   exactly this level stands
 --   game.under_construction(key)         the turns left while it is under construction, else nil (0 turns: it stands already, not a construction)
---   game.issue_building_command(key)     the order; true when the slot read again shows it. Refused: game.refusal(key) = the game's reason or nil
---   game.cancel_construction(key)        the cancel; a construction of an earlier turn opens the game's window: game.cancel_asked(key) while it is
---                                        open, then CancelAnswered {key, cancelled}
---   game.dismantle(key), game.dismantling(key)   the Dismantle (after CanDismantle; never the hull); the building stands until the turn ends
+--   game.issue_building_command(key)     the order. true: the slot shows it at once; 'pending': the game applies it a moment later (session 15.11:
+--                                        the slot read right after the command was the old one), CommandResult {key, kind = 'order'} tells when
+--                                        the slot shows it or the wait is over (refused: game.refusal(key) = the game's reason or nil)
+--   game.cancel_construction(key)        the cancel, 'pending' the same way (CommandResult {key, kind = 'cancel'}). A construction of an earlier turn
+--                                        opens the game's window: game.cancel_asked(key) while it waits, then CancelAnswered {key, cancelled}
+--   game.dismantle(key), game.dismantling(key), game.dismantle_takes(key)   the Dismantle (after CanDismantle; never the hull); the building
+--                                        stands until the turn ends, then the slot's whole building goes (its lower levels with it)
 --   game.on(event, fn)                   FactionTurnEnd {turn}; BuildingDemolished {key} (at Malakai's next turn start, before FactionTurnStart);
---                                        FactionTurnStart {turn}; MilitaryForceBuildingCompleteEvent {building} (after it); CancelAnswered
+--                                        FactionTurnStart {turn}; MilitaryForceBuildingCompleteEvent {building} (after it); CommandResult;
+--                                        CancelAnswered
+--   game.profile_on(bool), game.profile_read(), game.invalidate()     the adapter's own time (calls and seconds per function and per context
+--                                        expression), the reads cached until the next change
 --   Game.save(Ship, M, view), Game.load(Ship, M)        the module's state in the save (cm:set_saved_value / cm:get_saved_value)
 --
--- What the probe of 14.11 and the session of 14.11 (runs 20261114-222543, 20261114-230723) proved is used as proven: the order from the character's
--- context without a selection; the game refuses an order silently (the command answers ok) when the development points are short, so the slot is
--- read again after every order; the construction's key is BuildingLevelRecordContext.Key; a completion comes before Malakai's FactionTurnStart
--- with the old turn number, its slot already holding the new level; the cancel of an earlier turn's construction asks in the game's window; a
--- Dismantle leaves the building standing until the turn ends. What is still a guess is in ASSUMED, one place each.
+-- What the probe of 14.11 and the sessions of 14.11 and 15.11 (runs 20261114-222543, 20261114-230723, 20261115-012811) proved is used as proven:
+-- the order from the character's context without a selection; the game refuses an order silently (the command answers ok) when the development
+-- points are short; the game applies an order and a cancel a moment after the command, not in the same call; the construction's key is
+-- BuildingLevelRecordContext.Key; a completion comes before Malakai's FactionTurnStart with the old turn number, its slot already holding the new
+-- level; the cancel of an earlier turn's construction asks in the game's window («Отменить строительство»); a Dismantle leaves the building
+-- standing until the turn ends and then the slot is empty (the lower level of the line does not come back). What is still a guess is in ASSUMED.
 -- Loaded as a module: it returns its table and sets nothing global. Not run by the mod until the switch of src/tww3_mtb_crew_ui.lua is on.
 
 local Game = {}
@@ -29,16 +38,38 @@ local Game = {}
 local FACTION = 'wh3_dlc25_dwf_malakai'
 local SUBTYPE = 'wh3_dlc25_dwf_malakai_makaisson'     -- his agent subtype (src/tww3_mtb_campaign.lua; the faction key is the shorter one)
 local SLOTS = 'MilitaryForceContext.HordeContext.BuildingSlotList'
+local HORDE = 'MilitaryForceContext.HordeContext.'
 local SAVE_DISMANTLING = 'mtb_ship_dismantling'       -- the keys whose Dismantle was given this turn, comma-separated ('' none)
 local sfind = string.find_lua or string.find
 local ssub = string.sub_lua or string.sub
+local sgsub = string.gsub
+local clock = os.clock
 
 local function log(text) pcall(function() _G.tww3_mtb_campaign.file_log('[ship game] ' .. tostring(text)) end) end
+
+-- ---------------- the profile: calls and seconds per function of the adapter and per context expression ----------------
+local P = nil         -- nil: off (the cost is one test per call)
+local function pattern(expr)
+    -- the expression without its keys and slot numbers: one row per kind of read
+    return (sgsub(sgsub(expr, '"[^"]*"', '"*"'), 'At%(%d+%)', 'At(n)'))
+end
+local function count(where, name, seconds)
+    local row = where[name]
+    if not row then row = {calls = 0, seconds = 0}; where[name] = row end
+    row.calls = row.calls + 1
+    row.seconds = row.seconds + seconds
+end
 
 -- one read of Malakai's context: the value, or nil when the expression does not answer
 local function read(cqi, expr)
     if not cqi then return nil end
+    local t0 = P and clock()
     local ok, v = pcall(common.get_context_value, 'CcoCampaignCharacter', cqi, expr)
+    if P then
+        local s = clock() - t0
+        count(P.expr, pattern(expr), s)
+        P.reads, P.read_seconds = P.reads + 1, P.read_seconds + s
+    end
     if ok then return v end
     return nil
 end
@@ -49,7 +80,7 @@ local function slot(n) return SLOTS .. '.At(' .. n .. ')' end
 local ASSUMED = {}
 -- The slot's construction: its level and the turns left. The key is BuildingLevelRecordContext.Key (probe 14.11, items 1, 2, 12: the other
 -- expression never answered). At the moment of its completion the construction is still there with 0 turns while the level already stands
--- (8.2): 0 turns is no construction. TurnsToCompletion not read: still one (guess).
+-- (8.2): 0 turns is no construction. TurnsToCompletion read (session 15.11: 1 and 2 as ordered).
 function ASSUMED.construction(cqi, n)
     local base = slot(n) .. '.ConstructionItemContext'
     if read(cqi, 'IsContextValid(' .. base .. ')') ~= true then return nil end
@@ -63,20 +94,45 @@ end
 -- The order of the turn's events: completions come before Malakai's FactionTurnStart (8.2). Held while his turn is not running (from his
 -- FactionTurnEnd to his FactionTurnStart) and told right after the turn start: the module sees the page's order. false: told as they come.
 ASSUMED.queue_completions = true
--- The game's own confirmation window (the cancel of an earlier turn's construction): dialogue_box at the root (the game's scripts:
--- wh3_battle_prologue_values.lua), found by name, open only when visible (session 14.11: a dialogue_box was found while none was on the screen).
-function ASSUMED.dialog_open()
-    local ok, open = pcall(function()
-        local db = find_uicomponent(core:get_ui_root(), 'dialogue_box')
-        return db and db:VisibleFromRoot() and true or false
-    end)
-    return ok and open or false
-end
+-- A command is applied by the game a moment later (session 15.11: an order read at once was not there, read 1.5 s later it was, gold taken):
+-- the slot is read again this often, and the command given up (refused) after this long (ms)
+ASSUMED.command_poll_ms, ASSUMED.command_wait_ms = 100, 1000
+-- The cancel of an earlier turn's construction: the game's window «Отменить строительство» (probe 14.11 item 12; session 15.11 ss_cancel_dialog)
+-- has come when the construction is still there this long after the command (ms) and the order was not given in this turn by this panel
+ASSUMED.ask_after_ms = 300
 -- How often the slot is read again while the game's window is open, and for how long at most (ms)
 ASSUMED.cancel_poll_ms, ASSUMED.cancel_poll_max_ms = 250, 600000
--- A Dismantle that the game executes at once after all (not seen: the runs of 03.11 and 14.11 show the building until the turn ends): the slot is
--- read again this long after the command and the building told gone then
+-- The game's window: a handle the game itself gave (PanelOpenedCampaign's component, or the parent of a clicked button_tick / button_cancel),
+-- else the parent of the first ok_group, else a dialogue_box found by name; each only when it is on the screen. The dialogue_box's name alone
+-- is not enough: session 15.11 found the HUD's hidden hud_campaign > rush_confirmation_holder > dialogue_box (ui/campaign ui/hud_campaign.twui.xml;
+-- Visible true, VisibleFromRoot false, no dy_text) both with and without the cancel window on the screen: a search by name finds it first.
+-- ok_group is a child of the game's popup only (ui/common ui/dialogue_box.twui.xml and dialogue_box_qr; the HUD's copy has none; else only a
+-- developer's test layout). -> the component or nil
+function ASSUMED.dialog(handle)
+    local ok, found = pcall(function()
+        if handle and handle:VisibleFromRoot() then return handle end
+        local root = core:get_ui_root()
+        local og = find_uicomponent(root, 'ok_group')
+        if og then
+            local db = UIComponent(og:Parent())
+            if db and db:VisibleFromRoot() then return db end
+        end
+        local db = find_uicomponent(root, 'dialogue_box')
+        if db and db:VisibleFromRoot() then return db end
+        return nil
+    end)
+    if ok then return found end
+    return nil
+end
+-- The window's buttons, by the layout ui/common ui/dialogue_box.twui.xml: dialogue_box/both_group/button_tick and button_cancel (a
+-- purchase_options/button_cancel is there too, hidden: a name alone may find it)
+ASSUMED.TICK, ASSUMED.CROSS = 'button_tick', 'button_cancel'
+-- A Dismantle that the game executes at once after all (not seen: the runs of 03.11, 14.11 and 15.11 show the building until the turn ends): the
+-- slot is read again this long after the command and the building told gone then
 ASSUMED.dismantle_check_ms = 300
+-- The reads are kept until something changes (a command, the game's events of buildings, points and the turn) and at most this long by
+-- os.clock (s): a change the adapter does not hear (a script's treasury_mod) shows at the latest by then
+ASSUMED.cache_seconds = 0.25
 
 -- ---------------- the campaign ----------------
 local function malakai()
@@ -92,56 +148,130 @@ end
 
 function Game.new(config)
     local G = {}
-    local levels = {}
-    for _, r in ipairs(config.levels) do levels[r.key] = r end
+    local levels, levelList = {}, {}
+    for _, r in ipairs(config.levels) do
+        if not levels[r.key] then levelList[#levelList + 1] = r end
+        levels[r.key] = r
+    end
     local listeners = {}
     local function emit(event, ctx) for _, fn in ipairs(listeners[event] or {}) do local ok, e = pcall(fn, ctx); if not ok then log(event .. ': ' .. tostring(e)) end end end
     G.emit = emit
 
-    local function cqi() local m = malakai(); return m and tostring(m:command_queue_index()) or nil end
+    -- the cache of reads: everything the game says now, read once per change (the panel's refresh asks for every building many times)
+    -- (one game tick at most: dropped by the game's next real callback, so what a script changed between two ticks is read again)
+    local cache, cachedAt, dropping = {}, nil, false
+    local function invalidate() cache = {}; cachedAt = nil end
+    G.invalidate = invalidate
+    local function cached(name, fn)
+        local now = clock()
+        if cachedAt == nil or now - cachedAt > ASSUMED.cache_seconds then
+            cache = {}; cachedAt = now
+            if not dropping then
+                dropping = true
+                pcall(function() core:get_tm():real_callback(function() dropping = false; invalidate() end, 1, 'mtb_ship_cache_drop') end)
+            end
+        end
+        local v = cache[name]
+        if v == nil then
+            v = {fn()}
+            cache[name] = v
+        end
+        return v[1]
+    end
+
+    local function cqi() return cached('cqi', function() local m = malakai(); return m and tostring(m:command_queue_index()) or nil end) end
     -- the horde's slots: {i (0 = the hull's), key or ''}; none without Malakai's force (wounded: docs/design/port-to-game.md 1.3, the panel reads only)
     local function slots()
-        local m = malakai()
-        if not m then return {} end
-        local details = m:military_force():horde_details()
-        if details:is_null_interface() then return {} end
-        local list, out = details:military_force_slot_list(), {}
-        for i = 0, list:num_items() - 1 do
-            local s = list:item_at(i)
-            out[#out + 1] = {i = i, key = s:has_building() and s:building() or ''}
-        end
-        return out
+        return cached('slots', function()
+            local m = malakai()
+            if not m then return {} end
+            local details = m:military_force():horde_details()
+            if details:is_null_interface() then return {} end
+            local list, out = details:military_force_slot_list(), {}
+            for i = 0, list:num_items() - 1 do
+                local s = list:item_at(i)
+                out[#out + 1] = {i = i, key = s:has_building() and s:building() or ''}
+            end
+            return out
+        end)
     end
-    G.slots = slots
-    function G.treasury() local f = cm:get_faction(FACTION); return f and f:treasury() or 0 end
-    function G.treasury_mod(d) cm:treasury_mod(FACTION, d) end
+    -- the construction of a slot ({key, turns} or false), read once per change
+    local function construction(id, n)
+        local c = cached('c' .. n, function() return ASSUMED.construction(id, n) or false end)
+        return c or nil
+    end
+    -- the constructions of the force: key -> {slot, turns}
+    local function constructions()
+        return cached('constructions', function()
+            local id, out = cqi(), {}
+            if not id then return out end
+            for _, s in ipairs(slots()) do
+                local c = construction(id, s.i)
+                if c then out[c.key] = {slot = s.i, turns = c.turns} end
+            end
+            return out
+        end)
+    end
+    G.slots = function() return slots() end
+    function G.treasury() return cached('gold', function() local f = cm:get_faction(FACTION); return f and f:treasury() or 0 end) end
+    function G.treasury_mod(d) cm:treasury_mod(FACTION, d); invalidate() end
     function G.turn() return cm:model():turn_number() end
     -- [игра: 222543 п. 3] CreateCost(this) from his context = the pack's price, no selection needed; the data's when it does not answer
     function G.cost(key)
-        local v = tonumber(read(cqi(), record(key) .. '.CreateCost(this)'))
-        if v and v > 0 then return v end
-        return levels[key] and levels[key].cost or 0
+        return cached('cost ' .. key, function()
+            local v = tonumber(read(cqi(), record(key) .. '.CreateCost(this)'))
+            if v and v > 0 then return v end
+            return levels[key] and levels[key].cost or 0
+        end)
     end
     -- [игра: 222543 п. 3; 230723] DevelopmentPointCost(this) = the row's development_point_cost
     function G.dev_cost(key)
-        local v = tonumber(read(cqi(), record(key) .. '.DevelopmentPointCost(this)'))
-        if v and v >= 0 then return v end
-        return levels[key] and levels[key].dev or 0
+        return cached('dev ' .. key, function()
+            local v = tonumber(read(cqi(), record(key) .. '.DevelopmentPointCost(this)'))
+            if v and v >= 0 then return v end
+            return levels[key] and levels[key].dev or 0
+        end)
     end
     -- [игра: 222543 setup, 230723 requirement step] the horde's points (0 at the start of a campaign; the probe's script gave 50)
-    function G.development_points() return tonumber(read(cqi(), 'MilitaryForceContext.HordeContext.DevelopmentPoints')) end
-    function G.standing(key)
-        for _, s in ipairs(slots()) do if s.key == key then return true end end
-        return false
+    function G.development_points() return cached('points', function() return tonumber(read(cqi(), HORDE .. 'DevelopmentPoints')) end) end
+    -- The horde's growth, read as the game's own horde building browser reads it (ui/campaign ui/building_browser.twui.xml: GrowthPerTurn,
+    -- TurnsUntilNextGrowthPoint shown as «-» when 0 or less, DevelopmentPoints, HasMaxDevelopmentPoints; ui/campaign ui/province_growth_tooltip:
+    -- AccumulatedGrowth + "/" + GrowthThresholdForPoint, GrowthFactorList). The game's data: 20 growth a point, at most 50 points
+    -- (campaign_variables military_force_development_point_growth_threshold, military_force_development_max_development_points).
+    function G.growth()
+        return cached('growth', function()
+            local id = cqi()
+            if not id then return nil end
+            local now, per = tonumber(read(id, HORDE .. 'AccumulatedGrowth')), tonumber(read(id, HORDE .. 'GrowthPerTurn'))
+            local need, turns = tonumber(read(id, HORDE .. 'GrowthThresholdForPoint')), tonumber(read(id, HORDE .. 'TurnsUntilNextGrowthPoint'))
+            local max = read(id, HORDE .. 'HasMaxDevelopmentPoints')
+            if now == nil and per == nil and need == nil and turns == nil then return nil end
+            if turns ~= nil and turns <= 0 then turns = nil end
+            return {now = now or 0, per_turn = per or 0, need = need or 0, turns = turns, max = max == true}
+        end)
     end
+    -- what stands, indexed once a tick: the keys standing, and the highest level standing of each chain (the panel asks has_building ~10 000
+    -- times a refresh: session 15.11's profile of the fake)
+    local function standingIndex()
+        return cached('index', function()
+            local keys, top = {}, {}
+            for _, s in ipairs(slots()) do
+                if s.key ~= '' then
+                    keys[s.key] = true
+                    local l = levels[s.key]
+                    if l and (top[l.chain] == nil or l.level > top[l.chain]) then top[l.chain] = l.level end
+                end
+            end
+            return {keys = keys, top = top}
+        end)
+    end
+    function G.standing(key) return standingIndex().keys[key] == true end
     function G.has_building(key)
+        local ix = standingIndex()
+        if ix.keys[key] then return true end
         local row = levels[key]
-        for _, s in ipairs(slots()) do
-            if s.key == key then return true end
-            local l = levels[s.key]
-            if l and row and l.chain == row.chain and l.level > row.level then return true end
-        end
-        return false
+        local t = row and ix.top[row.chain]
+        return t ~= nil and t > row.level
     end
     -- the slot a level is built in: its line's own (a level of the same chain stands or is under construction there), else the first empty side slot
     -- without a construction (the probe's orders went so: 222543 items 1, 2, 12)
@@ -152,7 +282,7 @@ function Game.new(config)
         for _, s in ipairs(slots()) do
             local l = levels[s.key]
             if l and l.chain == row.chain then return s.i end
-            local c = ASSUMED.construction(id, s.i)
+            local c = construction(id, s.i)
             if c and levels[c.key] and levels[c.key].chain == row.chain then return s.i end
             if s.key == '' and s.i > 0 and not c and not empty then empty = s.i end
         end
@@ -161,13 +291,8 @@ function Game.new(config)
     end
     G.slot_for = slotFor
     function G.under_construction(key)
-        local id = cqi()
-        if not id then return nil end
-        for _, s in ipairs(slots()) do
-            local c = ASSUMED.construction(id, s.i)
-            if c and c.key == key then return c.turns end
-        end
-        return nil
+        local c = constructions()[key]
+        return c and c.turns or nil
     end
 
     -- What can refuse an order, as the game reads it before the command (230723: HasEnoughDevelopmentPoints was the only false gate)
@@ -175,7 +300,7 @@ function Game.new(config)
         local R = record(key)
         return {active = read(id, R .. '.IsActiveForBuildingBrowser(' .. slot(n) .. ')'), enough = read(id, R .. '.HasEnoughDevelopmentPoints(this)'),
                 afford = read(id, R .. '.CanAfford(this)'), locked = read(id, R .. '.IsLockedByLevel(this)'),
-                points = tonumber(read(id, 'MilitaryForceContext.HordeContext.DevelopmentPoints')), dev = tonumber(read(id, R .. '.DevelopmentPointCost(this)'))}
+                points = tonumber(read(id, HORDE .. 'DevelopmentPoints')), dev = tonumber(read(id, R .. '.DevelopmentPointCost(this)'))}
     end
     G.gates = function(key, n) return gates(cqi(), key, n or slotFor(key)) end
     local function said(v) if v == nil then return 'nil' end return tostring(v) end
@@ -195,10 +320,27 @@ function Game.new(config)
     local function command(key, n)
         local ok, err = pcall(common.call_context_command, 'CcoCampaignCharacter', cqi(), record(key) .. '.IssueCommandForBuildingBrowser(' .. slot(n) .. ')')
         if not ok then log('order ' .. key .. ': ' .. tostring(err)) end
+        invalidate()
         return ok
     end
+    -- the slot read again on the game's next ticks until done(elapsed ms) says so: the timer of a key, one at a time
+    local waits = {}
+    local function stopWait(name) waits[name] = nil; pcall(function() core:get_tm():remove_real_callback(name) end) end
+    local function wait(name, every, step)
+        stopWait(name)
+        waits[name] = true
+        local elapsed = 0
+        core:get_tm():repeat_real_callback(function()
+            elapsed = elapsed + every
+            invalidate()
+            local ok, e = pcall(step, elapsed)
+            if not ok then log(name .. ': ' .. tostring(e)); stopWait(name) end
+        end, every, name)
+    end
+    -- the orders this panel gave and the turn of each (a cancel in the same turn needs no window)
+    local orderedIn = {}
     -- The order. The module orders only what it shows open: a gate of the game that says no is a disagreement, logged with the game's reasons.
-    -- The command is given anyway (the game is the judge), the slot read again: true when it shows the construction.
+    -- The command is given anyway (the game is the judge); the game applies it a moment later: the slot is read again on its next ticks.
     function G.issue_building_command(key)
         refusals[key] = nil
         local n = slotFor(key)
@@ -211,49 +353,123 @@ function Game.new(config)
                 ', IsLockedByLevel ' .. said(g.locked))
         end
         command(key, n)
-        local c = ASSUMED.construction(id, n)
-        if c and c.key == key then return true end
-        refusals[key] = reasonOf(g)
-        log('order ' .. key .. ' in slot ' .. n .. ' not taken (the slot read again): ' .. said(refusals[key]))
-        return false
+        local c = construction(id, n)
+        if c and c.key == key then orderedIn[key] = G.turn(); return true end
+        local name = 'mtb_ship_order_' .. key
+        wait(name, ASSUMED.command_poll_ms, function(elapsed)
+            local now = construction(cqi(), n)
+            if now and now.key == key then
+                orderedIn[key] = G.turn()
+                log('order ' .. key .. ' in slot ' .. n .. ': taken after ' .. elapsed .. ' ms')
+            elseif elapsed < ASSUMED.command_wait_ms then
+                return
+            else
+                refusals[key] = reasonOf(g)
+                log('order ' .. key .. ' in slot ' .. n .. ' not taken (the slot read again for ' .. elapsed .. ' ms): ' .. said(refusals[key]))
+            end
+            stopWait(name)
+            emit('CommandResult', {key = key, kind = 'order'})
+        end)
+        return 'pending'
     end
 
     -- [игра: 191708, stage 2b] the same command again cancels with the whole cost back (ConstructionItemContext.Cancel does not give it back). A
-    -- construction of an earlier turn: the game asks in its window (222543 п. 12) and nothing changes until it is answered. The window is the
-    -- player's (as in the stock game); the slot is read again until the construction is gone or the window closed.
-    local asked = {}
+    -- construction of an earlier turn: the game asks in its window (222543 п. 12; 012811 ss_cancel_dialog) and nothing changes until it is
+    -- answered. The window is the player's (as in the stock game); the answer is heard by the game's own click events on its buttons (as the
+    -- game's scripts hear theirs: wh3_dlc23_labour_move.lua, wh2_dlc17_bloodgrounds.lua) and the slot read again.
+    local asked, dialog, clicked = {}, nil, nil
     function G.cancel_asked(key) return asked[key] == true end
+    G.dialog = function() return ASSUMED.dialog(dialog) end
+    local function listenDialog(on)
+        core:remove_listener('tww3_mtb_ship_game_dialog_click')
+        core:remove_listener('tww3_mtb_ship_game_dialog_open')
+        if not on then return end
+        core:add_listener('tww3_mtb_ship_game_dialog_click', 'ComponentLClickUp', function(context)
+            return context.string == ASSUMED.TICK or context.string == ASSUMED.CROSS
+        end, function(context)
+            -- the button's window: dialogue_box/both_group/<button> (the layout), kept as the window's handle
+            local ok, db = pcall(function() return UIComponent(UIComponent(UIComponent(context.component):Parent()):Parent()) end)
+            if ok and db then
+                local okid, id = pcall(function() return db:Id() end)
+                if okid and id == 'dialogue_box' then dialog = db end
+            end
+            clicked = context.string
+            log('the game\'s window answered: ' .. tostring(context.string))
+        end, true)
+        core:add_listener('tww3_mtb_ship_game_dialog_open', 'PanelOpenedCampaign', true, function(context)
+            local ok, c = pcall(function() return UIComponent(context.component) end)
+            if ok and c and (context.string == 'dialogue_box' or select(2, pcall(function() return c:Id() end)) == 'dialogue_box') then dialog = c end
+            log('a panel of the game opened while a cancel waits: ' .. tostring(context.string))
+        end, true)
+    end
     local function finishAsk(key, cancelled)
         asked[key] = nil
-        pcall(function() core:get_tm():remove_real_callback('mtb_ship_cancel_ask') end)
+        stopWait('mtb_ship_cancel_ask')
+        listenDialog(false)
+        dialog, clicked = nil, nil
         emit('CancelAnswered', {key = key, cancelled = cancelled})
+    end
+    local function ask(key, n)
+        asked[key] = true
+        clicked = nil
+        listenDialog(true)
+        local answeredAt = nil
+        wait('mtb_ship_cancel_ask', ASSUMED.cancel_poll_ms, function(elapsed)
+            local now = construction(cqi(), n)
+            if not (now and now.key == key) then finishAsk(key, true); return end
+            -- answered with the cross, or the tick that changed nothing: a moment for the game to apply it, then the slot decides
+            if clicked and not answeredAt then answeredAt = elapsed; return end
+            if answeredAt and elapsed - answeredAt >= ASSUMED.cancel_poll_ms * 2 then finishAsk(key, false); return end
+            -- the window known and gone without a click heard (Esc)
+            if dialog and not ASSUMED.dialog(dialog) and not answeredAt then answeredAt = elapsed; return end
+            if elapsed > ASSUMED.cancel_poll_max_ms then log('cancel ' .. key .. ': no answer of the game\'s window in ' .. elapsed .. ' ms'); finishAsk(key, false) end
+        end)
     end
     function G.cancel_construction(key)
         local id = cqi()
         if not id or asked[key] then return false end
-        for _, s in ipairs(slots()) do
-            local c = ASSUMED.construction(id, s.i)
-            if c and c.key == key then
-                command(key, s.i)
-                local still = ASSUMED.construction(id, s.i)
-                if not (still and still.key == key) then return true end
-                if not ASSUMED.dialog_open() then log('cancel ' .. key .. ': the slot did not change and no window of the game is open'); return false end
-                asked[key] = true
-                local n, waited = s.i, 0
-                core:get_tm():repeat_real_callback(function()
-                    waited = waited + ASSUMED.cancel_poll_ms
-                    local now = ASSUMED.construction(cqi(), n)
-                    if not (now and now.key == key) then finishAsk(key, true)
-                    elseif not ASSUMED.dialog_open() or waited > ASSUMED.cancel_poll_max_ms then finishAsk(key, false) end
-                end, ASSUMED.cancel_poll_ms, 'mtb_ship_cancel_ask')
-                return true
+        local c = constructions()[key]
+        if not c then return false end
+        local n = c.slot
+        command(key, n)
+        local still = construction(id, n)
+        if not (still and still.key == key) then return true end
+        local name = 'mtb_ship_cancel_' .. key
+        wait(name, ASSUMED.command_poll_ms, function(elapsed)
+            local now = construction(cqi(), n)
+            if now and now.key == key then
+                if elapsed < ASSUMED.ask_after_ms then return end
+                if orderedIn[key] ~= G.turn() then
+                    -- a construction of an earlier turn (or of before a load): the game asks in its window
+                    stopWait(name)
+                    log('cancel ' .. key .. ': the game asks in its window (the window ' .. (ASSUMED.dialog(dialog) and 'found' or 'not found by name') .. ')')
+                    ask(key, n)
+                    emit('CommandResult', {key = key, kind = 'cancel'})
+                    return
+                end
+                if elapsed < ASSUMED.command_wait_ms then return end
+                log('cancel ' .. key .. ': the construction of this turn is still there after ' .. elapsed .. ' ms')
             end
-        end
-        return false
+            stopWait(name)
+            emit('CommandResult', {key = key, kind = 'cancel'})
+        end)
+        return 'pending'
     end
 
-    -- [игра: 20261103-162910; 222543 п. 12] Dismantle on the slot after its CanDismantle; the whole line goes (docs/summary.md 6) at the end of the
-    -- turn. The mark is kept in the save and checked at Malakai's next turn start (BuildingDemolished then). The hull never (CanDismantle false).
+    -- [игра: 20261103-162910; 222543 п. 12; 012811] Dismantle on the slot after its CanDismantle; the slot's whole building goes at the end of the
+    -- turn (session 15.11: beer hall II dismantled, the slot empty after the turn, level I did not come back). The mark is kept in the save and
+    -- checked at Malakai's next turn start (BuildingDemolished then). The hull never (CanDismantle false).
+    function G.dismantle_takes(key)
+        local row = levels[key]
+        if not row then return {key} end
+        local out = {}
+        for lv = row.level, 0, -1 do
+            for _, l in ipairs(levelList) do
+                if l.chain == row.chain and l.level == lv then out[#out + 1] = l.key; break end
+            end
+        end
+        return out
+    end
     local marks = {}
     do
         local ok, s = pcall(function() return cm:get_saved_value(SAVE_DISMANTLING) end)
@@ -290,11 +506,13 @@ function Game.new(config)
                 local can = read(id, slot(s.i) .. '.CanDismantle')
                 if can == false then log('dismantle ' .. key .. ': CanDismantle false in slot ' .. s.i); return false end
                 local ok, err = pcall(common.call_context_command, 'CcoCampaignCharacter', id, slot(s.i) .. '.Dismantle')
+                invalidate()
                 if not ok then log('dismantle ' .. key .. ': ' .. tostring(err)); return false end
                 marks[#marks + 1] = key
                 saveMarks()
                 pcall(function()
                     core:get_tm():real_callback(function()
+                        invalidate()
                         if not G.standing(key) and not G.has_building(key) then
                             log('dismantle ' .. key .. ': gone at once (not at the turn end)')
                             dropMark(key)
@@ -317,14 +535,15 @@ function Game.new(config)
     local inTurn, waiting = true, {}
     G.in_turn = function() return inTurn end
     local function ours(context) local ok, f = pcall(function() return context:faction():name() end); return ok and f == FACTION end
-    core:remove_listener('tww3_mtb_ship_game_end')
-    core:remove_listener('tww3_mtb_ship_game_turn')
-    core:remove_listener('tww3_mtb_ship_game_built')
+    local NAMES = {'tww3_mtb_ship_game_end', 'tww3_mtb_ship_game_turn', 'tww3_mtb_ship_game_built', 'tww3_mtb_ship_game_points', 'tww3_mtb_ship_game_razed'}
+    for _, n in ipairs(NAMES) do core:remove_listener(n) end
     core:add_listener('tww3_mtb_ship_game_end', 'FactionTurnEnd', ours, function()
+        invalidate()
         inTurn = false
         emit('FactionTurnEnd', {turn = G.turn()})
     end, true)
     core:add_listener('tww3_mtb_ship_game_turn', 'FactionTurnStart', ours, function()
+        invalidate()
         inTurn = true
         -- the dismantles of the turn that ended: gone now (or not: logged, the mark dropped all the same)
         local was = marks
@@ -339,17 +558,44 @@ function Game.new(config)
         waiting = {}
         for _, key in ipairs(q) do emit('MilitaryForceBuildingCompleteEvent', {building = key}) end
     end, true)
-    core:add_listener('tww3_mtb_ship_game_built', 'MilitaryForceBuildingCompleteEvent', function(context) return levels[context:building()] ~= nil end, function(context)
+    core:add_listener('tww3_mtb_ship_game_built', 'MilitaryForceBuildingCompleteEvent', true, function(context)
+        invalidate()
         local key = context:building()
+        if levels[key] == nil then return end
         if ASSUMED.queue_completions and not inTurn then waiting[#waiting + 1] = key; return end
         emit('MilitaryForceBuildingCompleteEvent', {building = key})
     end, true)
+    -- what else changes what the cache holds (session 15.11 turn_events: these come for every horde of the world; the cache is only dropped)
+    core:add_listener('tww3_mtb_ship_game_points', 'MilitaryForceDevelopmentPointChange', true, function() invalidate() end, true)
+    core:add_listener('tww3_mtb_ship_game_razed', 'CharacterHordeBuildingDemolished', true, function() invalidate() end, true)
+
     function G.stop()
-        core:remove_listener('tww3_mtb_ship_game_end')
-        core:remove_listener('tww3_mtb_ship_game_turn')
-        core:remove_listener('tww3_mtb_ship_game_built')
-        pcall(function() core:get_tm():remove_real_callback('mtb_ship_cancel_ask') end)
+        for _, n in ipairs(NAMES) do core:remove_listener(n) end
+        listenDialog(false)
+        for name in pairs(waits) do pcall(function() core:get_tm():remove_real_callback(name) end) end
+        waits = {}
         pcall(function() core:get_tm():remove_real_callback('mtb_ship_dismantle_check') end)
+    end
+
+    -- the profile: every function of G above timed (inclusive: a function's seconds hold the reads it made), the context reads by expression
+    function G.profile_on(on)
+        if on then P = {fn = {}, expr = {}, reads = 0, read_seconds = 0, since = clock()} else P = nil end
+    end
+    function G.profile_read()
+        if not P then return nil end
+        return {fn = P.fn, expr = P.expr, reads = P.reads, read_seconds = P.read_seconds, seconds = clock() - P.since}
+    end
+    local TIMED = {'treasury', 'cost', 'dev_cost', 'development_points', 'growth', 'standing', 'has_building', 'under_construction', 'slot_for',
+                   'issue_building_command', 'cancel_construction', 'cancel_asked', 'dismantle', 'dismantling', 'dismantle_takes', 'refusal', 'slots'}
+    for _, name in ipairs(TIMED) do
+        local fn = G[name]
+        G[name] = function(...)
+            if not P then return fn(...) end
+            local t0 = clock()
+            local a, b = fn(...)
+            count(P.fn, name, clock() - t0)
+            return a, b
+        end
     end
     return G
 end

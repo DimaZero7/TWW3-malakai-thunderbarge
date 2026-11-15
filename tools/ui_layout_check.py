@@ -84,11 +84,36 @@ def layout_props(files):
         default = next((s for s in states if s.get("this") == el.get("defaultstate")), states[0])
         images = list(el.find("componentimages"))
         text = default.find("component_text")
+        paths = {i.get("this"): i.get("imagepath") for i in images}
+        # the 9-slice edges of every state's picture, in the game's order (top, right, bottom, left): they must fit the picture, or the game draws
+        # past its edge the neighbours of the picture in its texture (runs/20261115-012811-ship_panel, defect 4: a gunsight and a stroke under
+        # every separator)
+        for st in states:
+            for im in (st.find("imagemetrics") if st.find("imagemetrics") is not None else []):
+                mg, path = im.get("margin"), paths.get(im.get("componentimage"))
+                if not mg or not path:
+                    continue
+                t, r, b, l = (float(v) for v in mg.split(","))
+                size = picture_size(path)
+                if size and (l + r > size[0] or t + b > size[1]):
+                    problems.append(f"layout {name}: margin {mg} (top, right, bottom, left) does not fit {path} ({size[0]} x {size[1]}): the game draws past the picture")
+        preset = text.get("font_colour_override_preset_key") if text is not None else None
         out[name] = {"kind": el.tag, "clip": el.get("clipchildren") == "true", "w": float(default.get("width")), "h": float(default.get("height")),
                      "images": len(images), "picture": bool(images) and default.find("imagemetrics") is not None, "text": text is not None,
                      "valign": text.get("textvalign") if text is not None else None, "align": text.get("texthalign") if text is not None else None,
-                     "default": default.get("name"), "interactive": default.get("interactive") == "true"}
+                     "default": default.get("name"), "interactive": default.get("interactive") == "true", "preset": preset,
+                     "image": next(iter(paths.values()), None) if len(paths) == 1 else None}
     return out, problems
+
+
+def picture_size(path):
+    """(w, h) of a picture by its pack path: the game's (build/web/game, as tools/web_export.py copied them) or ours (data/ui, web/art); None unknown."""
+    for f in (REPO / "build" / "web" / "game" / path, REPO / "data" / "ui" / path.split("/")[-1], REPO / "web" / "art" / path.split("/")[-1]):
+        if f.exists():
+            head = f.read_bytes()[:24]
+            if head[:8] == b"\x89PNG\r\n\x1a\n":
+                return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+    return None
 
 
 def session_dumps(arg):
@@ -147,6 +172,7 @@ def main(argv=None):
     ap.add_argument("--src", action="store_true", help="the modules of src/ and the configs of build/tree in place of the pack's")
     ap.add_argument("--only", default=None, help="only the states whose name has this text")
     ap.add_argument("--max-diffs", type=int, default=15, help="the differences printed per state (all are counted)")
+    ap.add_argument("--profile", action="store_true", help="print the drawing's own time by section and the model's calls (windows on first use)")
     ap.add_argument("--session", default=None, help="the run folder of an in-game session whose TextDimensions to use (default: the last)")
     args = ap.parse_args(argv)
     try:
@@ -247,8 +273,8 @@ def main(argv=None):
     # text decoded by Ship.decode. mode: 'page' (all windows at once), 'lazy' (on first use), 'game' (on first use, the game's text measures)
     build_state = lua.eval("""function(UI, Uic, Ship, CM, FakeGame, FakeUIC, config, cfg, game_json, saved, actions_json, measures_json, layouts, pack, mode)
         local snap, actions, measures = Ship.decode(game_json), Ship.decode(actions_json), Ship.decode(measures_json)
-        local game = FakeGame.new(config, {turn = snap.turn, gold = snap.gold, income = 0, demolish = 'step_down', built = {}, dev_points = snap.dev,
-                                           ask_cancel = snap.ask_cancel})
+        local game = FakeGame.new(config, {turn = snap.turn, gold = snap.gold, income = 0, demolish = 'chain', built = {}, dev_points = snap.dev,
+                                           ask_cancel = snap.ask_cancel, async = snap.async})
         game.restore({turn = snap.turn, gold = snap.gold, dev = snap.dev, built = snap.built, queue = snap.queue, dismantles = snap.dismantles})
         local M = Ship.make(config, game, CM)
         local keep = Ship.load_state(M, function(k) return saved[k] end)
@@ -272,20 +298,34 @@ def main(argv=None):
             local ui = Uic.new('ui/tww3_mtb/', cfg.text)
             local root = ui.root('mtb_ship_screen')
             local t0 = os.clock()
-            local panel = UI.make_panel{root = root, M = M, cfg = cfg, CM = CM, Ship = Ship, flags = {}, keep = {tab = keep.tab, pan = keep.scroll}, lazy = mode ~= 'page'}
+            local panel = UI.make_panel{root = root, M = M, cfg = cfg, CM = CM, Ship = Ship, flags = {}, keep = {tab = keep.tab, pan = keep.scroll}, lazy = mode ~= 'page', ui = ui, profile = mode == 'lazy'}
             panel.refresh()
             local built = os.clock() - t0
             local made, calls = ui.count, 0
             for _, n in pairs(E.calls) do calls = calls + n end
+            local images = E.calls.SetImagePath or 0
             if mode == 'page' then panel.build_all(); panel.refresh() end
             for _, a in ipairs(actions) do
                 local c = ui.by_id(a[2])
                 if not c then error('no component ' .. a[2]) end
-                if a[1] == 'click' then panel.click(c) else ui.mouse_on(a[2]) end
+                if a[1] == 'click' then panel.click(c)
+                elseif a[1] == 'show' then panel.view.pan.show(panel.view.tree[tonumber(string.sub(a[2], #'mtb_tree_node_' + 1)) + 1])
+                else ui.mouse_on(a[2]) end
             end
             for _, k in ipairs(E.unmeasured) do unmeasured[#unmeasured + 1] = k end
-            return {rows = ui.dump(root), unmeasured = mode ~= 'game' and unmeasured or {}, made = made, calls = calls, seconds = built,
+            -- the mouse and the tree as a player moves them (with the game's text measures: the windows' real sizes), after the dump's rows are taken
+            local rows = ui.dump(root)
+            local scen = mode == 'game' and FakeUIC.scenarios(panel, ui, root) or {}
+            -- the drawing's own time by section and the model's calls (src/tww3_mtb_ship_ui.lua env.profile): the opening, the state's actions, then
+            -- «Всё дерево» and back, each with the refresh it makes
+            local prof = panel.profile and panel.profile(true)
+            if mode == 'lazy' and prof then
+                local fit = ui.by_id('mtb_tree_fit')
+                if fit and fit.visible then panel.click(fit); prof.fit = panel.profile(true); panel.click(fit); prof.back = panel.profile(true) end
+            end
+            return {rows = rows, scenarios = scen, image_calls = images, profile = mode == 'lazy' and prof or nil, unmeasured = mode ~= 'game' and unmeasured or {}, made = made, calls = calls, seconds = built,
                     engine = FakeUIC.check_engine(root, E, pack), windows = mode == 'game' and FakeUIC.check_windows(root, E) or {},
+                    colours = FakeUIC.check_colours(root, cfg.text, cfg.colours or {}),
                     total = ui.count, measured = ENGINE.measured}
         end)
         ENGINE.ink = ink
@@ -359,6 +399,7 @@ def main(argv=None):
             # the horde's development points (None: the page does not model them) and the game's window before a cancel (the dump's own sim)
             **({"dev": snap["dev"]} if snap.get("dev") is not None else {}),
             "ask_cancel": bool((d.get("sim") or {}).get("ask_cancel")),
+            "async": bool((d.get("sim") or {}).get("async")),
         }
         # the mod's save: the page's state written as the keys Ship.save_state writes (src/tww3_mtb_ship.lua, SAVE_KEYS), the panel on «Постройки»
         # at its home place (the page's exporter forgets the tab and the tree's place of the last visit)
@@ -399,11 +440,11 @@ def main(argv=None):
                 diffs, fields = compare(page, mine, partial=mode == "lazy")
                 for k in dict.fromkeys(out["unmeasured"] or []):
                     diffs.append(f"a text the page never measured: {k}")
-            engine = [f"{e['kind']}: {e['path']}: {e['text']}" for e in (out["engine"] or [])]
-            windows = [f"{e['kind']}: {e['path']}: {e['text']}" for e in (out["windows"] or [])]
+            engine = [f"{e['kind']}: {e['path']}: {e['text']}" for e in (out["engine"] or []) + (out.get("colours") or [])]
+            windows = [f"{e['kind']}: {e['path']}: {e['text']}" for e in (out["windows"] or []) + (out.get("scenarios") or [])]
             state_diffs += len(diffs) + len(engine) + len(windows)
             kinds.update(f"{mode}: page" for _ in diffs)
-            kinds.update(f"{mode}: {e['kind']}" for e in (out["engine"] or []) + (out["windows"] or []))
+            kinds.update(f"{mode}: {e['kind']}" for e in (out["engine"] or []) + (out["windows"] or []) + (out.get("colours") or []) + (out.get("scenarios") or []))
             if mode == "page":
                 total_rows += len(page)
                 total_fields += fields
@@ -412,8 +453,16 @@ def main(argv=None):
                       f"{sum(v for k, v in layouts.items() if k.startswith('text_'))} texts), {len(diffs)} differences, {len(engine)} in what the game draws")
             elif mode == "lazy":
                 opened.append((out["made"], out["calls"], out["seconds"]))
+                if args.profile and out.get("profile"):
+                    for part in ("sections", "model", "fit", "back"):
+                        p = out["profile"].get(part)
+                        if not p:
+                            continue
+                        rows_ = (p.items() if part in ("sections", "model") else [(f"{k} [{part}]", v) for k, v in {**p.get("sections", {}), **{"model " + m: x for m, x in p.get("model", {}).items()}}.items()])
+                        rows_ = sorted(rows_, key=lambda kv: -kv[1]["s"])[:12]
+                        print(f"    profile {part}: " + "; ".join(f"{k} {v['n']}x {v['s'] * 1000:.1f} ms" for k, v in rows_))
                 print(f"    windows on first use: {out['made']} components at the opening ({out['calls']} calls into the game's UIComponent, "
-                      f"{out['calls'] / max(1, out['made']):.1f} per component), {out['total']} after the state's actions; {len(diffs)} differences from what "
+                      f"{out['calls'] / max(1, out['made']):.1f} per component, SetImagePath {out.get('image_calls')}), {out['total']} after the state's actions; {len(diffs)} differences from what "
                       f"the page shows, {len(engine)} in what the game draws")
             else:
                 print(f"    with the game's text measures: {len(engine)} differences in what the game draws, {len(windows)} in the windows")
@@ -434,7 +483,8 @@ def main(argv=None):
                     add_listener = function(_, name) listeners[name] = true end, remove_listener = function(_, name) listeners[name] = nil end}
             cm = {steal_escape_key_with_callback = function() end, release_escape_key_with_callback = function() end}
             local advisor = E.root:CreateComponent('advice_interface', 'image')
-            find_uicomponent = function(_, name) if name == 'advice_interface' then return advisor end end
+            local radar = E.root:CreateComponent('radar_things', 'image')
+            find_uicomponent = function(_, name) if name == 'advice_interface' then return advisor elseif name == 'radar_things' then return radar end end
             local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end; return n end
             local ok, res = pcall(function()
                 local broken = true
@@ -451,6 +501,7 @@ def main(argv=None):
                 r.opened = Screen.open()
                 r.made = Screen.ui.count
                 r.advisor_hidden = not advisor.visible
+                r.hud_hidden = not radar.visible
                 r.timers = count(timers)
                 local ui = Screen.ui
                 Screen.hover('mtb_tree_node_0')
@@ -460,6 +511,7 @@ def main(argv=None):
                 r.closed_hidden = Screen.root.uic.visible == false and Screen.is_open() == false
                 r.tip_after_close = tip.visible
                 r.advisor_back = advisor.visible
+                r.hud_back = radar.visible
                 r.listeners_after_close = count(listeners)
                 r.timers_after_close = count(timers)
                 local before = 0
@@ -481,7 +533,7 @@ def main(argv=None):
         try:
             r = py(screen(Screen, UI, Uic, Ship, CM, FakeGame, FakeUIC, config, cfg, lprops))
             want = {"first": False, "first_open": False, "second": True, "opened": True, "advisor_hidden": True, "tip_shown": True, "closed_hidden": True,
-                    "tip_after_close": False, "advisor_back": True, "listeners_after_close": 0, "timers_after_close": 0, "reopened": True, "reused": True,
+                    "tip_after_close": False, "advisor_back": True, "hud_hidden": True, "hud_back": True, "listeners_after_close": 0, "timers_after_close": 0, "reopened": True, "reused": True,
                     "shown_again": True}
             bad = [f"{k}: {r.get(k)!r}, expected {v!r}" for k, v in want.items() if r.get(k) != v]
             if r.get("timers_again") != r.get("timers"):

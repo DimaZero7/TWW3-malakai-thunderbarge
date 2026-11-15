@@ -19,7 +19,7 @@ const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf
 // The campaigns, made by the page's model (web/js/barge_buildings.js, game_sim.js) as the player's clicks would make them. Short keys: the tree's nodes.
 const CAMPAIGNS = {
     fresh: {about: 'a new campaign: nothing built, 6000 gold, no development points', steps: []},
-    early: {about: 'the first hull ordered and built by the turn: 1 development point, the next hull short of points',
+    early: {about: 'the first hull ordered and built by the turn: no development point yet (its growth starts with the next turn), the next hull short of points',
             steps: [['order', 'airship_hull_1'], ['end_turn']]},
     mid: {about: 'the barge and the first buildings stand; the riflemen in hire came aboard with the turn; one building ordered, a crew order waiting, gold short for most',
           steps: [['points', 6], ['build', 'airship_hull_3'], ['build', 'beer_hall_1'], ['build', 'infantry_workshop_1'], ['build', 'crew_weapons_1'], ['build', 'mtb_nest_1'],
@@ -30,6 +30,9 @@ const CAMPAIGNS = {
     asked: {about: 'a two-turn building ordered a turn ago; the game asks before such a cancel (sim ask_cancel)', sim: {ask_cancel: true},
             steps: [['points', 6], ['build', 'airship_hull_3'], ['build', 'beer_hall_1'], ['build', 'engineering_workshop_1'], ['gold', 6000],
                     ['order', 'engines_1'], ['end_turn']]},
+    pending: {about: 'a new campaign; the game applies a command a moment later (sim async): a click orders, the order waits for the game', sim: {async: true}, steps: []},
+    pending_cancel: {about: 'the first hull ordered and taken; the game applies a command a moment later (sim async): a click cancels, the cancel waits for the game',
+                     sim: {async: true}, steps: [['order', 'airship_hull_1']]},
     full: {about: 'every building of the tree stands, a crew at every place, Malakai on the right side',
            steps: [['build_all'], ['gold', 20000], ['crew', 'rifles', 'thunderers'], ['crew', 'cannons', 'organ'], ['crew', 'bombs', 'fire'], ['crew', 'cupolas', 'axes'],
                    ['crew', 'harpoon', 'on'], ['end_turn'], ['side', 'right']]},
@@ -50,8 +53,12 @@ const STATES = [
     ['early_tree_short', 'early', [['hover', {slot: 'airship_hull_2'}]]],
     ['dismantling_tree', 'dismantling', [['click', {slot: 'mtb_nest_1'}], ['hover', {slot: 'mtb_nest_1'}]]],
     ['asked_tree', 'asked', [['click', {slot: 'engines_1'}], ['hover', {slot: 'engines_1'}]]],
+    // a command the game has not applied yet (st.pending): the window's instruction line is the model's words for the wait (M.pending_note)
+    ['pending_order_tree', 'pending', [['click', {slot: 'airship_hull_1'}], ['hover', {slot: 'airship_hull_1'}]]],
+    ['pending_cancel_tree', 'pending_cancel', [['click', {slot: 'airship_hull_1'}], ['hover', {slot: 'airship_hull_1'}]]],
     ['full_tree', 'full', []],
-    ['full_tree_info', 'full', [['hover', {slot: 'mtb_guns_3'}]]],
+    // a player scrolls a slot into the tree's window before the mouse is on it (show: the tree moved as a click on the slot moves it, pan.show)
+    ['full_tree_info', 'full', [['show', {slot: 'mtb_guns_3'}], ['hover', {slot: 'mtb_guns_3'}]]],
     ['full_ship', 'full', [['click', 'mtb_tab_ship']]],
     ['full_ship_pick_unit', 'full', [['click', 'mtb_tab_ship'], ['click', 'mtb_crew_area_cannons'], ['hover', 'mtb_crew_card_pick_cannons:organ']]],
 ];
@@ -103,6 +110,7 @@ try {
         await ready();
         // what the page's save does not keep: the game's own window before a cancel (the Lua side reads the dump's sim)
         if (C.sim && C.sim.ask_cancel) await b.eval('mtb.game.askCancel = true; 1');
+        if (C.sim && C.sim.async) await b.eval('mtb.game.async = true; 1');
         const snapshot = await b.eval(`JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith('mtb_web_state_'))))`);
         // the view acted on: ids of the components as the Lua names them; a slot by its node
         const resolved = [];
@@ -114,6 +122,7 @@ try {
                 const c = find(mtb.root, ${JSON.stringify(id)});
                 if (!c) return false;
                 if (${JSON.stringify(what)} === 'click') mtb.panel.click(c);
+                else if (${JSON.stringify(what)} === 'show') mtb.panel.view.pan.show(mtb.panel.view.tree[Number(${JSON.stringify(id)}.slice('mtb_tree_node_'.length))]);
                 else c.el.dispatchEvent(new MouseEvent('mouseenter'));
                 return true;
             })()`);

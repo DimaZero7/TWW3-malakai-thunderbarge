@@ -391,10 +391,10 @@ function paintShipColumn(view, M, col) {
         // the place the turn's building opened, or gave a new kind, glows that turn, its name in the game's gold (M.news_places)
         const fresh = newsPlaces.includes(g);
         row.card.SetGlow(fresh);
-        row.name.SetStateText(!st.place ? `[[col:grey]]${M.place_name(g)}[[/col]]` : fresh ? `[[col:yellow]]${M.place_name(g)}[[/col]]` : M.place_name(g));
-        const line = !st.place ? `[[col:grey]]${opener ? `Откроет «${opener.name}»` : 'Закрыто'}[[/col]]`
+        row.name.SetStateText(!st.place ? `[[col:ui_font_faded_grey_beige]]${M.place_name(g)}[[/col]]` : fresh ? `[[col:ui_font_yellow]]${M.place_name(g)}[[/col]]` : M.place_name(g));
+        const line = !st.place ? `[[col:ui_font_faded_grey_beige]]${opener ? `Откроет «${opener.name}»` : 'Закрыто'}[[/col]]`
             : st.ordered ? (st.ordered.empty ? `${w.who} ${w.leave} в начале хода` : `${st.ordered.name}: ${w.come} в начале хода`)
-            : st.nobody ? `[[col:grey]]${w.nobody}[[/col]]` : st.standing.name;
+            : st.nobody ? `[[col:ui_font_faded_grey_beige]]${w.nobody}[[/col]]` : st.standing.name;
         fitLine(row.state, line);
         row.hit.SetTooltipText(row.state.GetStateText() !== line ? line : '', true);
     }
@@ -649,7 +649,7 @@ function fillInfoTip(t, content) {
     t.chain.SetStateText(content.chain || '');
     // the foot: why the building cannot be built (red), else what a click does with it (the game's light text)
     const said = content.reason || content.note || '';
-    t.reason.SetStateText(content.reason ? `[[col:game_red]]${gameText(content.reason)}[[/col]]` : gameText(said));
+    t.reason.SetStateText(content.reason ? `[[col:red]]${gameText(content.reason)}[[/col]]` : gameText(said));
     t.rule.SetVisible(!!said); t.reason.SetVisible(!!said);
     const reasonH = said ? 10 + Math.max(22, tall(t.reason)) + 12 : 0;
     // one entry: its icon (or a unit's round holder) with its middle on the middle of the text's first line, the text 5 under the entry's top
@@ -664,8 +664,8 @@ function fillInfoTip(t, content) {
         t.description.SetStateText(desc);
         t.description.SetVisible(!!desc);
         if (desc) {
-            put(t.description, 24, y + 12);
-            y += Math.max(52, 12 + tall(t.description) + 12);
+            put(t.description, 24, y + 16);      // under the ornament (33..47), not in it: the game draws the italic from the box's top (runs/20261115-012811-ship_panel)
+            y += Math.max(56, 16 + tall(t.description) + 12);
         }
         y += 2;
         t.effects.forEach((row, i) => {
@@ -673,7 +673,7 @@ function fillInfoTip(t, content) {
             row.icon.SetVisible(!!e); row.text.SetVisible(!!e);
             if (!e) return;
             row.icon.SetImagePath(e.icon || 'ui/skins/default/replenishement_positive.png', 0);
-            row.text.SetStateText(`[[col:${e.good === false ? 'game_red' : 'game_green'}]]${gameText(e.text)}[[/col]]`);
+            row.text.SetStateText(`[[col:${e.good === false ? 'red' : 'green'}]]${gameText(e.text)}[[/col]]`);
             y += entry(row.icon, INFO_X, 24, row.text, INFO_TX, y);
         });
         const block = (icon, title, list, rows) => {
@@ -748,6 +748,7 @@ function unitInfo(parent, id, spec, flags = {}) {
     y += 34;
     if (flags.unitvideo !== 'top') clip();
     const note = text(panel, 'short_description', 'text_unit_note', 14, y, W - 28, 54, spec.text || o.about || '');
+    size(note, W - 28, Math.max(54, note.TextDimensions()[1]));      // the whole description: body_12 takes more lines than the box had
     y += Math.max(20, note.TextDimensions()[1]) + 8;
     // top_bar
     image(panel, 'icon_men', D + 'icon_entity_small.png', 12, y + 2, 26, 26);
@@ -809,7 +810,7 @@ function unitInfo(parent, id, spec, flags = {}) {
         // and a place's share («4 люка по 28», «4 люка, около 65 на люк»); with no seats in the data, the group's whole alone
         if (n.seats) {
             row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', '', n.volleys / best(x => x.volleys || 0));
-            info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, W - 48, 18, '');
+            info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, W - 48, 20, '');
             y += 16;
         } else row('ammo', D + 'icon_stat_ammo.png', 'Боезапас', String(n.ammo), n.ammo / best(x => x.ammo));
         if (n.blast) row('blast', D + 'icon_stat_damage.png', 'Взрыв', `${n.blast + n.blast_ap} · ${n.radius} м`, null);
@@ -828,7 +829,7 @@ function unitInfo(parent, id, spec, flags = {}) {
     info.set = dyn => {
         const bonus = dyn.bonus || {};
         const better = (kind, pct) => (FX.KINDS[kind].positiveGood ? pct > 0 : pct < 0);
-        const colour = (kind, pct, t) => (pct ? `[[col:${better(kind, pct) ? 'game_green' : 'game_red'}]]${t}[[/col]]` : t);
+        const colour = (kind, pct, t) => (pct ? `[[col:${better(kind, pct) ? 'green' : 'red'}]]${t}[[/col]]` : t);
         // the ammunition: the mod's Lua rounds the group's whole (floor(x + 0.5)) and the places share it, so a bonus smaller than a volley a place is
         // not lost (6 a pirate, +15%: 76 for the eleven, about 7 each); the group's whole is the number, the share beside it
         const ammoPct = bonus.ammo ? bonus.ammo.pct : 0, ammo = crewAmmo(n, ammoPct, o.unit_card ? o.unit_card.men : 0);
@@ -857,7 +858,7 @@ function unitInfo(parent, id, spec, flags = {}) {
         size(panel, W, info.h);
         // a card that stands for the same unit opened for the army too (oneCardPerUnit): the second fact in the same window, in the army panel's words
         const armyLine = spec.army_building ? `«${spec.army_building}» открывает этот отряд и для найма в армию` : '';
-        const crewLine = dyn.reason ? `[[col:game_red]]${dyn.reason}[[/col]]` : dyn.state || '';
+        const crewLine = dyn.reason ? `[[col:red]]${dyn.reason}[[/col]]` : dyn.state || '';
         info.stateText.SetStateText([crewLine, armyLine].filter(Boolean).join('\n'));
         info.has_state = !!(dyn.reason || dyn.state || armyLine);
         info.state_h = info.has_state ? 10 + Math.max(22, info.stateText.TextDimensions()[1]) + 10 : 0;
@@ -1409,8 +1410,8 @@ function placeTips(view) {
         let px = cardR + 10;
         if (px > maxX) px = Math.min(s.x - 18, cardL) - 10 - UNIT_INFO_W;
         px = Math.max(minX, Math.min(maxX, px));
-        const maxY = (root ? root.Height() : F.Height()) - 4 - F.y - c.info.total, minY = view.area && maxY >= view.area.y ? view.area.y : 4 - F.y;
-        c.info.place(px, Math.max(minY, Math.min(maxY, cy - c.info.total / 2)));
+        // as a building's window: inside the panel when it fits there (infoTop)
+        c.info.place(px, infoTop(cy - c.info.total / 2, c.info.total, root ? root.Height() : F.Height(), F.y, view.area ? view.area.y : 4 - F.y, F.Height()));
     }
 }
 
@@ -1452,8 +1453,11 @@ function fillInfo(view, v) {
     const room = v.info.tip.parent.parent.Height() - 8;
     for (let w = INFO_W; w <= 800; w += 100) if (fillInfoTip(v.info, {...v.info.content, width: w}) <= room) break;
 }
-export function infoTop(want, h, screenH, frameY, headY) {
-    const maxY = screenH - 4 - frameY - h;          // the window's foot 4 above the screen's foot
+// frameH: the panel's height. The window's foot stays inside the panel when the window fits between the title row and the panel's foot (the game
+// showed a window over the map, 57 under the panel: runs/20261115-012811-ship_panel, ss_fresh_tree_info), else 4 above the screen's foot
+export function infoTop(want, h, screenH, frameY, headY, frameH = screenH - frameY) {
+    const inPanel = frameH - 4 - h;
+    const maxY = inPanel >= headY ? inPanel : screenH - 4 - frameY - h;
     const minY = maxY >= headY ? headY : 4 - frameY; // under the title row when it fits there, else as high as the screen's top
     return Math.max(minY, Math.min(maxY, want));
 }
@@ -1465,7 +1469,7 @@ function placeInfo(view, v) {
     if (frame.x + x + w > root.Width() - 4) x = on.x - 18 - 10 - w;
     x = Math.min(x, root.Width() - 4 - frame.x - w);
     x = Math.max(4 - frame.x, x);
-    at(v.info.tip, x, infoTop(on.y + (NODE + 28) * on.k - v.info.h, v.info.h, root.Height(), frame.y, view.area.y));
+    at(v.info.tip, x, infoTop(on.y + (NODE + 28) * on.k - v.info.h, v.info.h, root.Height(), frame.y, view.area.y, frame.Height()));
 }
 
 // The states of the game's slot (square_building_button), each read on the slot itself:
@@ -1511,7 +1515,8 @@ function refreshTree(view, M) {
         v.constructing.SetVisible(building);
         v.turnsBanner.SetVisible(building);
         // a cancel that waits for the game's own window: the construction goes on, its banner dimmed until the player answers there
-        v.turnsBanner.SetImageColour(255, 255, 255, building && st.asked ? 0x80 : 255);
+        // a command the game applies a moment later (st.pending: 'order' | 'cancel'): the slot as it will be, the banner dimmed as for a cancel asked
+        v.turnsBanner.SetImageColour(255, 255, 255, building && (st.asked || st.pending) ? 0x80 : 255);
         v.turns.SetVisible(building);
         v.turns.SetStateText(building ? String(st.turns) : '');
         if (v.level) v.level.SetVisible(!building);        // the turns banner takes the slot's foot while it is built
@@ -1531,7 +1536,9 @@ function refreshTree(view, M) {
         const reason = M.reason(v.node.key);
         // what a click does, in the game's short words, with the time the slot itself does not show; the price in gold and in points
         const price = `${cost} золота${dev > 0 ? ` и ${dev} ед. ${M.POINTS}` : ''}`;
-        const note = st.state === 'open' ? `Щелчок — заказать: ${price}, ${turnsText(row.turns)}.`
+        // while the game applies a command: the model's words for that wait instead of the click line (st.pending)
+        const note = st.pending ? M.pending_note(v.node.key)
+            : st.state === 'open' ? `Щелчок — заказать: ${price}, ${turnsText(row.turns)}.`
             : building && st.asked ? `Строится, осталось ${turnsText(st.turns)}. Отмена ждёт вашего ответа в окне игры.`
             : building ? `Строится, осталось ${turnsText(st.turns)}. Щелчок — отменить заказ, ${price} вернутся.` : '';
         // filled when it is shown (under the mouse now, or when the mouse comes onto the slot): 41 windows measured at every change cost the page
@@ -1550,7 +1557,7 @@ function refreshTree(view, M) {
         view.raze.icon.ShaderTechniqueSet(dem.ok ? 'normal_t0' : 'set_greyscale_t0');
         view.raze.icon.SetImageColour(255, 255, 255, dem.ok ? 255 : 0x80);
         view.raze.hoverImg.el.style.visibility = dem.ok ? '' : 'hidden';
-        view.raze.SetTooltipText(dem.ok ? `Снести «${sel.node.name}»` : dem.why, true);
+        view.raze.SetTooltipText(dem.ok ? M.demolish_preview(sel.node.key) : dem.why, true);      // what goes with it and what closes (the model's words)
         view.razeOk = dem.ok;
     }
 }
@@ -1594,7 +1601,7 @@ function refreshCrewArea(view, M, c) {
         slot.turnsBanner.SetVisible(o.key === order);
         slot.card.ShaderTechniqueSet(o.unlocked ? 'normal_t0' : 'set_greyscale_t0');
         slot.card.SetImageColour(255, 255, 255, o.unlocked ? 255 : 0x80);
-        slot.name.SetStateText(o.unlocked ? o.name : `[[col:grey]]${o.name}[[/col]]`);
+        slot.name.SetStateText(o.unlocked ? o.name : `[[col:ui_font_faded_grey_beige]]${o.name}[[/col]]`);
         const hire = o.unlocked && !o.empty && o.key !== now && o.key !== order, queued = o.key === order;
         if (slot.card.costPlate) {
             slot.card.costPlate.SetVisible(hire);

@@ -100,6 +100,7 @@ local function level_state(key)
   out.standing = s.game.standing(key)
   out.has_building = s.game.has_building(key)
   out.reason = M.reason(key)
+  out.demolish_preview = M.demolish_preview and M.demolish_preview(key) or nil
   -- the game's model: the horde's slots by the model interface, and the slot's construction by the context (port_probe.lua slot_read)
   local slots = game_slots()
   out.model_slot = nil
@@ -130,6 +131,9 @@ local function panel_state(keys)
     out.news = news and Ship.encode(news) or nil
     out.crew_upkeep = M.crew_upkeep()
     out.turn = s.game.turn()
+    out.points = s.game.development_points and s.game.development_points() or nil
+    out.growth = s.game.growth and s.game.growth() or nil
+    out.waiting = M.waiting and M.waiting() or nil
   end
   if v then
     out.tab = v.tab
@@ -376,8 +380,70 @@ local function profile_since(before)
   end
   return out
 end
-function I.profile_mark() T.profile_mark = profile_now(); return {on = T.profile_mark ~= nil} end
-function I.profile_read() return {profile = profile_since(T.profile_mark), on = T.profile_mark ~= nil} end
+-- The logic's and the adapter's own time (DEFECT 3 of run 20261115-012811: an open took 2.1 s with 0.39 s in UIComponent calls). The model's
+-- functions (s.M) are wrapped once, timed inclusive, and the time of the outermost calls summed (outer: the model's whole share, the adapter's
+-- reads in it); the adapter times its own functions and context reads (src/tww3_mtb_game.lua profile_on). The drawing's own Lua is what is left:
+-- wall - UIComponent - model outer.
+local MODEL_FNS = {'status', 'reason', 'stage', 'missing', 'needs_all', 'crew_options', 'crew_place', 'crew_preview', 'place_opener', 'can_demolish',
+  'demolish_preview', 'first_step', 'waiting', 'message', 'cost', 'dev', 'points', 'growth', 'level', 'chain', 'hull_tier', 'stands', 'carried',
+  'crew', 'crew_order', 'crew_note', 'crew_upkeep', 'crew_upkeep_next', 'ship_news', 'news_places', 'requires_text', 'pending'}
+local function model_wrap()
+  local s = screen()
+  if not (s and s.M) or T.model_wrapped == s.M then return end
+  T.model_wrapped = s.M
+  T.mp = {fn = {}, outer = 0, outer_calls = 0, depth = 0}
+  for _, name in ipairs(MODEL_FNS) do
+    local fn = s.M[name]
+    if type(fn) == 'function' then
+      s.M[name] = function(...)
+        local P = T.mp
+        if not P.on then return fn(...) end
+        local t0 = clock()
+        P.depth = P.depth + 1
+        local ok, a, b = pcall(fn, ...)
+        P.depth = P.depth - 1
+        local d = clock() - t0
+        local row = P.fn[name]
+        if not row then row = {calls = 0, seconds = 0}; P.fn[name] = row end
+        row.calls, row.seconds = row.calls + 1, row.seconds + d
+        if P.depth == 0 then P.outer, P.outer_calls = P.outer + d, P.outer_calls + 1 end
+        if not ok then error(a, 0) end
+        return a, b
+      end
+    end
+  end
+end
+local function prof_reset()
+  local s = screen()
+  model_wrap()
+  if T.mp then T.mp.fn, T.mp.outer, T.mp.outer_calls, T.mp.depth, T.mp.on = {}, 0, 0, 0, true end
+  if s and s.game and s.game.profile_on then s.game.profile_on(true) end
+  T.profile_mark = profile_now()
+  T.prof_clock = clock()
+end
+local function top(t, n)
+  local list = {}
+  for k, r in pairs(t or {}) do list[#list + 1] = {name = k, calls = r.calls, seconds = r.seconds} end
+  table.sort(list, function(a, b) return a.seconds > b.seconds end)
+  local out = {}
+  for i = 1, math.min(n, #list) do out[i] = list[i] end
+  return out
+end
+local function prof_read()
+  local s = screen()
+  local ui = profile_since(T.profile_mark)
+  local ad = s and s.game and s.game.profile_read and s.game.profile_read() or nil
+  local mp = T.mp or {}
+  local wall = clock() - (T.prof_clock or clock())
+  local out = {wall = wall, ui_seconds = ui and ui.total_seconds or nil, ui_calls = ui and ui.total_calls or nil,
+    model_outer = mp.outer, model_outer_calls = mp.outer_calls, model_top = top(mp.fn, 8),
+    adapter_reads = ad and ad.reads or nil, adapter_read_seconds = ad and ad.read_seconds or nil, adapter_fn = ad and top(ad.fn, 8) or nil,
+    adapter_expr = ad and top(ad.expr, 8) or nil}
+  out.drawing_own = wall - (out.ui_seconds or 0) - (mp.outer or 0)
+  return out
+end
+function I.profile_mark() prof_reset(); return {on = T.profile_mark ~= nil} end
+function I.profile_read() return {profile = profile_since(T.profile_mark), on = T.profile_mark ~= nil, logic = prof_read()} end
 
 -- the mod log's line of the wrapper about Resize(w, h, false) (src/tww3_mtb_ship_uic.lua: written once, at the first resize of a parent with
 -- children) and the answer it keeps (ENGINE.children_keep)
@@ -406,10 +472,11 @@ end
 function I.open()
   local s = screen()
   if not s then error('no screen loaded') end
+  prof_reset()
   local t0 = clock()
   local ok, err = s.open()
   local out = {ok = ok, err = err and flat(err) or nil, seconds = clock() - t0, build_seconds = s.build_seconds, root = root_info(), how = T.how, reused = s.reused,
-    profile = profile_since(nil)}
+    profile = profile_since(nil), logic = prof_read()}
   if ok then
     out.count = s.ui.count
     out.measured = s.ui.ENGINE.measured       -- the texts the layout measured by the game's TextDimensions / by the characters / empty
@@ -530,7 +597,7 @@ function I.snapshot(a)
     if s.game.cancel_asked and s.game.cancel_asked(row.key) then asked = row.key end
   end
   for _, q in ipairs(queue) do q.dev = s.M.level(q.key) and s.M.dev(q.key) or 0 end
-  return {turn = s.game.turn(), gold = s.game.treasury(), dev = s.game.development_points and s.game.development_points() or nil, dismantles = dismantles, asked = asked,
+  return {turn = s.game.turn(), gold = s.game.treasury(), dev = s.game.development_points and s.game.development_points() or nil, growth = s.game.growth and s.game.growth() or nil, dismantles = dismantles, asked = asked,
     built = built, queue = queue, saved = Ship.save_state(s.M, keep), keep = keep, root = root_info(),
     hovered = s.ui and s.ui.hovered and s.ui.hovered.id or nil}
 end
@@ -550,9 +617,11 @@ function I.hover(a)
   local s = screen()
   if not (s and s.ui) then error('the panel is not open') end
   if not s.ui.by_id(a.id) then return {missing = a.id} end
+  if a.profile then prof_reset() end
   if a.way == 'simulate' then s.ui.by_id(a.id).uic:SimulateMouseOn() else s.hover(a.id) end
+  local logic = a.profile and prof_read() or nil
   local c = s.ui.by_id(a.id)
-  local out = {id = a.id, hovered = s.ui.hovered and s.ui.hovered.id or nil, state = panel_state(a.keys)}
+  local out = {id = a.id, hovered = s.ui.hovered and s.ui.hovered.id or nil, state = panel_state(a.keys), logic = logic}
   -- the window that came with the hover: a slot's building window, a card's unit panel (their own components, by reference)
   local v = view()
   for _, t in ipairs(v and v.tree or {}) do
@@ -609,10 +678,12 @@ function I.closed()
 end
 function I.reopen()
   local s = screen()
+  prof_reset()
   local before = profile_now()
   local ok, err = s.open()
+  local logic = prof_read()
   -- shown again (S.reused: the panel kept from the last open) or built anew, its seconds and the calls into the game's UIComponent it took
-  return {ok = ok, err = err and flat(err) or nil, build_seconds = s.build_seconds, reused = s.reused, profile = profile_since(before), state = panel_state()}
+  return {ok = ok, err = err and flat(err) or nil, build_seconds = s.build_seconds, reused = s.reused, profile = profile_since(before), logic = logic, state = panel_state()}
 end
 
 -- Esc: the callback the panel stole the key with
@@ -699,27 +770,107 @@ function I.pp(a)
   return fn(a.args or {})
 end
 
--- the game's own confirmation window (the cancel of a construction of an earlier turn opens «Отменить строительство»). Names from the game's
--- scripts: dialogue_box at the root (wh3_battle_prologue_values.lua), button_tick / button_cancel (wh2_dlc17_bloodgrounds.lua). Found by name.
-local function dialog()
-  local db = find_uicomponent(core:get_ui_root(), 'dialogue_box')
-  if not db then return nil end
-  return db, find_uicomponent(db, 'button_tick'), find_uicomponent(db, 'button_cancel')
+-- The game's own confirmation window (the cancel of a construction of an earlier turn opens «Отменить строительство»). Layout:
+-- ui/common ui/dialogue_box.twui.xml: dialogue_box > dy_text, both_group > button_tick, button_cancel (and a hidden purchase_options >
+-- button_cancel). Session 15.11: find_uicomponent(root, 'dialogue_box') found a hidden one (Visible true, VisibleFromRoot false, empty text)
+-- both with the window on the screen and without it: the HUD's own hud_campaign > rush_confirmation_holder > dialogue_box
+-- (ui/campaign ui/hud_campaign.twui.xml) comes first in a search by name. So the window is taken from the game's own events where it can
+-- be: the adapter's handle (PanelOpenedCampaign's component, the parent of a clicked button), the panels opened since T.panels_on; then a
+-- dialogue_box by name, only when it is on the screen. Its parents named up to the root (Parent(), never the children).
+local function chain(c)
+  local out = {}
+  local ok = pcall(function()
+    local u = c
+    for _ = 1, 8 do
+      local p = u:Parent()
+      if not p then break end
+      u = UIComponent(p)
+      out[#out + 1] = u:Id()
+      if u:Id() == 'root' then break end
+    end
+  end)
+  if not ok then out[#out + 1] = '?' end
+  return table.concat(out, ' < ')
 end
--- present: a component of that name exists; open: it is on the screen (VisibleFromRoot). Session 14.11: a dialogue_box was present while no window
--- was on the screen, and the demolish step was skipped for it: only an open one counts. Its text by the children names the game's dialogs use.
-function I.dialog()
-  local db, tick, cancel = dialog()
-  if not db then return {present = false, open = false} end
-  local okv, vis = pcall(function() return db:VisibleFromRoot() end)
-  local okw, own = pcall(function() return db:Visible() end)
-  local text
-  for _, name in ipairs({'DY_text', 'dy_text', 'text', 'tx_text'}) do
-    local okt, t = pcall(function() local c = find_uicomponent(db, name); return c and c:GetStateText() end)
-    if okt and type(t) == 'string' and t ~= '' then text = flat(t); break end
+local function describe(c)
+  if not c then return nil end
+  local out = {}
+  local okv, vis = pcall(function() return c:VisibleFromRoot() end)
+  local okw, own = pcall(function() return c:Visible() end)
+  local oki, id = pcall(function() return c:Id() end)
+  out.id = oki and id or nil
+  out.on_screen = okv and vis == true
+  out.visible = okw and own == true
+  out.parents = chain(c)
+  local okt, txt = pcall(function() local d = find_uicomponent(c, 'dy_text'); return d and d:GetStateText() end)
+  out.text = (okt and type(txt) == 'string' and txt ~= '') and flat(txt) or nil
+  local tick = find_uicomponent(c, 'both_group', 'button_tick')
+  local cross = find_uicomponent(c, 'both_group', 'button_cancel')
+  out.tick = tick and true or false
+  out.cross = cross and true or false
+  out.tick_on_screen = tick and select(2, pcall(function() return tick:VisibleFromRoot() end)) == true or false
+  return out, tick, cross
+end
+-- the window on the screen, by the best way there is: -> component, way
+local function dialog()
+  local s = screen()
+  local h = s and s.game and s.game.dialog and s.game.dialog()
+  if h then return h, 'adapter' end
+  for i = #(T.panels or {}), 1, -1 do
+    local c = T.panels[i].uic
+    if c and select(2, pcall(function() return c:VisibleFromRoot() end)) == true and T.panels[i].dialog then return c, 'panel event ' .. T.panels[i].name end
   end
-  return {present = true, open = okv and vis == true, visible_from_root = okv and tostring(vis) or ('ERR ' .. flat(vis)), visible = okw and tostring(own) or nil,
-    text = text, tick = tick and true or false, cancel = cancel and true or false}
+  -- ok_group: a child of the game's popup only (ui/common ui/dialogue_box.twui.xml; the HUD's hidden copy has none)
+  local og = find_uicomponent(core:get_ui_root(), 'ok_group')
+  if og then
+    local okp, db = pcall(function() return UIComponent(og:Parent()) end)
+    if okp and db and select(2, pcall(function() return db:VisibleFromRoot() end)) == true then return db, 'ok_group' end
+  end
+  local db = find_uicomponent(core:get_ui_root(), 'dialogue_box')
+  if db and select(2, pcall(function() return db:VisibleFromRoot() end)) == true then return db, 'by name' end
+  return nil, 'none'
+end
+-- the game's panels and its buttons' clicks while a cancel is answered: the window's own events, with what they carry
+function I.panels_on()
+  T.panels = {}
+  core:remove_listener('tww3_mtb_ss_panel_open'); core:remove_listener('tww3_mtb_ss_panel_close'); core:remove_listener('tww3_mtb_ss_dialog_click')
+  core:add_listener('tww3_mtb_ss_panel_open', 'PanelOpenedCampaign', true, function(context)
+    local ok, c = pcall(function() return UIComponent(context.component) end)
+    local d = ok and c and describe(c) or nil
+    T.panels[#T.panels + 1] = {event = 'opened', name = tostring(context.string), uic = ok and c or nil, at = clock(), seen = d,
+      dialog = d and (d.id == 'dialogue_box' or d.tick) or false}
+  end, true)
+  core:add_listener('tww3_mtb_ss_panel_close', 'PanelClosedCampaign', true, function(context)
+    T.panels[#T.panels + 1] = {event = 'closed', name = tostring(context.string), at = clock()}
+  end, true)
+  core:add_listener('tww3_mtb_ss_dialog_click', 'ComponentLClickUp', function(c) return c.string == 'button_tick' or c.string == 'button_cancel' end, function(context)
+    local ok, c = pcall(function() return UIComponent(context.component) end)
+    T.panels[#T.panels + 1] = {event = 'click', name = tostring(context.string), at = clock(), parents = ok and chain(c) or nil}
+  end, true)
+  return {on = true}
+end
+function I.panels_off()
+  core:remove_listener('tww3_mtb_ss_panel_open'); core:remove_listener('tww3_mtb_ss_panel_close'); core:remove_listener('tww3_mtb_ss_dialog_click')
+  return {off = true}
+end
+local function panels_seen()
+  local out = {}
+  for _, p in ipairs(T.panels or {}) do out[#out + 1] = {event = p.event, name = p.name, seen = p.seen, parents = p.parents, dialog = p.dialog} end
+  return out
+end
+-- present: a dialogue_box found by name (whatever it is); open: a window on the screen by the best way; both described with their parents
+function I.dialog(a)
+  local byname = find_uicomponent(core:get_ui_root(), 'dialogue_box')
+  local c, way = dialog()
+  local d = describe(c)
+  local n = describe(byname)
+  local og = find_uicomponent(core:get_ui_root(), 'ok_group')
+  -- FindByGuid with the popup layout's guid of dialogue_box (unproven: asked only by the late cancel step, a.guid)
+  local okg, byguid = true, nil
+  if a and a.guid then okg, byguid = pcall(function() local x = core:get_ui_root():FindByGuid('0F3EE664-45F6-4E0B-8A5556CD457E0C7D'); return x and UIComponent(x) or nil end) end
+  return {present = byname and true or false, open = c ~= nil, way = way, window = d, by_name = n, text = d and d.text or nil, tick = d and d.tick or false,
+    cancel = d and d.cross or false, visible_from_root = n and tostring(n.on_screen) or nil, panels = panels_seen(),
+    ok_group = og and {parents = chain(og)} or nil, by_guid = (a and a.guid) and (okg and (byguid and describe(byguid) or 'nil') or ('ERR ' .. flat(byguid))) or nil}
 end
 -- The advisor (the game's own panel top left: «Начнем же!...»): dismissed by the game's own function before a picture
 function I.advisor_off()
@@ -730,10 +881,9 @@ end
 -- ---------------------------------------------------------------- what can refuse an order ----------------------------------------------------------------
 local function rkey(key) return 'DatabaseRecordContext("CcoBuildingLevelRecord", "' .. key .. '")' end
 local function v(r) if type(r) == 'table' then return r.v end return nil end
-local function selected()
-  local ok, s = pcall(function() return cm:get_campaign_ui_manager():get_char_selected() end)
-  return ok and tostring(s) or ('ERR ' .. flat(s))
-end
+-- the selection is not read: cm:get_campaign_ui_manager():get_char_selected() is nil in the game (session 15.11), and the order goes from his
+-- context without a selection (probe 14.11)
+local function selected() return nil end
 local function points() return v(PP.char('MilitaryForceContext.HordeContext.DevelopmentPoints')) end
 -- everything the game reads about an order of key into slot n (n: the adapter's slot when the screen is loaded, else the first empty), and the
 -- force around it: gold, points, the hull's level, the slot, the selection
@@ -771,7 +921,23 @@ function I.give(a)
   if (a.gold or 0) > 0 then cm:treasury_mod(FACTION, a.gold) end
   return {before = before, after = {points = points(), gold = cm:get_faction(FACTION):treasury()}, dev_call = okd, dev_err = (not okd) and flat(ed) or nil}
 end
-function I.points() return {points = points(), gold = cm:get_faction(FACTION):treasury()} end
+function I.points()
+  local H = 'MilitaryForceContext.HordeContext.'
+  local g = {}
+  for _, e in ipairs({'AccumulatedGrowth', 'GrowthPerTurn', 'GrowthThresholdForPoint', 'TurnsUntilNextGrowthPoint', 'HasMaxDevelopmentPoints', 'GrowthPercentage',
+                      'PredictedGrowthPercentage'}) do g[e] = v(PP.char(H .. e)) end
+  -- the parts of the growth as the game's tooltip lists them (CcoStringValue: StringValue, IntValue)
+  local parts = {}
+  for i = 0, 11 do
+    local name = v(PP.char(H .. 'GrowthFactorList.At(' .. i .. ').StringValue'))
+    if name == nil then break end
+    parts[#parts + 1] = {name = flat(name), value = v(PP.char(H .. 'GrowthFactorList.At(' .. i .. ').IntValue'))}
+  end
+  local s = screen()
+  local adapter = s and s.game and s.game.growth and s.game.growth() or nil
+  return {points = points(), gold = cm:get_faction(FACTION):treasury(), growth = g, growth_parts = parts, adapter_growth = adapter,
+    waiting = s and s.M and s.M.waiting and s.M.waiting() or nil}
+end
 -- The panel's verdict on every building against the game's own: the module's status and the game's IsActiveForBuildingBrowser on the slot the
 -- adapter would order it into, with the gates when they disagree. open vs active true, short vs HasEnoughDevelopmentPoints false, poor vs
 -- CanAfford false, locked vs active false: agree; open and active false: the panel offers what the game refuses.
@@ -799,11 +965,13 @@ function I.agree()
   return {rows = out, disagree = bad, points = points(), gold = cm:get_faction(FACTION):treasury()}
 end
 function I.dialog_answer(a)
-  local db, tick, cancel = dialog()
-  local b = (a.button == 'cancel') and cancel or tick
-  if not b then return {clicked = false, present = db ~= nil} end
+  local c, way = dialog()
+  if not c then return {clicked = false, way = way, panels = panels_seen()} end
+  local _, tick, cross = describe(c)
+  local b = (a.button == 'cancel') and cross or tick
+  if not b then return {clicked = false, way = way, window = (describe(c))} end
   b:SimulateLClick()
-  return {clicked = a.button or 'tick'}
+  return {clicked = a.button or 'tick', way = way}
 end
 
 -- What the panel shows at each of the game's events of the turn (the adapter's order of completion and turn start is being fixed: this logs
@@ -888,6 +1056,41 @@ end
 
 -- whether the panel would let a level be demolished, against the game's own CanDismantle on its slot (no command is given)
 -- a slot's box on the root (the panel's frame, the tree's window, its pan and zoom: panel.js slotOnFrame), for a close-up of the picture
+-- the tree moved as a player moves it, for the pictures the reviewer asks for: to its top or bottom (where = 'top' | 'bottom'), or a slot shown
+-- (key: the first slot whose status has that field true, e.g. 'short'); the mouse taken off every slot (onto the frame)
+function I.pan(a)
+  local s, v = screen(), view()
+  if not (v and v.pan) then return {missing = 'pan'} end
+  s.hover('frame')
+  local p, shown = v.pan, nil
+  p.z = 1
+  if a.where == 'top' then p.y = 0; p.clamp()
+  elseif a.where == 'bottom' then p.y = -1e9; p.clamp()
+  elseif a.status then
+    for _, t in ipairs(v.tree) do if s.M.status(t.node.key)[a.status] then p.show(t); shown = t.node.key; break end end
+  end
+  s.panel.refresh()
+  return {pan = p.state(), shown = shown, ch = p.ch, h = p.h}
+end
+-- the slot on screen nearest the window's bottom right corner (index for hover), for a building window placed there
+function I.corner_slot()
+  local v = view()
+  local best, bi = nil, nil
+  for i, t in ipairs(v and v.tree or {}) do
+    local p = v.pan
+    if p.inside and p.inside(t.button) then
+      local score = (p.x + t.button.x * p.z) + (p.y + t.button.y * p.z)
+      if not best or score > best then best, bi = score, i - 1 end
+    end
+  end
+  return {index = bi, id = bi and ('mtb_tree_node_' .. bi) or nil}
+end
+-- the drawing's own time by section and the model's calls since the last read (src/tww3_mtb_ship_ui.lua env.profile, on with ENGINE.profile)
+function I.drawing_profile()
+  local s = screen()
+  return {profile = s and s.panel and s.panel.profile and s.panel.profile(true) or nil}
+end
+
 function I.slot_box(a)
   local v = view()
   local t = v and v.tree and v.tree[a.index + 1]
@@ -934,6 +1137,9 @@ end
 
 -- ---------------------------------------------------------------- the call ----------------------------------------------------------------
 function SS.run(name, args)
+  -- a call of the driver comes in a later tick than the last: the adapter's reads of the last tick are dropped (src/tww3_mtb_game.lua invalidate)
+  local scr = screen()
+  if scr and scr.game and scr.game.invalidate then pcall(scr.game.invalidate) end
   local fn = I[name]
   local t0 = clock()
   local out

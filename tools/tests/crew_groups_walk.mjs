@@ -159,19 +159,40 @@ async function walk(scale) {
         ledger -= await upkeep('cannons', gunFirst) + await upkeep('cupolas', chosen.cupolas) + await upkeep('rifles', 'pirates') + await upkeep('harpoon', chosen.harpoon);
         check(`${tag} after the turn: the new gun, empty bombs' racks`, await b.eval(`mtb.M.crew('cannons')`) === gunFirst && await layerShown(`crew_cannons_${gunFirst}`)
             && await layerShown('crew_bombs_empty') && await gold() === ledger, {gold: await gold(), ledger});
-        // a building with a crew demolished: the nests' line from the top (the throwers stand) down to nothing
+        // a building with a crew demolished (the throwers stand). The game dismantles the slot's whole building (docs/design/port-to-game.md
+        // 8.5): only the line's top level has the button, it takes every level of the line, at the end of the turn
         const nests = await b.eval(`mtb.panel.view.tree.filter(v => v.node.row.unlocks.some(u => u.group === 'cupolas' && u.option === 'empty')).sort((a, b) => b.node.row.line_level - a.node.row.line_level).map(v => mtb.panel.view.tree.indexOf(v))`);
-        for (const i of nests) {
-            // the node into the tree's window (a pan of the view, as a drag would), then a click on it and on «Снести»
+        // the node into the tree's window (a pan of the view, as a drag would), then a click on it: the round button over it, active or not
+        const select = async i => {
             await b.eval(`(() => { const p = mtb.panel.view.pan, v = mtb.panel.view.tree[${i}]; p.x = p.w / 2 - v.button.x - 37; p.y = p.h / 2 - v.button.y - 37; p.clamp(); })()`);
             await clickId('mtb_tree_node_' + i);
-            await clickId('mtb_ship_demolish');
-            // the game takes a demolished building at the end of the turn (probe 14.11): the next level down only after it; the turn's upkeep of
-            // what stands then (the nests' crew is gone with the building before the turn's start)
-            await button('#end_turn');
-            await settle();
-            ledger -= await b.eval('mtb.M.crew_upkeep()');
+            return b.eval(`({on: mtb.panel.view.raze.Visible(), ok: mtb.panel.view.razeOk, tip: mtb.panel.view.raze.tooltip})`);
+        };
+        const line = await b.eval(`(() => { const v = mtb.panel.view.tree[${nests[0]}], c = mtb.M.chain(v.node.row.chain); return c.levels.filter(l => mtb.game.has_building(l.key)).map(l => ({key: l.key, name: l.name})); })()`);
+        for (const i of nests.slice(1)) {
+            const lower = await select(i);
+            check(`${tag} demolish: a lower level of the nests' line has the button inactive, why: the level on it first`, lower.on && !lower.ok && /^Сначала снесите «/.test(lower.tip || ''), lower);
         }
+        const hullI = await b.eval(`mtb.panel.view.tree.findIndex(v => /airship_hull_[0-9]$/.test(v.node.key) && mtb.game.standing(v.node.key))`);
+        const hullB = await select(hullI);
+        check(`${tag} demolish: the hull refuses (its button inactive, the reason in its tooltip)`, hullB.on && !hullB.ok && /^Корпус не сносится/.test(hullB.tip || ''), hullB);
+        const top = await select(nests[0]);
+        check(`${tag} demolish: the line's top level has the button active; its tooltip names every level that goes and the crew place that closes`,
+            top.on && top.ok && line.length >= 2 && line.every(l => (top.tip || '').includes(`«${l.name}»`)) && /уйдут в конце хода/.test(top.tip || '') && /Закроется место экипажа «Гнёзда»/.test(top.tip || ''), {top, line});
+        await clickId('mtb_ship_demolish');
+        // till the turn ends every level of the line stands, being dismantled; the place and its crew stay; what needs any of them is locked
+        const mid = await b.eval(`(() => { const keys = ${JSON.stringify(line.map(l => l.key))};
+            const deps = mtb.panel.view.tree.filter(v => !keys.includes(v.node.key) && !mtb.game.has_building(v.node.key) && mtb.M.needs_all(v.node.key).some(k => keys.includes(k)));
+            return {states: keys.map(k => mtb.M.status(k).state), stand: keys.every(k => mtb.game.has_building(k)), crew: mtb.M.crew('cupolas'), deps: deps.map(v => [v.node.name, mtb.M.status(v.node.key).state])}; })()`);
+        check(`${tag} demolish ordered: every level of the line stands till the turn ends, being dismantled; the throwers still there`,
+            mid.states.every(s => s === 'dismantling') && mid.stand && mid.crew === chosen.cupolas && await shown('mtb_crew_area_cupolas'), mid);
+        check(`${tag} demolish ordered: whatever needs a level that goes is locked meanwhile`, mid.deps.every(([, s]) => s === 'locked'), mid.deps);
+        // the game takes it at the end of the turn (probe 14.11); the turn's upkeep of what stands then (the nests' crew is gone with the building
+        // before the turn's start)
+        await button('#end_turn');
+        await settle();
+        ledger -= await b.eval('mtb.M.crew_upkeep()');
+        check(`${tag} after the turn every level of the nests' line is gone`, await b.eval(`${JSON.stringify(line.map(l => l.key))}.every(k => !mtb.game.has_building(k))`));
         check(`${tag} the nests demolished: their place, its crew and the lookouts are gone, nothing paid back`, !(await shown('mtb_crew_area_cupolas')) && !(await layerShown('lookouts_ink'))
             && await b.eval(`mtb.M.crew('cupolas')`) === 'empty' && await gold() === ledger, {msg: await b.eval('mtb.M.message()'), gold: await gold(), ledger});
         // short of gold
@@ -181,7 +202,7 @@ async function walk(scale) {
         const want = await b.eval(`mtb.M.crew_options('bombs').filter(o => !o.empty)[0].key`);
         const red = await b.eval(`[...document.querySelectorAll('#screen [data-id="mtb_crew_card_pick_bombs:${want}"] [data-id="RecruitmentCost"]')][0].innerHTML`);
         await clickId(`mtb_crew_card_pick_bombs:${want}`);
-        check(`${tag} short of gold: the cost red, no hire`, /col_red/.test(red) && await b.eval(`mtb.M.crew_order('bombs')`) === null && await gold() === 0, red);
+        check(`${tag} short of gold: the cost red, no hire`, /color: *#FF2D2D/i.test(red) && await b.eval(`mtb.M.crew_order('bombs')`) === null && await gold() === 0, red);
         if (scale === 0.6) {
             const card = await comp(`mtb_crew_card_pick_bombs:${want}`);
             await b.move(card.x + 3, card.y, 2); await sleep(400);

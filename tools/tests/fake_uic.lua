@@ -189,7 +189,8 @@ function Fake.engine(opts)
     end}
     local function new(parent, id, name, L)
         local c = setmetatable({id = id, name = name, L = L, parent = parent, children = {}, x = 0, y = 0, w = L.w or 64, h = L.h or 64, dp = 0,
-                                visible = true, opacity = 255, image_opacity = 255, state = L.default, interactive = L.interactive, text = L.text and '' or nil}, meta)
+                                visible = true, opacity = 255, image_opacity = 255, state = L.default, interactive = L.interactive, text = L.text and '' or nil,
+                                image = L.image}, meta)
         if parent then parent.children[#parent.children + 1] = c end
         E.count = E.count + 1
         return c
@@ -329,6 +330,170 @@ function Fake.check_engine(top, E, pack)
     end
     walk(top, 'root', true, 255, false)
     if unclipped > 3 then add('clip', '...', unclipped .. ' shown components of the tree with no clipping ancestor') end
+    return out
+end
+
+-- Fake.check_colours(top, text, colours): the colour the game draws each shown text in, against the page's. The game draws a layout's text in the
+-- font's light colour (#FFF8D7) whatever its font_m_colour says, another colour only by its preset (font_colour_override_preset_key: a row of the
+-- game's ui_colours table, here `colours`: build/tree/ship_ui_config.json colours, web/js/ui_text.mjs GAME_COLOURS); a [[col:key]] tag colours
+-- its words only when the game has that key (runs/20261115-012811-ship_panel: [[col:grey]], [[col:game_red]], the copper and the grey layouts all
+-- came out light). Problems {kind, path, text}:
+--   colour   the layout's colour on the page not the one the game draws it in
+--   tag      a [[col:key]] the game does not know: drawn light
+local LIGHT = '#FFF8D7'
+function Fake.check_colours(top, text, colours)
+    local out = {}
+    local function add(kind, path, t) out[#out + 1] = {kind = kind, path = path, text = t} end
+    local seenLayout = {}
+    local function walk(c, path, shown)
+        local vis = shown and c.visible and not c.blank
+        if vis and c.text and c.text ~= '' then
+            local spec = text[c.layout] or {}
+            local drawn = (c.uic.L.preset and colours[c.uic.L.preset]) or LIGHT
+            local page = string.upper(spec.colour or LIGHT)
+            if string.upper(drawn) ~= page and not seenLayout[c.layout] then
+                seenLayout[c.layout] = true
+                add('colour', path, 'layout ' .. c.layout .. ': the page ' .. page .. ', the game draws ' .. drawn .. (c.uic.L.preset and (' (preset ' .. c.uic.L.preset .. ')') or ' (no preset)'))
+            end
+            for key in string.gmatch(c.text, '%[%[col:([%w_]+)%]%]') do
+                if not colours[key] then add('tag', path, '[[col:' .. key .. ']]: no such row in the game\'s ui_colours, drawn ' .. drawn) end
+            end
+        end
+        each_child(c, path, function(ch, p) walk(ch, p, vis) end)
+    end
+    walk(top, 'root', true)
+    return out
+end
+
+-- Fake.scenarios(panel, ui, root): the mouse and the tree as a player moves them, on the panel of a state (src/tww3_mtb_ship_ui.lua over the binding
+-- ui of src/tww3_mtb_ship_uic.lua; the game tells MouseOn only, never MouseOff). Problems {kind, path, text}:
+--   survives  a window under the mouse still shown after what opened it went: Esc, the choice's cross, a tab, a scroll (runs/20261115-012811-
+--             ship_panel ss_scrolled: a unit's panel of the closed choice over the tree)
+--   extremes  at the tree's top or bottom a slot of the first or last row, with its cards, its points and its price, not wholly inside the window
+--             (defects 8 and 20)
+--   anchor    a building's window not beside the slot under the mouse at a scroll and a zoom, or shown for a slot outside the window (defect 9)
+--   outside   a building's window out of the screen, or out of the panel when it fits there (defect 10)
+function Fake.scenarios(panel, ui, root)
+    local out = {}
+    local function add(kind, path, t) out[#out + 1] = {kind = kind, path = path, text = t} end
+    local view = panel.view
+    local function shownFromRoot(c)
+        local p = c
+        while p do if not p.visible or p.blank then return false end; p = p.parent end
+        return true
+    end
+    local function click(id) local c = ui.by_id(id); if c then panel.click(c) end end
+    -- ---- the windows of the crew's choice ----
+    for _, g in ipairs(view.area_order or {}) do
+        local a = view.crewAreas[g]
+        if a and a.area.visible then
+            local function open()
+                click('mtb_tab_ship'); a.open = true; panel.refresh()
+                for _, slot in ipairs(a.slots) do
+                    if slot.info then
+                        ui.mouse_on(slot.hit:Id())
+                        if slot.info.ensure then slot.info.ensure() end
+                        return slot
+                    end
+                end
+            end
+            local slot = open()
+            if slot and slot.info.panel.visible then
+                local ways = {
+                    {'Esc', function() panel.escape() end},
+                    {'the choice\'s cross', function() click('mtb_crew_close_' .. g) end},
+                    {'the tab «Постройки»', function() click('mtb_tab_tree') end},
+                }
+                for _, w in ipairs(ways) do
+                    open()
+                    w[2]()
+                    if shownFromRoot(slot.info.panel) then add('survives', 'crew_pick_info_' .. g, 'a unit\'s panel of the choice still shown after ' .. w[1]) end
+                end
+            end
+            break
+        end
+    end
+    -- ---- the tree ----
+    local pan = view.pan
+    if not pan or not view.tree or #view.tree == 0 then return out end
+    click('mtb_tab_tree')
+    local frame = view.frame
+    local function slotRect(v)       -- on the frame
+        local x = view.pane.x + pan.win.x + pan.x + v.button.x * pan.z
+        local y = view.pane.y + pan.win.y + pan.y + v.button.y * pan.z
+        return {l = x, t = y, r = x + 74 * pan.z, b = y + 74 * pan.z}
+    end
+    local win = {l = view.pane.x + pan.win.x, t = view.pane.y + pan.win.y}
+    win.r, win.b = win.l + pan.w, win.t + pan.h
+    -- the extremes: the first and the last row, all their parts
+    local top, bottom = math.huge, -math.huge
+    for _, v in ipairs(view.tree) do top = math.min(top, v.button.y); bottom = math.max(bottom, v.button.y) end
+    local function parts(v)
+        local list = {v.button, v.cost, v.dev}
+        for _, c in ipairs(view.crew or {}) do if c.v == v then list[#list + 1] = c.card end end
+        for _, p in ipairs(view.plates or {}) do if p.v == v then list[#list + 1] = p.plate end end
+        return list
+    end
+    pan.z = 1
+    for _, ext in ipairs({{'top', 0, top}, {'bottom', -1e9, bottom}}) do
+        pan.y = ext[2]; pan.clamp()
+        for _, v in ipairs(view.tree) do
+            if v.button.y == ext[3] then
+                for _, c in ipairs(parts(v)) do
+                    if c.visible ~= false then
+                        local t, b = pan.y + c.y, pan.y + c.y + c.h
+                        if t < 0 or b > pan.h then add('extremes', v.node.key, 'at the tree\'s ' .. ext[1] .. ' ' .. c.id .. ' spans ' .. t .. '..' .. b .. ' of the window\'s 0..' .. pan.h) end
+                    end
+                end
+            end
+        end
+    end
+    -- every slot hovered at the top, the middle and the bottom, at full size and as «Всё дерево»
+    local screenW, screenH = frame.parent.w, frame.parent.h
+    local function hoverAll(where)
+        for _, v in ipairs(view.tree) do
+            ui.mouse_on('frame')
+            ui.mouse_on(v.button:Id())
+            local s = slotRect(v)
+            local inside = s.r > win.l and s.b > win.t and s.l < win.r and s.t < win.b
+            local tip = v.info.tip
+            local shown = shownFromRoot(tip)
+            if not inside and shown then add('anchor', v.node.key, where .. ': its window shown for a slot outside the tree\'s window') end
+            if inside and not shown then add('anchor', v.node.key, where .. ': no window for a slot under the mouse') end
+            if inside and shown then
+                local tl, tt = tip.x, tip.y
+                local tr, tb = tl + tip.w, tt + tip.h
+                local beside = (tl >= s.r - 1 or tr <= s.l + 1)
+                if not beside then add('anchor', v.node.key, where .. ': the window ' .. tl .. '..' .. tr .. ' over the slot ' .. s.l .. '..' .. s.r) end
+                local ax, ay = frame.x + tl, frame.y + tt
+                if ax < 0 or ay < 0 or ax + tip.w > screenW or ay + tip.h > screenH then add('outside', v.node.key, where .. ': the window out of the screen') end
+                if tip.h <= frame.h - 4 - view.area.y and (tb > frame.h or tt < 0) then add('outside', v.node.key, where .. ': the window ' .. tt .. '..' .. tb .. ' out of the panel 0..' .. frame.h) end
+            end
+        end
+        ui.mouse_on('frame')
+    end
+    for _, z in ipairs({1, 0}) do
+        for _, at in ipairs({{'the top', 0}, {'the middle', -(pan.ch * (z == 1 and 1 or pan.fitZ()) - pan.h) / 2}, {'the bottom', -1e9}}) do
+            pan.z = z == 1 and 1 or pan.fitZ()
+            pan.y = at[2]; pan.clamp(); panel.refresh()
+            hoverAll(at[1] .. (z == 1 and '' or ', «Всё дерево»'))
+        end
+    end
+    -- a slot under the mouse scrolled away, a tab switched: its window goes
+    pan.z = 1; pan.y = 0; pan.clamp(); panel.refresh()
+    local firstIn
+    for _, v in ipairs(view.tree) do local s = slotRect(v); if s.t >= win.t and s.b <= win.b and s.l >= win.l and s.r <= win.r then firstIn = v; break end end
+    if firstIn then
+        ui.mouse_on(firstIn.button:Id())
+        pan.y = -1e9; pan.clamp()
+        local s = slotRect(firstIn)
+        if s.b <= win.t and shownFromRoot(firstIn.info.tip) then add('survives', firstIn.node.key, 'its window still shown after the tree scrolled it away') end
+        pan.y = 0; pan.clamp(); panel.refresh()
+        ui.mouse_on('frame'); ui.mouse_on(firstIn.button:Id())
+        click('mtb_tab_ship')
+        if shownFromRoot(firstIn.info.tip) then add('survives', firstIn.node.key, 'its window still shown after the tab «Корабль»') end
+        click('mtb_tab_tree')
+    end
     return out
 end
 

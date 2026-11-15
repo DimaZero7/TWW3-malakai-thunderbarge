@@ -1236,13 +1236,24 @@ async function walkChains() {
     await b.shot(join(SHOTS, 'chain_game_info.png'));
     const lvls = await b.eval(`['Пивной чертог', 'Таверна', 'Винокурня'].map(n => { const v = mtb.panel.view.tree.find(t => t.node.name === n); return v.level ? v.level.path.split('_').pop() : ''; })`);
     check('chains: game: the slots carry the numerals I, II, III', lvls.join() === '1.png,2.png,3.png', lvls);
+    // a demolish of the line: the game dismantles the slot's whole building, I with II (docs/design/port-to-game.md 8.5); only the level that
+    // stands has the button, I under it refuses; the button's tooltip names both; till the turn ends both stand and II's set still acts
+    const lineKeys = await b.eval(`['Пивной чертог', 'Таверна'].map(n => mtb.panel.view.tree.find(t => t.node.name === n).node.key)`);
+    await selectInGame('Пивной чертог');
+    const under = await b.eval(`({on: mtb.panel.view.raze.Visible(), ok: mtb.panel.view.razeOk, tip: mtb.panel.view.raze.tooltip})`);
+    check('chains: game: I under II: its demolish button inactive, why: II first', under.on && !under.ok && /^Сначала снесите «Таверна»/.test(under.tip || ''), under);
     await selectInGame('Таверна');
+    const top = await b.eval(`({on: mtb.panel.view.raze.Visible(), ok: mtb.panel.view.razeOk, tip: mtb.panel.view.raze.tooltip})`);
+    check('chains: game: the demolish button of II active, its tooltip names both levels that go', top.on && top.ok && /^Снос: «Таверна», «Пивной чертог» уйдут в конце хода\./.test(top.tip || ''), top);
     const dem = await gameComp('mtb_ship_demolish');
     await b.click(dem.x, dem.y); await sleep(250);
+    a = await ammoOf();
+    check('chains: game: II demolished, till the turn ends: I and II stand, being dismantled; the set of II still acts (+25 %), the pirates open',
+        a.pct === 25 && await b.eval(`${JSON.stringify(lineKeys)}.every(k => mtb.game.has_building(k) && mtb.M.status(k).state === 'dismantling')`) && await pir(), a);
     { const e = await b.rect('#end_turn'); await b.click(e.x, e.y); await sleep(250); }      // the game takes it at the end of the turn (probe 14.11)
     a = await ammoOf();
-    const firstKey = await b.eval(`mtb.panel.view.tree.find(t => t.node.name === 'Пивной чертог').node.key`);
-    check('chains: game: II demolished: I stands again and its set acts (+12 %), the pirates open', a.pct === 12 && await b.eval(`mtb.game.standing(${JSON.stringify(firstKey)})`) && await pir(), a);
+    check('chains: game: after the turn the whole line is gone: neither I nor II stands, no set of the line acts, the pirates I opened closed',
+        !a.pct && !(a.from || []).length && await b.eval(`${JSON.stringify(lineKeys)}.every(k => !mtb.game.has_building(k))`) && !(await pir()), a);
     im = await images();
     check('chains: game: every picture loaded', !im.bad.length && !im.missing.length, im);
     await toConstructor();

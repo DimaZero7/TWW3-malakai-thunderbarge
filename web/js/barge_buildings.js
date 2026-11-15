@@ -74,23 +74,55 @@ export function makeBuildings(data, game, parts) {
     // and in the nominative
     M.POINTS = 'избытка населения';
     M.POINTS_NOM = 'избыток населения';
+    // The horde's growth as the game counts it (GAME: HordeContext.AccumulatedGrowth, GrowthPerTurn, GrowthThresholdForPoint,
+    // TurnsUntilNextGrowthPoint, HasMaxDevelopmentPoints: the game's own horde building browser reads these): {now, per_turn, need, turns, max};
+    // null when the game does not say
+    M.growth = () => (game.growth ? game.growth() : null);
     // A building being dismantled: the game takes it at the end of the turn (probe 14.11, 8.2), it stands till then
     const going = row => !!(game.dismantling && game.dismantling(row.key));
+    const belowOf = row => { const chain = M.chain(row.chain); return (chain && chain.levels.find(l => l.level === row.level - 1)) || null; };
+    // What a dismantle of a level takes (GAME: the slot's whole building, its lower levels with it: run 20261115-012811, «Пивной чертог» II
+    // dismantled, the slot empty after the turn); the top first
+    const takesOf = row => (game.dismantle_takes ? game.dismantle_takes(row.key) : [row.key]).map(k => M.level(k)).filter(Boolean);
+    // the standing level of a line being dismantled (its mark), and the names of what goes with it
+    const goingTop = row => { const chain = M.chain(row.chain); return (chain && [...chain.levels].reverse().find(l => game.standing(l.key))) || row; };
+    const namesOf = rows => rows.map(r => `«${r.name}»`).join(', ');
+    const goesText = rows => `${namesOf(rows)} ${rows.length > 1 ? 'уйдут' : 'уйдёт'} в конце хода`;
     // the direct requirements of a level that stand but are being dismantled (they will not stand next turn): the level below, the buildings it needs
     const goingNeeds = row => {
-        const chain = M.chain(row.chain);
-        const below = chain && chain.levels.find(l => l.level === row.level - 1);
+        const below = belowOf(row);
         return [...(below ? [below] : []), ...needsOf(row).map(k => M.level(k)).filter(Boolean)].filter(r => game.has_building(r.key) && going(r));
     };
 
-    // {state: built | dismantling | building | open | locked, turns, asked, why, missing, poor, short}. why: the reason as the panel prints it
-    // (without the full stop). poor: short of gold; short: short of development points; asked: a cancel waits for the game's window.
+    // A command the game applies a moment later (GAME: the slot read right after IssueCommandForBuildingBrowser still shows the old state, run
+    // 20261115-012811; the adapter reads it again on the game's next ticks and tells CommandResult {key, kind}). Till then the panel says nothing
+    // and the slot shows the command waiting (pending: 'order' | 'cancel'). key -> {kind, cost, dev}
+    const pending = {};
+    M.pending = key => { const row = M.level(key); return row && pending[row.key] ? pending[row.key].kind : null; };
+    // the building window's instruction line while a command waits for the game (instead of «Щелчок — …»); '' when nothing waits
+    M.pending_note = key => {
+        const st = M.status(key);
+        if (st.pending === 'order') return 'Заказ отправлен, ждём ответа игры.';
+        if (st.pending === 'cancel') return `Строится, осталось ${turnsText(st.turns)}. Отмена отправлена, ждём ответа игры.`;
+        return '';
+    };
+
+    // {state: built | dismantling | building | open | locked, turns, asked, pending, why, missing, poor, short}. why: the reason as the panel prints
+    // it (without the full stop). poor: short of gold; short: short of development points; asked: a cancel waits for the game's window; pending:
+    // an order or a cancel the game has not applied yet.
     M.status = key => {
         const row = M.level(key);
         if (!row) return {state: 'unknown', why: `Нет в выгрузке: ${key}`};     // a building of a chain the page does not export yet
-        if (game.has_building(row.key)) return going(row) ? {state: 'dismantling', why: 'Сносится: постройка уйдёт в конце хода'} : {state: 'built'};
+        if (game.has_building(row.key)) return going(row) ? {state: 'dismantling', why: `Сносится: ${goesText(takesOf(goingTop(row)))}`} : {state: 'built'};
         const turns = game.under_construction(row.key);
-        if (turns !== null) return game.cancel_asked && game.cancel_asked(row.key) ? {state: 'building', turns, asked: true} : {state: 'building', turns};
+        const p = pending[row.key];
+        if (turns !== null) {
+            const st = {state: 'building', turns};
+            if (game.cancel_asked && game.cancel_asked(row.key)) st.asked = true;
+            if (p) st.pending = p.kind;
+            return st;
+        }
+        if (p && p.kind === 'order') return {state: 'building', turns: row.turns, pending: 'order'};
         const missing = M.missing(row.key);
         if (missing.length) return {state: 'locked', why: M.requires_text(missing), missing};
         const gone = goingNeeds(row);
@@ -113,17 +145,25 @@ export function makeBuildings(data, game, parts) {
         // GAME: DatabaseRecordContext("CcoBuildingLevelRecord", row.key):IssueCommandForBuildingBrowser(slot) through common.call_context_command;
         // the slot is the chain's own one or the first empty (tools/tests/prog_build.lua). The game takes the gold.
         const cost = M.cost(row.key), dev = M.dev(row.key);
-        game.issue_building_command(row.key);
-        // Check after the order: the game may refuse it while answering ok (port-to-game.md 3.4). Read the slot again; the game's reason when it
-        // gives one (GAME: the adapter reads IsActiveForBuildingBrowser and its gates before the command)
+        // 'pending': the game applies it a moment later (CommandResult below); otherwise it is applied now
+        if (game.issue_building_command(row.key) === 'pending') {
+            pending[row.key] = {kind: 'order', cost, dev};
+            fire();
+            return {ok: true, kind: 'pending'};
+        }
+        const out = ordered(row, cost, dev);
+        fire();
+        return out;
+    };
+    // Check after the order: the game may refuse it while answering ok (port-to-game.md 3.4). Read the slot again; the game's reason when it
+    // gives one (GAME: the adapter reads IsActiveForBuildingBrowser and its gates before the command)
+    const ordered = (row, cost, dev) => {
         if (game.under_construction(row.key) === null) {
             const why = game.refusal ? game.refusal(row.key) : null;
             message = `Заказ «${row.name}» не прошёл: ${why || 'игра его не приняла'}.`;
-            fire();
             return {ok: false, why: message};
         }
         message = `Заказано: «${row.name}», ${cost} золота${dev > 0 ? ` и ${dev} ед. ${M.POINTS}` : ''}, готово через ${turnsText(row.turns)}.`;
-        fire();
         return {ok: true};
     };
 
@@ -151,18 +191,35 @@ export function makeBuildings(data, game, parts) {
     const cancelled = row => `Отменено: «${row.name}», ${M.dev(row.key) > 0 ? `золото и ${M.POINTS_NOM} вернулись` : 'золото вернулось'}.`;
     M.cancel = key => {
         const row = M.level(key);
-        if (game.under_construction(row.key) === null) return {ok: false};
+        if (game.under_construction(row.key) === null || pending[row.key]) return {ok: false};
         if (game.cancel_asked && game.cancel_asked(row.key)) return {ok: false, why: `Отмена «${row.name}»: ответьте в окне игры.`};
-        game.cancel_construction(row.key);
+        if (game.cancel_construction(row.key) === 'pending') {
+            pending[row.key] = {kind: 'cancel'};
+            fire();
+            return {ok: true, kind: 'pending'};
+        }
+        const out = uncancelled(row);
+        fire();
+        return out;
+    };
+    const uncancelled = row => {
         if (game.under_construction(row.key) !== null) {
             message = game.cancel_asked && game.cancel_asked(row.key) ? `Отмена «${row.name}»: ответьте в окне игры.` : `Отмена «${row.name}» не прошла: игра её не приняла.`;
-            fire();
             return {ok: false, why: message};
         }
         message = cancelled(row);
-        fire();
         return {ok: true};
     };
+    // the game applied a waiting command (or the adapter gave up waiting): what it did is read now, and said
+    game.on('CommandResult', ctx => {
+        const row = M.level(ctx.key);
+        const p = row && pending[row.key];
+        if (!p) return;
+        delete pending[row.key];
+        if (p.kind === 'order') ordered(row, p.cost, p.dev);
+        else uncancelled(row);
+        fire();
+    });
     game.on('CancelAnswered', ctx => {
         const row = M.level(ctx.key);
         if (!row) return;
@@ -183,7 +240,9 @@ export function makeBuildings(data, game, parts) {
             const top = chain && [...chain.levels].reverse().find(l => game.standing(l.key));
             return {ok: false, why: `Сначала снесите «${top ? top.name : 'верхний уровень'}»: он стоит на этой постройке`};
         }
-        const needing = Object.values(levels).filter(l => needsOf(l).includes(row.key) && game.has_building(l.key));
+        // what stands on any level the dismantle takes (the game takes the lower levels of the line with it)
+        const takes = takesOf(row).map(r => r.key);
+        const needing = Object.values(levels).filter(l => !takes.includes(l.key) && needsOf(l).some(k => takes.includes(k)) && game.has_building(l.key));
         if (needing.length) return {ok: false, why: `Сначала снесите «${needing[0].name}»: ей нужна эта постройка`};
         // a level of its line under construction in the same slot: that first
         const chain = M.chain(row.chain);
@@ -198,15 +257,27 @@ export function makeBuildings(data, game, parts) {
         // GAME: HordeContext.BuildingSlotList.At(n).Dismantle, after its CanDismantle. The building stands until the turn ends (probe 14.11, 8.2): it
         // is «being dismantled» till then (the game's adapter keeps the mark in the save), its crew and what it opens stay; at the turn's start it is
         // gone (BuildingDemolished). guess: no gold back (no refund seen yet: the session's demolish step reads the treasury around the turn).
+        const said = demolishSaid(row);
         if (!game.dismantle(row.key)) {
             message = `Снос «${row.name}» не прошёл: игра его не приняла.`;
             fire();
             return {ok: false, why: message};
         }
-        message = `Снос заказан: «${row.name}» уйдёт в конце хода.`;
+        message = `Снос заказан: ${said}`;
         fire();
         return {ok: true};
     };
+    // What a demolish will take, said before it is confirmed (the round button's tooltip) and when it is ordered: every level that goes, the crew
+    // places it closes, the crew and the orders that go with them. '' when it cannot be demolished
+    M.demolish_preview = key => (M.can_demolish(key).ok ? `Снос: ${demolishSaid(M.level(key))}` : '');
+    const demolishSaid = row => {
+        const fx = afterDemolish(row);
+        let s = goesText(fx.takes) + '.';
+        if (fx.places.length) s += ` ${fx.places.length > 1 ? 'Закроются места экипажа' : 'Закроется место экипажа'} ${quoted(fx.places.map(M.place_name))}.`;
+        if (fx.said.length) s += ' ' + upper(fx.said.join('; ')) + '.';
+        return s;
+    };
+    const upper = s => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
     // The stage of a part of the drawing and the model: pencil (not built), build (under construction), ink (built); none for a part not connected yet
     // (web/data/blueprint.json, enabled). M.all_parts (?parts=all): every part as built, to look at the whole ship.
@@ -394,19 +465,52 @@ export function makeBuildings(data, game, parts) {
         }
         return said;
     };
+    // What the ship has after a demolish of row, before it is done: the levels it takes, the crew places it closes, and what of the crew goes (the
+    // same rule as dropLocked: an order whose option closes comes back with its gold, a standing crew leaves without)
+    const afterDemolish = row => {
+        const takes = takesOf(row), gone_ = takes.map(r => r.key);
+        const below = belowOf(row);
+        const back = takes.length === 1 && below ? below.key : null;        // a dismantle of one level (the page's step_down): the one below stands again
+        const standsAfter = r => r.key === back || (stands(r) && !gone_.includes(r.key));
+        const opensAfter = (g, o) => ((openers[g] || {})[o] || []).some(standsAfter);
+        const placeAfter = g => {
+            const group = data.groups[g];
+            if (!group || !M.carried()) return false;
+            if (group.mount) return opensAfter(g, group.mount);
+            return Object.keys(group.options).some(o => o !== group.start && opensAfter(g, o));
+        };
+        const places = [], said = [];
+        for (const g of Object.keys(data.groups)) {
+            const after = placeAfter(g);
+            if (M.crew_place(g) && !after) places.push(g);
+            const open = o => o === emptyOf(g) || (after && opensAfter(g, o));
+            const st = stateOf(g);
+            if (st.order && st.order.option !== emptyOf(g) && !open(st.order.option)) said.push(`заказ на ${nameOf(g, st.order.option)} снимут, ${st.order.paid} золота вернётся`);
+            if (st.standing !== emptyOf(g) && !open(st.standing)) said.push(`${nameOf(g, st.standing)} сойдут с корабля, найм не вернётся`);
+        }
+        return {takes, places, said};
+    };
     // A building gone at the end of the turn (GAME: the adapter tells it at Malakai's turn start, from its saved mark, before FactionTurnStart): its
-    // crew goes with it, and the turn's line says so
-    let gone = [];          // [{name, said}] told by the turn's line
+    // crew goes with it, and the turn's line says so: every level that went, the crew places that closed, the crew that left
+    let gone = [];          // [{names, places, said}] told by the turn's line
     const goneText = () => {
         if (!gone.length) return null;
-        const said = gone.flatMap(g => g.said);
-        return `Снесено: ${gone.map(g => `«${g.name}»`).join(', ')}.` + (said.length ? ' Постройки больше нет: ' + said.join('; ') + '.' : '');
+        const said = gone.flatMap(g => g.said), places = gone.flatMap(g => g.places);
+        return `Снесено: ${gone.map(g => g.names).join(', ')}.` +
+            (places.length ? ` ${places.length > 1 ? 'Закрыты места экипажа' : 'Закрыто место экипажа'} ${quoted(places.map(M.place_name))}.` : '') +
+            (said.length ? ' Постройки больше нет: ' + said.join('; ') + '.' : '');
     };
     game.on('BuildingDemolished', ctx => {
         const said = dropLocked();
         const row = M.level(ctx.key);
-        gone.push({name: row ? row.name : ctx.key, said});
-        shipWas = shipNow();
+        // the places it closed: open in the ship of the turn's end, closed now
+        const now = shipNow(), was = shipWas || now;
+        const places = was.places.filter(g => !now.places.includes(g));
+        gone.push({names: row ? namesOf(takesOf(row)) : `«${ctx.key}»`, places, said});
+        // the baseline of the turn's news loses what went, and gains nothing: the game has already put this turn's completions in their slots
+        // (they are told after FactionTurnStart, run 20261115-012811), so a place they open is still news then
+        shipWas = {parts: was.parts.filter(p => now.parts.includes(p)), places: was.places.filter(g => now.places.includes(g)),
+                   kinds: (was.kinds || []).filter(k => now.kinds.includes(k))};
         message = goneText();
         fire();
     });
@@ -474,10 +578,25 @@ export function makeBuildings(data, game, parts) {
     // event told, is not news of the next turn)
     game.on('FactionTurnEnd', () => { shipWas = shipNow(); });
     // The one obvious first step of a fresh campaign, in the game's voice: nothing built, nothing ordered, nothing said yet
+    // Nothing can be ordered and points are what is missing: what the player waits for, in the game's words (local_ru: «Численность этой орды
+    // растет со временем», the horde's growth makes the surplus: GrowthThresholdForPoint, TurnsUntilNextGrowthPoint). null otherwise
+    M.waiting = () => {
+        const all = Object.values(levels);
+        let short = false;
+        for (const r of all) {
+            const st = M.status(r.key);
+            if (st.state === 'open') return null;
+            if (st.short) short = true;
+        }
+        if (!short) return null;
+        const g = M.growth();
+        if (g && g.turns) return `Нечего заказать: не хватает ${M.POINTS}, следующая единица через ${turnsText(g.turns)}.`;
+        return `Нечего заказать: не хватает ${M.POINTS}.`;
+    };
     M.first_step = () => {
         if (message) return null;
         const all = Object.values(levels);
-        if (all.some(r => game.has_building(r.key) || game.under_construction(r.key) !== null)) return null;
+        if (all.some(r => game.has_building(r.key) || game.under_construction(r.key) !== null)) return M.waiting();
         const first = all.find(r => !M.missing(r.key).length);
         if (!first) return null;
         return M.status(first.key).state === 'open' ? `Закажите первую постройку — «${first.name}».` : `Первая постройка — «${first.name}». ${M.reason(first.key)}`;
@@ -495,7 +614,7 @@ export function makeBuildings(data, game, parts) {
         game.gold -= upkeep;        // GAME: cm:treasury_mod; the page lets the treasury go below zero
         let crewLine = [came.length ? came.join('; ') : '', upkeep ? `содержание экипажа: ${upkeep} золота` : ''].filter(Boolean).join(', ');
         crewLine = crewLine ? crewLine[0].toUpperCase() + crewLine.slice(1) + '.' : null;
-        message = [goneText(), crewLine].filter(Boolean).join(' ') || null;
+        message = [goneText(), crewLine, M.waiting()].filter(Boolean).join(' ') || null;
         gone = [];
         turnLine = message ? {turn: game.turn, text: message} : null;
         fire();

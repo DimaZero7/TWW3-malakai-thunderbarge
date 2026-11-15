@@ -19,8 +19,8 @@ const levels = T.gameData(design, data);
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? 'ok   ' : 'FAIL ') + name + (ok ? '' : '  ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)))); };
 
-function fresh(gold = 100000) {
-    const game = new GameSim(levels, {...sim, dev_points: 1000, gold, built: stage.built || sim.built, demolish: stage.demolish_mode});
+function fresh(gold = 100000, demolish = stage.demolish_mode) {
+    const game = new GameSim(levels, {...sim, dev_points: 1000, gold, built: stage.built || sim.built, demolish});
     const M = makeBuildings(levels, game, stage.parts);
     for (const a of stage.crew_areas || []) if (a.words) M.words[a.group] = a.words;
     return {game, M};
@@ -102,9 +102,10 @@ const opt = (g, k) => data.groups[g].options[k];
     check('no gold: the preview says why', /Не хватает золота/.test(M.crew_preview('bombs', k).text));
 }
 
-// 4. a building goes: a standing crew of a kind it opened leaves, an order of it comes back with its gold; without the mount nothing of the group stays
+// 4. a building goes: a standing crew of a kind it opened leaves, an order of it comes back with its gold; without the mount nothing of the group stays.
+// A level at a time (the page's rule step_down, not the game's: there a dismantle takes the whole building, page_logic_test and the vectors' game 6)
 {
-    const {game, M} = fresh();
+    const {game, M} = fresh(100000, 'step_down');
     for (const v of levels.tree_rows) M.debug_build_to(v.key);
     let ledger = game.treasury();
     // the guns' line: its top level opens a kind the others do not; taken down, that kind is gone

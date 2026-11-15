@@ -15,7 +15,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import * as T from '../web/js/tree_model.mjs';
 import * as FX from '../web/js/effects_model.mjs';
-import {TEXT} from '../web/js/ui_text.mjs';
+import {TEXT, GAME_COLOURS} from '../web/js/ui_text.mjs';
 import {REPO, readJson, inputs, pageLevels, rekey} from './ship_config.mjs';
 
 const clone = v => JSON.parse(JSON.stringify(v));
@@ -128,7 +128,7 @@ export function uiConfig(inp = inputs()) {
 
     return clean({
         _about: 'Made by tools/ship_ui_config.mjs from the page\'s inputs as web/js/main.js builds its screen. Read by src/tww3_mtb_ship_ui.lua. Do not edit.',
-        text: TEXT,
+        text: TEXT, colours: GAME_COLOURS,
         kinds, crew_kinds: FX.CREW_KINDS,
         data: {art: {size: data.art.size, layers: data.art.layers}, groups: groupsOut, group_order: groupOrder, army_units: armyOut, rows: rowOut, links: linkOut,
                lines: pieces, junctions: marks.junctions, content: [cw, ch]},

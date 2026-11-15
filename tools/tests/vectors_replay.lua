@@ -49,6 +49,9 @@ return function(Ship, CM, Fake)
         put('news', n and table.concat({join(n.built, ',', sk), join(n.parts, ','), join(n.places, ','), join(n.kinds or {}, ',')}, ' | ') or nil)
         put('news_places', join(M.news_places(), ','))
         put('carried', M.carried() and true or false)
+        local g = M.growth()
+        put('growth', g and (num(g.now) .. '/' .. num(g.per_turn) .. '/' .. num(g.need) .. '/' .. (g.turns ~= nil and num(g.turns) or '-') .. '/' .. tostring(g.max and true or false)) or nil)
+        put('waiting', M.waiting())
         put('view.tab', w.view.tab)
         local s = w.view.scroll
         put('view.scroll', s and (num(s.x) .. ',' .. num(s.y) .. ',' .. num(s.zoom)) or nil)
@@ -61,10 +64,13 @@ return function(Ship, CM, Fake)
             put(b .. '.poor', st.poor and true or false)
             put(b .. '.short', st.short and true or false)
             put(b .. '.asked', st.asked and true or false)
+            put(b .. '.pending', st.pending or '')
+            put(b .. '.pending_note', M.pending_note(k))
             put(b .. '.missing', join(st.missing or {}, ',', function(x) if ssub(x, 1, 5) == 'tier:' then return x end return sk(x) end))
             put(b .. '.reason', M.reason(k))
             local d = M.can_demolish(k)
             put(b .. '.demolish', d.ok and 'ok' or d.why)
+            put(b .. '.demolish_preview', M.demolish_preview(k))
             put(b .. '.stands', M.stands(k))
             put(b .. '.has', game.has_building(k))
         end
@@ -135,6 +141,7 @@ return function(Ship, CM, Fake)
         elseif act == 'refuse' then return tostring(M.refuse(k))
         elseif act == 'set_crew' then return said(M.set_crew(a.group, a.option))
         elseif act == 'end_turn' then game.end_turn(); return ''
+        elseif act == 'tick' then return tostring(game.tick())
         elseif act == 'ship_seen' then M.ship_seen(); return ''
         elseif act == 'side' then M.set_malakai_side(a.side); return ''
         elseif act == 'gold' then game.set_gold(a.gold); return ''
@@ -152,7 +159,9 @@ return function(Ship, CM, Fake)
             return ''
         elseif act == 'view' then w.view = {tab = a.tab, scroll = a.scroll}; return ''
         elseif act == 'reload' then
-            -- the mod's save: every value a string (cm:set_saved_value), the game's own state (buildings, queue, gold) kept by the game
+            -- the mod's save: every value a string (cm:set_saved_value), the game's own state (buildings, queue, gold) kept by the game. A waiting
+            -- command is applied long before a save can be made
+            game.tick()
             local saved = Ship.save_state(M, w.view)
             for key, v in pairs(saved) do
                 if type(v) ~= 'string' then error('saved value ' .. key .. ' is a ' .. type(v) .. ', not a string') end

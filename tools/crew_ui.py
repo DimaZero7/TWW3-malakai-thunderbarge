@@ -24,6 +24,9 @@ NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 TEXT_LIGHT = "#FFF8D7FF"
 TEXT_COPPER = "#EBBD7CFF"
 TEXT_GREY = "#8E8A80FF"
+# the game's ui_colours rows the old panel's coloured layouts are drawn in (runs/20261115-012811-ship_panel: font_m_colour alone draws them light);
+# web/js/ui_text.mjs gives the airship screen's the same
+PRESETS = {TEXT_COPPER: "help_page_link_inactive", TEXT_GREY: "ui_font_faded_grey_beige"}
 
 
 def guid(*parts):
@@ -43,8 +46,12 @@ def state_xml(name, key, w, h, images, transitions=None, interactive=True, disab
     if text:
         align = f' texthalign="{text["align"]}"' if text.get("align") else ""
         wrap = f' texthbehaviour="{text["wrap"]}"' if text.get("wrap") else ""
+        # the game draws a layout's text in the font's light colour whatever font_m_colour says; another colour only by a row of its ui_colours
+        # table (font_colour_override_preset_key, as the game's building_information.twui.xml greys its description)
+        preset = text.get("preset") or PRESETS.get(text["colour"])
+        preset = f' font_colour_override_preset_key="{preset}"' if preset else ""
         body += (f'<component_text text=""{align}{wrap} textvalign="{text.get("valign", "Center")}" font_m_size="{text["size"]}" font_m_colour="{text["colour"]}" '
-                 f'font_m_leading="{text.get("leading", 1)}" fontcat_name="{text["cat"]}"/>')
+                 f'font_m_leading="{text.get("leading", 1)}" fontcat_name="{text["cat"]}"{preset}/>')
     if images:
         rows = []
         for i, (image, margin, tile) in enumerate(images):
@@ -115,9 +122,9 @@ def backdrop_layout(key):
     return layout(key, "backdrop", {"main": f"{UI_DIR}backdrop.png"}, [state_xml("regular", key, 1600, 900, [(img, None, False)])], "regular")
 
 
-def text_layout(key, cat, size, colour, align=None, wrap=None, leading=1, valign="Center"):
-    """wrap None: lines break at words, as most texts of the game; "Never split": one line."""
-    return layout(key, "text", {}, [state_xml("active", key, 240, 20, [], interactive=False, text={"cat": cat, "size": size, "colour": colour, "align": align, "wrap": wrap, "leading": leading, "valign": valign})], "active")
+def text_layout(key, cat, size, colour, align=None, wrap=None, leading=1, valign="Center", preset=None):
+    """wrap None: lines break at words, as most texts of the game; "Never split": one line. preset: the game's ui_colours row the text is drawn in."""
+    return layout(key, "text", {}, [state_xml("active", key, 240, 20, [], interactive=False, text={"cat": cat, "size": size, "colour": colour, "align": align, "wrap": wrap, "leading": leading, "valign": valign, "preset": preset})], "active")
 
 
 def button_layout(key, base, margin="24.00,24.00,24.00,24.00"):

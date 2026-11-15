@@ -124,10 +124,10 @@ local K = {
 K.WEB_ART = K.LAYOUTS .. 'web/'       -- the stage layers (tools/web_art.py), packed at this path by tools/ship_ui.py
 
 -- helpers as in the page
-local function make(parent, id, layout) return parent:CreateComponent(id, layout) end
+local function make(parent, id, layout, picture) return parent:CreateComponent(id, layout, picture) end
 local function size(c, w, h) c:Resize(floor(w + 0.5), floor(h + 0.5)) end
 local function at(c, x, y) c:SetDockOffset(floor(x + 0.5), floor(y + 0.5)) end
-local function image(parent, id, path, x, y, w, h) local c = make(parent, id, 'image'); c:SetImagePath(path, 0); size(c, w, h); at(c, x, y); return c end
+local function image(parent, id, path, x, y, w, h) local c = make(parent, id, 'image', path); c:SetImagePath(path, 0); size(c, w, h); at(c, x, y); return c end
 local function text(parent, id, layout, x, y, w, h, value) local c = make(parent, id, layout); size(c, w, h); at(c, x, y); c:SetStateText(value or ''); return c end
 local function width(c) local w = c:TextDimensions(); return w end
 local function tall(c) local _, h = c:TextDimensions(); return h end
@@ -182,21 +182,65 @@ function UI.make_panel(env)
     local data, art, blueprint = cfg.data, cfg.art, cfg.blueprint
     local KINDS, CREW_KINDS = cfg.kinds, cfg.crew_kinds
     local turnsText = Ship.turns_text
+    -- env.profile: where the drawing's own Lua spends its time (os.clock), for the session: by section of the build and of a refresh, and the
+    -- calls into the model (src/tww3_mtb_ship.lua, whose reads go into the game) by name, counted and timed apart. panel.profile() reads it.
+    local clock = os.clock
+    local prof = env.profile and {sections = {}, model = {}, started = clock()} or nil
+    local function note(t, name, t0)
+        local e = t[name]
+        if not e then e = {n = 0, s = 0}; t[name] = e end
+        e.n = e.n + 1
+        e.s = e.s + (clock() - t0)
+    end
+    local function timed(name, fn)
+        if not prof then return fn end
+        return function(...) local t0 = clock(); local r = {fn(...)}; note(prof.sections, name, t0); return unpack(r) end
+    end
+    if prof then
+        local real = M
+        M = setmetatable({}, {__index = function(_, k)
+            local f = real[k]
+            if type(f) ~= 'function' then return f end
+            return function(...) local t0 = clock(); local r = {f(...)}; note(prof.model, k, t0); return unpack(r) end
+        end})
+    end
     local every = host.every or function() end
     local after = host.after or function() end
     local clearTooltip = host.clear_tooltip or function() end
 
     -- ---- the state in the page's shapes ----
     -- M.crew_options with what the page's data has besides (the card, the numbers, the notes): web/js/barge_buildings.js spreads the whole option
+    -- memo: what one refresh asked of the model once (the model does not change inside a refresh): a crew's options and its bonuses were asked
+    -- once per card of the tree, 36 times a refresh, two thirds of its time (tools/ui_layout_check.py --profile)
+    local memo = nil
+    -- a slot's status and a part's stage, asked by the tree, the drawing and the small drawing, once per refresh as well
+    do
+        local inner = M
+        local MEMO = {status = true, stage = true}
+        M = setmetatable({}, {__index = function(_, k)
+            local f = inner[k]
+            if not MEMO[k] or type(f) ~= 'function' then return f end
+            return function(x)
+                if not memo then return f(x) end
+                local key = k .. ':' .. tostring(x)
+                local v = memo[key]
+                if v == nil then v = f(x); memo[key] = v end
+                return v
+            end
+        end})
+    end
     local function crewOptions(g)
+        if memo and memo['options:' .. g] then return memo['options:' .. g] end
         local disp = data.groups[g].options
-        return map(M.crew_options(g), function(o)
+        local out = map(M.crew_options(g), function(o)
             local d = disp[o.key] or {}
             local out = {}
             for k, v in pairs(d) do out[k] = v end
             for k, v in pairs(o) do out[k] = v end
             return out
         end)
+        if memo then memo['options:' .. g] = out end
+        return out
     end
     -- panel.js crewState
     local function crewState(g)
@@ -380,11 +424,11 @@ function UI.make_panel(env)
             row.waiting:SetVisible(st.ordered ~= nil)
             local fresh = includes(newsPlaces, g)
             row.card:SetGlow(fresh)
-            row.name:SetStateText((not st.place) and ('[[col:grey]]' .. M.place_name(g) .. '[[/col]]') or (fresh and ('[[col:yellow]]' .. M.place_name(g) .. '[[/col]]') or M.place_name(g)))
+            row.name:SetStateText((not st.place) and ('[[col:ui_font_faded_grey_beige]]' .. M.place_name(g) .. '[[/col]]') or (fresh and ('[[col:ui_font_yellow]]' .. M.place_name(g) .. '[[/col]]') or M.place_name(g)))
             local line
-            if not st.place then line = '[[col:grey]]' .. (opener and ('Откроет «' .. opener.name .. '»') or 'Закрыто') .. '[[/col]]'
+            if not st.place then line = '[[col:ui_font_faded_grey_beige]]' .. (opener and ('Откроет «' .. opener.name .. '»') or 'Закрыто') .. '[[/col]]'
             elseif st.ordered then line = st.ordered.empty and (w.who .. ' ' .. w.leave .. ' в начале хода') or (st.ordered.name .. ': ' .. w.come .. ' в начале хода')
-            elseif st.nobody then line = '[[col:grey]]' .. w.nobody .. '[[/col]]'
+            elseif st.nobody then line = '[[col:ui_font_faded_grey_beige]]' .. w.nobody .. '[[/col]]'
             else line = st.standing.name end
             fitLine(row.state, line)
             row.hit:SetTooltipText(row.state:GetStateText() ~= line and line or '', true)
@@ -510,7 +554,7 @@ function UI.make_panel(env)
         t.chain:SetStateText(content.chain or '')
         local hasReason = content.reason ~= nil and content.reason ~= ''
         local said = hasReason and content.reason or (content.note or '')
-        t.reason:SetStateText(hasReason and ('[[col:game_red]]' .. gameText(content.reason) .. '[[/col]]') or gameText(said))
+        t.reason:SetStateText(hasReason and ('[[col:red]]' .. gameText(content.reason) .. '[[/col]]') or gameText(said))
         t.rule:SetVisible(said ~= ''); t.reason:SetVisible(said ~= '')
         local reasonH = said ~= '' and (10 + max(22, tall(t.reason)) + 12) or 0
         local function entry(icon, iconX, iconH, label, textX, y)
@@ -525,8 +569,8 @@ function UI.make_panel(env)
             t.description:SetStateText(desc)
             t.description:SetVisible(desc ~= '')
             if desc ~= '' then
-                put(t.description, 24, y + 12)
-                y = y + max(52, 12 + tall(t.description) + 12)
+                put(t.description, 24, y + 16)      -- under the ornament (33..47), not in it (panel.js)
+                y = y + max(56, 16 + tall(t.description) + 12)
             end
             y = y + 2
             for i, row in ipairs(t.effects) do
@@ -534,7 +578,7 @@ function UI.make_panel(env)
                 row.icon:SetVisible(e ~= nil); row.text:SetVisible(e ~= nil)
                 if e then
                     row.icon:SetImagePath(e.icon or (K.D .. 'replenishement_positive.png'), 0)
-                    row.text:SetStateText('[[col:' .. (e.good == false and 'game_red' or 'game_green') .. ']]' .. gameText(e.text) .. '[[/col]]')
+                    row.text:SetStateText('[[col:' .. (e.good == false and 'red' or 'green') .. ']]' .. gameText(e.text) .. '[[/col]]')
                     y = y + entry(row.icon, K.INFO_X, 24, row.text, K.INFO_TX, y)
                 end
             end
@@ -599,6 +643,7 @@ function UI.make_panel(env)
         y = y + 34
         if flags.unitvideo ~= 'top' then clip() end
         local note = text(panel, 'short_description', 'text_unit_note', 14, y, Wd - 28, 54, spec.text or o.about or '')
+        size(note, Wd - 28, max(54, tall(note)))      -- the whole description: body_12 takes more lines than the box had
         y = y + max(20, tall(note)) + 8
         image(panel, 'icon_men', K.D .. 'icon_entity_small.png', 12, y + 2, 26, 26)
         text(panel, 'dy_men', 'text_unit', 40, y, 40, 30, o.unit_card and str(o.unit_card.men) or '')
@@ -652,7 +697,7 @@ function UI.make_panel(env)
             row('reload', K.D .. 'icon_stat_reload_time.png', 'Перезарядка, с', num(n.reload), best(function(x) return x.reload end, true) / n.reload)
             if n.seats and n.seats ~= 0 then
                 row('ammo', K.D .. 'icon_stat_ammo.png', 'Боезапас', '', n.volleys / best(function(x) return x.volleys or 0 end))
-                info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, Wd - 48, 18, '')
+                info.ammoNote = text(panel, 'ammo_note', 'text_unit_note', 36, y - 4, Wd - 48, 20, '')
                 y = y + 16
             else row('ammo', K.D .. 'icon_stat_ammo.png', 'Боезапас', str(n.ammo), n.ammo / best(function(x) return x.ammo end)) end
             if n.blast and n.blast ~= 0 then row('blast', K.D .. 'icon_stat_damage.png', 'Взрыв', str(n.blast + n.blast_ap) .. ' · ' .. str(n.radius) .. ' м', nil) end
@@ -669,7 +714,7 @@ function UI.make_panel(env)
             local bonus = dyn.bonus or {}
             local function better(kind, pct) if KINDS[kind].positive_good then return pct > 0 end return pct < 0 end
             local function colour(kind, pct, t)
-                if pct and pct ~= 0 then return '[[col:' .. (better(kind, pct) and 'game_green' or 'game_red') .. ']]' .. t .. '[[/col]]' end
+                if pct and pct ~= 0 then return '[[col:' .. (better(kind, pct) and 'green' or 'red') .. ']]' .. t .. '[[/col]]' end
                 return t
             end
             local ammoPct = bonus.ammo and bonus.ammo.pct or 0
@@ -708,7 +753,7 @@ function UI.make_panel(env)
             info.h = info.base_h + linesH
             size(panel, Wd, info.h)
             local armyLine = spec.army_building and ('«' .. spec.army_building .. '» открывает этот отряд и для найма в армию') or ''
-            local crewLine = (dyn.reason and dyn.reason ~= '') and ('[[col:game_red]]' .. dyn.reason .. '[[/col]]') or (dyn.state or '')
+            local crewLine = (dyn.reason and dyn.reason ~= '') and ('[[col:red]]' .. dyn.reason .. '[[/col]]') or (dyn.state or '')
             info.stateText:SetStateText(table.concat(filter({crewLine, armyLine}, function(x) return x ~= '' end), '\n'))
             info.has_state = ((dyn.reason and dyn.reason ~= '') or (dyn.state and dyn.state ~= '') or armyLine ~= '') and true or false
             info.state_h = info.has_state and (10 + max(22, tall(info.stateText)) + 10) or 0
@@ -725,8 +770,14 @@ function UI.make_panel(env)
     -- What the game changes in a crew's panel (panel.js unitDyn)
     local function unitDyn(group, option, opt)
         local now, order = M.crew(group), M.crew_order(group)
-        local sources = CM.crew_sources(M.config, function(k) return M.game.has_building(k) end, function(k) return M.game.standing(k) end)
-        return {bonus = CM.crew_bonuses(sources, group),
+        local bonus = memo and memo['bonus:' .. group]
+        if not bonus then
+            local sources = memo and memo.sources or CM.crew_sources(M.config, function(k) return M.game.has_building(k) end, function(k) return M.game.standing(k) end)
+            if memo then memo.sources = sources end
+            bonus = CM.crew_bonuses(sources, group)
+            if memo then memo['bonus:' .. group] = bonus end
+        end
+        return {bonus = bonus,
                 reason = opt.unlocked and '' or ('Откроет постройка «' .. opt.building.name .. '»'),
                 state = option == order and ('В найме: ' .. M.crew_words(group).come .. ' в начале хода') or (option == now and M.crew_words(group).stand or '')}
     end
@@ -1178,6 +1229,8 @@ function UI.make_panel(env)
             holder:SetContentOffset(pan.x, pan.y, pan.z)
             for _, bar in ipairs(bars) do bar.paint() end
             placeTips()
+            -- a slot or card scrolled out of the window under the mouse: its windows go (src/tww3_mtb_ship_uic.lua check_hover)
+            if env.ui and env.ui.check_hover then env.ui.check_hover() end
             if view.onPan then view.onPan() end
         end
         local function box(v) return {l = v.button.x - 14, t = v.button.y - 24, r = v.button.x + K.NODE + 20, b = v.button.y + K.NODE + 24} end
@@ -1231,6 +1284,14 @@ function UI.make_panel(env)
         else pan.home() end
         view.selected = rows[1] and rows[1].key or nil
         view.linesHolder = lines
+        -- the mouse can be on a slot or a card of the tree only inside the tree's window: the game clips the rest from the eye, not from the mouse
+        -- (runs/20261115-012811-ship_panel: the window of the keel, under the window's foot, opened beside the hull above it)
+        function pan.inside(c)
+            if c.parent ~= holder then return true end
+            local l, t = pan.x + c.x * pan.z, pan.y + c.y * pan.z
+            return l + c.w * pan.z > 0 and t + c.h * pan.z > 0 and l < pan.w and t < pan.h
+        end
+        if env.ui then env.ui.alive = function(c) return pan.inside(c) end end
     end
 
     -- One slot's links lit over the dimmed web of lines (panel.js lightLinks)
@@ -1294,9 +1355,8 @@ function UI.make_panel(env)
                 local px = cardR + 10
                 if px > maxX then px = min(s.x - 18, cardL) - 10 - K.UNIT_INFO_W end
                 px = max(minX, min(maxX, px))
-                local maxY = (rootC and rootC:Height() or F:Height()) - 4 - F.y - c.info.total
-                local minY = (view.area and maxY >= view.area.y) and view.area.y or (4 - F.y)
-                c.info.place(px, max(minY, min(maxY, cy - c.info.total / 2)))
+                -- as a building's window: inside the panel when it fits there (infoTop)
+                c.info.place(px, view.infoTop(cy - c.info.total / 2, c.info.total, rootC and rootC:Height() or F:Height(), F.y, view.area and view.area.y or (4 - F.y), F:Height()))
             end
         end
     end
@@ -1313,12 +1373,17 @@ function UI.make_panel(env)
             if fillInfoTip(v.info, content) <= room then break end
         end
     end
-    local function infoTop(want, h, screenH, frameY, headY)
-        local maxY = screenH - 4 - frameY - h
+    -- frameH: the panel's height: the window's foot inside the panel when the window fits between the title row and the panel's foot, else 4 above
+    -- the screen's foot (panel.js infoTop)
+    local function infoTop(want, h, screenH, frameY, headY, frameH)
+        frameH = frameH or (screenH - frameY)
+        local inPanel = frameH - 4 - h
+        local maxY = inPanel >= headY and inPanel or (screenH - 4 - frameY - h)
         local minY = maxY >= headY and headY or (4 - frameY)
         return max(minY, min(maxY, want))
     end
     UI.infoTop = infoTop
+    view.infoTop = infoTop
     function placeInfo(v)
         local frm = v.info.tip.parent
         local rootC = frm.parent
@@ -1328,7 +1393,7 @@ function UI.make_panel(env)
         if frm.x + x + w > rootC:Width() - 4 then x = on.x - 18 - 10 - w end
         x = min(x, rootC:Width() - 4 - frm.x - w)
         x = max(4 - frm.x, x)
-        at(v.info.tip, x, infoTop(on.y + (K.NODE + 28) * on.k - v.info.h, v.info.h, rootC:Height(), frm.y, view.area.y))
+        at(v.info.tip, x, infoTop(on.y + (K.NODE + 28) * on.k - v.info.h, v.info.h, rootC:Height(), frm.y, view.area.y, frm:Height()))
     end
 
     -- ---------------- the slots' states (panel.js refreshTree) ----------------
@@ -1366,7 +1431,8 @@ function UI.make_panel(env)
             v.constructing:SetVisible(false)        -- question V5: no clock-wipe in the game
             v.turnsBanner:SetVisible(building)
             -- a cancel that waits for the game's own window: the banner dimmed until the player answers there
-            v.turnsBanner:SetImageColour(255, 255, 255, (building and st.asked) and 0x80 or 255)
+            -- a command the game applies a moment later (st.pending): the slot as it will be, the banner dimmed as for a cancel asked
+            v.turnsBanner:SetImageColour(255, 255, 255, (building and (st.asked or st.pending)) and 0x80 or 255)
             v.turns:SetVisible(building)
             v.turns:SetStateText(building and str(st.turns) or '')
             if v.level then v.level:SetVisible(not building) end
@@ -1383,7 +1449,8 @@ function UI.make_panel(env)
             local reason = M.reason(v.node.key)
             local price = str(cost) .. ' золота' .. (dev > 0 and (' и ' .. str(dev) .. ' ед. ' .. M.POINTS) or '')
             local note = ''
-            if st.state == 'open' then note = 'Щелчок — заказать: ' .. price .. ', ' .. turnsText(row.turns) .. '.'
+            if st.pending then note = M.pending_note(v.node.key)        -- while the game applies a command: the model's words for the wait
+            elseif st.state == 'open' then note = 'Щелчок — заказать: ' .. price .. ', ' .. turnsText(row.turns) .. '.'
             elseif building and st.asked then note = 'Строится, осталось ' .. turnsText(st.turns) .. '. Отмена ждёт вашего ответа в окне игры.'
             elseif building then note = 'Строится, осталось ' .. turnsText(st.turns) .. '. Щелчок — отменить заказ, ' .. price .. ' вернутся.' end
             local i = v.node.row.info
@@ -1401,7 +1468,7 @@ function UI.make_panel(env)
             view.raze.icon:ShaderTechniqueSet(dem.ok and 'normal_t0' or 'set_greyscale_t0')
             view.raze.icon:SetImageColour(255, 255, 255, dem.ok and 255 or 0x80)
             view.raze.hoverImg:SetBlank(not dem.ok)
-            view.raze:SetTooltipText(dem.ok and ('Снести «' .. sel.node.name .. '»') or dem.why, true)
+            view.raze:SetTooltipText(dem.ok and M.demolish_preview(sel.node.key) or dem.why, true)      -- what goes with it and what closes (the model's words)
             view.razeOk = dem.ok
         end
     end
@@ -1457,7 +1524,7 @@ function UI.make_panel(env)
             slot.turnsBanner:SetVisible(o.key == order)
             slot.card:ShaderTechniqueSet(o.unlocked and 'normal_t0' or 'set_greyscale_t0')
             slot.card:SetImageColour(255, 255, 255, o.unlocked and 255 or 0x80)
-            slot.name:SetStateText(o.unlocked and o.name or ('[[col:grey]]' .. o.name .. '[[/col]]'))
+            slot.name:SetStateText(o.unlocked and o.name or ('[[col:ui_font_faded_grey_beige]]' .. o.name .. '[[/col]]'))
             local hire = o.unlocked and not o.empty and o.key ~= now and o.key ~= order
             local queued = o.key == order
             if slot.card.costPlate then
@@ -1500,7 +1567,13 @@ function UI.make_panel(env)
         return false
     end
 
+    local refreshAll
     local function refresh()
+        memo = {}
+        refreshAll()            -- no pcall: the caller's xpcall keeps the stack (a failed refresh leaves the memo; the next refresh starts a new one)
+        memo = nil
+    end
+    function refreshAll()
         for _, g in ipairs(view.area_order) do local a = view.crewAreas[g]; if a.open then a.buildPick() end end
         local gold = M.game.treasury()
         view.gold:SetStateText(gold < 0 and ('[[col:red]]' .. str(gold) .. '[[/col]]') or str(gold))
@@ -1589,6 +1662,8 @@ function UI.make_panel(env)
         view.fitBtn.button:SetTooltipText(view.pan.z < 1 and 'Вернуть дерево в обычный размер' or 'Показать всё дерево целиком', true)
         size(view.message, (zoom and (view.fitBtn.button.x - 24) or (view.area.x + view.area.w - 14)) - view.message.x, view.message:Height())
         fitLine(view.message, M.message() or M.first_step() or '')
+        -- what the mouse was on and is gone now (a tab, a closed choice, Esc): its windows with it (src/tww3_mtb_ship_uic.lua check_hover)
+        if env.ui and env.ui.check_hover then env.ui.check_hover() end
     end
 
     local function clickSlot(v)
@@ -1666,6 +1741,14 @@ function UI.make_panel(env)
         end
         refresh()
     end
+
+    -- the sections env.profile times (the locals are upvalues of their callers: the timed function is the one called from here on)
+    drawingLayers, makeShipColumn, paintShipColumn, makeCrewArea, makeFileTree = timed('build: drawing layers', drawingLayers),
+        timed('build: ship column', makeShipColumn), timed('refresh: crew list', paintShipColumn), timed('build: crew places', makeCrewArea), timed('build: tree', makeFileTree)
+    fillInfoTip, refreshTree, refreshCrewArea, refresh = timed('hover: building window', fillInfoTip), timed('refresh: tree', refreshTree),
+        timed('refresh: crew places', refreshCrewArea), timed('refresh', refresh)
+    paintDrawing, lightLinks, placeTips = timed('refresh: drawing', paintDrawing), timed('lit links', lightLinks), timed('place unit panels', placeTips)
+    unitInfo, armyInfo = timed('build: unit panel', unitInfo), timed('build: unit panel', armyInfo)
 
     -- ---------------- the panel (panel.js makePanel) ----------------
     local backdrop = make(root, 'mtb_ship_panel', 'backdrop')
@@ -1820,8 +1903,19 @@ function UI.make_panel(env)
         view.options = nil
         view.hoverSlot = nil
     end
-    return {view = view, refresh = refresh, click = click, escape = function() local done = escape(); if done then refresh() end return done end,
-            build_all = buildAll, reset = reset}
+    if prof then
+        prof.sections['build'] = {n = 1, s = clock() - prof.started}
+        local toggle = view.pan.toggle
+        view.pan.toggle = timed('«Всё дерево» / «Вблизи» (the relayout)', toggle)
+    end
+    -- what env.profile gathered: {sections = {name = {n, s}}, model = {name = {n, s}}}; reset: start again (each step of a session apart)
+    local function profile(reset)
+        local out = prof and {sections = prof.sections, model = prof.model} or nil
+        if prof and reset then prof.sections, prof.model = {}, {} end
+        return out
+    end
+    return {view = view, refresh = refresh, click = timed('click', click), escape = function() local done = escape(); if done then refresh() end return done end,
+            build_all = buildAll, reset = reset, profile = profile}
 end
 
 return UI

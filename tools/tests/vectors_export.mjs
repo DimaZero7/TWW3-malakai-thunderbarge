@@ -61,6 +61,9 @@ function observe(w) {
     o.news = n ? [n.built.map(sk).join(','), n.parts.join(','), n.places.join(','), (n.kinds || []).join(',')].join(' | ') : null;
     o.news_places = M.news_places().join(',');
     o.carried = M.carried();
+    const g = M.growth();
+    o.growth = g ? [g.now, g.per_turn, g.need, g.turns ?? '-', g.max].join('/') : null;
+    o.waiting = M.waiting();
     o['view.tab'] = w.view.tab;
     o['view.scroll'] = w.view.scroll ? [w.view.scroll.x, w.view.scroll.y, w.view.scroll.zoom].map(num).join(',') : null;
     for (const r of config.levels) {
@@ -70,10 +73,13 @@ function observe(w) {
         o[`b.${s}.poor`] = !!st.poor;
         o[`b.${s}.short`] = !!st.short;
         o[`b.${s}.asked`] = !!st.asked;
+        o[`b.${s}.pending`] = st.pending || '';
+        o[`b.${s}.pending_note`] = M.pending_note(k);
         o[`b.${s}.missing`] = (st.missing || []).map(x => (x.startsWith('tier:') ? x : sk(x))).join(',');
         o[`b.${s}.reason`] = M.reason(k);
         const d = M.can_demolish(k);
         o[`b.${s}.demolish`] = d.ok ? 'ok' : d.why;
+        o[`b.${s}.demolish_preview`] = M.demolish_preview(k);
         o[`b.${s}.stands`] = M.stands(k);
         o[`b.${s}.has`] = game.has_building(k);
     }
@@ -122,6 +128,7 @@ function apply(w, a) {
     case 'refuse': return String(M.refuse(k));
     case 'set_crew': return said(M.set_crew(a.group, a.option));
     case 'end_turn': game.end_turn(); return '';
+    case 'tick': return String(game.tick());        // the game's next tick: the commands it applies a moment later (async)
     case 'ship_seen': M.ship_seen(); return '';
     case 'side': M.set_malakai_side(a.side); return '';
     case 'gold': game.gold = a.gold; return '';
@@ -137,6 +144,7 @@ function apply(w, a) {
     }
     case 'view': w.view = {tab: a.tab ?? null, scroll: a.scroll ?? null}; return '';
     case 'reload': {        // web/js/main.js: the page's save and load, a new game and a new model on the saved data
+        game.tick();        // a waiting command is applied long before a save can be made
         const saved = JSON.parse(JSON.stringify({...game.snapshot(), side: M.malakai_side(), side_chosen: !M.side_hint(), crew: M.crew_snapshot(),
             crew_chosen: M.crew_chosen(), ship: M.news_snapshot(), message: M.message_snapshot(), view: w.view}));
         const next = makeWorld(w.spec);
@@ -196,7 +204,7 @@ const add = (file, S) => { (files[file] ||= []).push(S.rec); };
 
 // the author's tree, in the mod's keys
 const authorSpec = (sim = {}) => ({page: author, config: authorConfig, configName: 'author',
-    sim: {turn: sim0.turn, gold: 6000, income: sim0.income, dev_points: 1000, dev_income: 0, built: [], ...sim}});
+    sim: {turn: sim0.turn, gold: 6000, income: sim0.income, dev_points: 1000, growth_base: 0, built: [], ...sim}});
 const node = id => inp.treeRows.levels.find(r => r.id === id);
 const K = id => node(id).key;
 const byMod = mk => inp.treeRows.levels.find(r => r.mod_key === mk).key;
@@ -368,8 +376,8 @@ for (const [inherit, hide, label] of [[true, [], 'II inherits'], [false, [], 'II
 }
 // ---- the game's rules of run 20261114-230723: the development points, the dismantle until the turn's end, the hull, the cancel window, the news ----
 {
-    const S = scenario('game 1: a fresh campaign without development points: locked by them, the turns bring them, the order takes them, a cancel gives them back',
-        authorSpec({dev_points: 0, dev_income: 1, gold: 20000, built: ['airship_hull_1', 'airship_hull_2']}));
+    const S = scenario('game 1: a fresh campaign without development points: locked by them, the growth of the turns brings them, the order takes them, a cancel gives them back',
+        authorSpec({dev_points: 0, growth_base: 10, gold: 20000, built: ['airship_hull_1', 'airship_hull_2']}));
     for (const id of ['mtb_nest_1', 'airship_hull_3', 'engines_1']) S.run({do: 'click', key: K(id)});
     S.run({do: 'end_turn'});
     S.run({do: 'click', key: K('mtb_nest_1')});
@@ -383,9 +391,19 @@ for (const [inherit, hide, label] of [[true, [], 'II inherits'], [false, [], 'II
     S.run({do: 'points', points: 0});
     S.run({do: 'reload'});
     add('tests', S);
-    const S0 = scenario('game 1b: the first step of a campaign without points', authorSpec({dev_points: 0, dev_income: 1}));
+    const S0 = scenario('game 1b: the first step of a campaign without points', authorSpec({dev_points: 0, growth_base: 10}));
     S0.run({do: 'end_turn'});
     add('tests', S0);
+    // the game's own numbers (run 20261115-012811): hull II's «Рост орды: +10», threshold 20: nothing to order, a point every other turn
+    const S1 = scenario('game 1c: the growth as the game counts it: nothing to order, what the player waits for',
+        authorSpec({dev_points: 0, growth_base: 0, gold: 20000, built: ['airship_hull_1', 'airship_hull_2']}));
+    S1.run({do: 'end_turn'});
+    S1.run({do: 'end_turn'});
+    S1.run({do: 'click', key: K('mtb_nest_1')});
+    S1.run({do: 'end_turn'});
+    S1.run({do: 'reload'});
+    S1.run({do: 'end_turn'});
+    add('tests', S1);
 }
 {
     const S = scenario('game 2: a dismantle stands until the turn ends; what needs it waits; its crew goes at the turn\'s start; the hull is never dismantled',
@@ -432,6 +450,49 @@ for (const [inherit, hide, label] of [[true, [], 'II inherits'], [false, [], 'II
     S.run({do: 'click', key: K('engines_1')});
     S.run({do: 'answer_cancel', yes: true});
     S.run({do: 'answer_cancel', yes: true});
+    add('tests', S);
+}
+// the game applies a command a moment later (run 20261115-012811): nothing said till the game's next tick, then the truth read from the game
+{
+    const S = scenario('game 5: commands the game applies a moment later: an order, a refused one, a cancel, a cancel that asks',
+        authorSpec({gold: 100000, async: true, ask_cancel: true}));
+    S.run({do: 'debug_build', key: K('airship_hull_2')});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'tick'});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'tick'});
+    S.run({do: 'points', points: 0});
+    S.run({do: 'click', key: K('engines_1')});
+    S.run({do: 'points', points: 1000});
+    S.run({do: 'click', key: K('engines_1')});
+    S.run({do: 'game_refuses'});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'tick'});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'end_turn'});
+    S.run({do: 'click', key: K('engines_1')});
+    S.run({do: 'tick'});
+    S.run({do: 'answer_cancel', yes: true});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'reload'});
+    add('tests', S);
+}
+// a dismantle takes the slot's whole building (run 20261115-012811: «Столовая» dismantled, «Пивной чертог» did not come back): said before, at
+// the order and in the turn's line with the crew place it closes; a place opened by the same turn's completion is still news
+{
+    const S = scenario('game 6: a demolish takes the whole line, closes the riflemen\'s place; the same turn\'s completion opens the nests',
+        authorSpec({gold: 100000, demolish: 'chain'}));
+    S.run({do: 'debug_build', key: byMod('beer_hall_2')});
+    S.run({do: 'set_crew', group: 'rifles', option: 'pirates'});
+    S.run({do: 'end_turn'});
+    S.run({do: 'ship_seen'});
+    S.run({do: 'set_crew', group: 'rifles', option: 'quarrellers'});
+    S.run({do: 'demolish', key: byMod('beer_hall_1')});
+    S.run({do: 'demolish', key: byMod('beer_hall_2')});
+    S.run({do: 'click', key: K('mtb_nest_1')});
+    S.run({do: 'end_turn'});
+    S.run({do: 'reload'});
     add('tests', S);
 }
 {
@@ -556,6 +617,8 @@ function rng(seed) {            // mulberry32
 const pick = (r, list) => list[Math.floor(r() * list.length)];
 function walkAction(r, w) {
     const {M, game} = w;
+    // a command waiting for the game's tick (async): mostly the tick comes next, as in the game a moment later
+    if (game.commands && game.commands.length && r() < 0.7) return {do: 'tick'};
     const keys = levelsOf().map(k => keyIn(w, k));
     const x = r();
     const back = k => authorConfig.levels.find(l => keyIn(w, l.key) === k).key;
@@ -587,7 +650,7 @@ function walkAction(r, w) {
 const walkSpec = i => {
     const r = rng(1000 + i);
     return authorSpec({gold: pick(r, [6000, 20000, 60000, 1e6]), income: pick(r, [0, 800, 3000]), demolish: pick(r, ['chain', 'chain', 'step_down']),
-        dev_points: pick(r, [0, 4, 1000, 1000, null]), dev_income: pick(r, [0, 1, 3]), ask_cancel: r() < 0.5});
+        dev_points: pick(r, [0, 4, 1000, 1000, null]), growth_base: pick(r, [0, 5, 20]), ask_cancel: r() < 0.5, async: r() < 0.5});
 };
 for (let i = 0; i < WALKS; i++) {
     const spec = walkSpec(i);
@@ -710,7 +773,10 @@ const SENTENCES = {
     'На стеллажи над люками': 'a new kind: bombs', 'В гнёздах теперь доступны': 'a new kind: cupolas', 'На нос шара теперь': 'a new kind: harpoon',
     'Новый уровень этого не даёт: ': 'a level that does not carry on', 'Закажите первую постройку — «': 'the first step', 'Малакай встанет на левый': 'side left',
     'Не хватает избытка населения: нужно ': 'short of points', ', есть ': 'short of points, the window\'s sentence', ' ед. избытка населения, готово': 'ordered with points',
-    'золото и избыток населения вернулись': 'cancelled with points', 'Сносится: постройка уйдёт в конце хода': 'being dismantled', '» сносится: уйдёт в конце хода': 'a requirement being dismantled',
+    'золото и избыток населения вернулись': 'cancelled with points', 'Сносится: «': 'being dismantled', 'уйдут в конце хода': 'a dismantle of a line', 'Закроется место экипажа «': 'a demolish closes a place',
+    'Закрыто место экипажа «': 'a demolish closed a place', ' сойдут с корабля, найм не вернётся': 'a demolish takes the standing crew',
+    ' снимут, ': 'a demolish takes an order', 'Снос: «': 'the demolish preview', 'Нечего заказать: не хватает': 'nothing to order: points',
+    ', следующая единица через ': 'nothing to order: the turns of growth', '» сносится: уйдёт в конце хода': 'a requirement being dismantled',
     'Уже сносится: ': 'demolish refused: already', 'Корпус не сносится': 'demolish refused: the hull', 'Сначала отмените стройку «': 'demolish refused: a construction in the slot',
     'Снос заказан: «': 'demolish ordered', '» не прошёл: игра его не приняла.': 'a demolish or an order the game did not take', ': ответьте в окне игры.': 'cancel: the game asks',
     'продолжается: отмену не подтвердили': 'cancel: answered no', 'Первая постройка — «': 'the first step, locked',

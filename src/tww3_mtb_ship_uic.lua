@@ -127,6 +127,23 @@ function ENGINE.hide_advisor()
     pcall(function() adv:SetVisible(false) end)
     return function(force) if force or (okv and was) then pcall(function() adv:SetVisible(true) end) end end
 end
+-- The minimap with the event lists that unroll from it (radar_things: «Уведомления о событиях», «Важные события») shows half-words beside the panel
+-- and under its right edge (runs/20261115-012811-ship_panel, defect 21). The game's own scripts hide that group as one (lib_campaign_ui.lua,
+-- wh_first_turn.lua: play_component_animation('hide', 'radar_things'); find_uicomponent(root, 'radar_things', ...)). Hidden while our panel is
+-- open, as it was on close. Not proven in the game yet: a missing component changes nothing. Returns the restore.
+ENGINE.hud_groups = {'radar_things'}
+function ENGINE.hide_hud()
+    local back = {}
+    for _, name in ipairs(ENGINE.hud_groups) do
+        local ok, c = pcall(function() return find_uicomponent(core:get_ui_root(), name) end)
+        if ok and c then
+            local okv, was = pcall(function() return c:Visible() end)
+            if okv and was then pcall(function() c:SetVisible(false) end); back[#back + 1] = c end
+        end
+    end
+    log('the HUD hidden under the panel: ' .. #back .. ' of ' .. #ENGINE.hud_groups)
+    return function() for _, c in ipairs(back) do pcall(function() c:SetVisible(true) end) end end
+end
 -- The calls into the game's UIComponent counted and timed by method (os.clock), for the session: which call makes the opening slow. Off: no cost.
 ENGINE.profile = false
 
@@ -142,6 +159,15 @@ end
 -- layout that is not a text has a picture (layer_holder a transparent one, for PropagateOpacity).
 local NO_PICTURE = {tree_page = true, tree_window = true, tree_holder = true, hover_holder = true, hit_area = true, zone = true}
 Uic.NO_PICTURE = NO_PICTURE
+
+-- The pictures with a picture layout of their own (tools/ship_ui.py PRESET_IMAGES, img_<stem>): an image of one of them is made from its layout and
+-- the game is not asked to set the picture (SetImagePath was 1502 calls, 0.345 s of the first sessions' 2.1 s opening)
+local PRESET_IMAGES = {}
+for _, n in ipairs({'building_frame', 'building_frame_hover', 'building_frame_plain', 'building_frame_selected', 'building_frame_selected_hover', 'constructing_1',
+                    'icon_check_green', 'padlock', 'icon_treasury', 'turns_banner_queued', 'icon_banner_bg', 'red_text_banner_shadow', 'unit_cat_holder_round',
+                    'unit_cat_holder_round_fill', 'icon_hourglass', 'unit_card_build_frame'}) do PRESET_IMAGES['ui/skins/default/' .. n .. '.png'] = 'img_' .. n end
+PRESET_IMAGES['ui/tww3_mtb/web/tree_line.png'] = 'img_tree_line'
+Uic.PRESET_IMAGES = PRESET_IMAGES
 
 -- ================ the components ================
 local SKIN = {button_row = true, button_plate = true, button_mark = true}
@@ -184,10 +210,14 @@ function Uic.new(layouts, textLayouts)
         if not env.ids[id] then env.ids[id] = c end
         return c
     end
-    function C:CreateComponent(id, layout)
-        local path = sfind(layout, '/', 1, true) and layout or (layouts .. layout)
+    -- picture: the picture an image is about to get (src/tww3_mtb_ship_ui.lua image()): made from its own layout when it has one (PRESET_IMAGES)
+    function C:CreateComponent(id, layout, picture)
+        local preset = layout == 'image' and picture and PRESET_IMAGES[picture] or nil
+        local path = sfind(layout, '/', 1, true) and layout or (layouts .. (preset or layout))
         env.last_made = {id = id, layout = layout, path = path, parent = self.id, count = env.count}     -- for the tests: what was being made when a build fails
-        return new(self, id, layout, UIComponent(self.uic:CreateComponent(id, path)))
+        local c = new(self, id, layout, UIComponent(self.uic:CreateComponent(id, path)))
+        if preset then c.eimage = picture end
+        return c
     end
     function C:Id() return self.id end
     local function shown(c) return c.visible and not c.blank and not c.culled and not c.zoomed end
@@ -435,12 +465,27 @@ function Uic.new(layouts, textLayouts)
     end
     -- probe 5: ComponentMouseOn comes for our components (known from the game's scripts), ComponentMouseOff is not proven: the design needs none.
     -- The mouse coming onto any other of ours (the frame, the backdrop, the window's ground: all take the mouse) ends the last one's hover.
+    -- A component the mouse can be on: it and every ancestor shown, and the panel's own rule (env.alive, set by src/tww3_mtb_ship_ui.lua: a slot
+    -- of the tree inside the tree's window; the game clips the rest, and may still tell the mouse onto it)
+    local function reachable(c)
+        local p = c
+        while p do if not shown(p) then return false end; p = p.parent end
+        return not env.alive or env.alive(c) ~= false
+    end
     function env.mouse_on(id)
         local c = id and env.ids[id] or nil
+        if c and not reachable(c) then c = nil end
         if env.hovered == c then return end
         if env.hovered then leave(env.hovered) end
         env.hovered = c
         if c then enter(c) end
+    end
+    -- What the mouse was on went away without the mouse moving (the game tells no MouseOff): a tab switched, a choice closed by its cross or by
+    -- Esc, the panel scrolled, the slot under the mouse hidden. Its hover children go with it (runs/20261115-012811-ship_panel ss_scrolled: a
+    -- unit's panel of the closed choice stayed over the tree). The panel calls this after each refresh and each move of the tree.
+    function env.check_hover()
+        local c = env.hovered
+        if c and not reachable(c) then env.hovered = nil; leave(c) end
     end
     -- For the tests (tools/tests/ship_session.lua, tools/ui_layout_check.py), changes nothing: the components made under `top`, from this wrapper's
     -- own references (no walk of the game's components), in the rows of tools/tests/fake_uic.lua dump() (the same fields, the same paths; `top`

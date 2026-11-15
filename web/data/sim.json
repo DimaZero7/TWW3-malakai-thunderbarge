@@ -1,10 +1,13 @@
 {
- "_about": "Start of the simulated game (web/js/game_sim.js), not mod data. gold: as at the start of Malakai's campaign on the user's screenshot (docs/design/panel-upgrades-proposal.md, section 4); income per turn is not modelled; built: the hull already stands, so the barge exists. dev_points: the horde's development points («избыток населения») at the start, 0 as the game had them in run 20261114-230723; dev_income: what a turn adds, a guess until the session reads the game's growth (docs/design/port-to-game.md 8.5). ask_cancel: the game's window before a cancel of an earlier turn's construction; off, the page has no game window.",
+ "_about": "Start of the simulated game (web/js/game_sim.js), not mod data. gold: as at the start of Malakai's campaign on the user's screenshot (docs/design/panel-upgrades-proposal.md, section 4); income per turn is not modelled; built: the hull already stands, so the barge exists. dev_points: the horde's development points («избыток населения») at the start, 0 as the game had them in run 20261114-230723. They come from the horde's growth as the game counts it (docs/design/port-to-game.md 8.5): growth accumulated at the start; growth_base: the horde's own growth per turn besides «Рост орды: +N» of the standing buildings (guess 0: run 20261115-012811 had hull II's +10 and 0 points after the turn); growth_threshold: growth per point (the game's campaign_variables military_force_development_point_growth_threshold); dev_max: the most points a horde holds (military_force_development_max_development_points). ask_cancel: the game's window before a cancel of an earlier turn's construction; off, the page has no game window.",
  "turn": 1,
  "gold": 6000,
  "income": 0,
  "dev_points": 0,
- "dev_income": 1,
+ "growth": 0,
+ "growth_base": 0,
+ "growth_threshold": 20,
+ "dev_max": 50,
  "ask_cancel": false,
  "built": ["airship_hull_1", "airship_hull_2"]
 }

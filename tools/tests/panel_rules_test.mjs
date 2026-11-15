@@ -300,9 +300,10 @@ check(`the reason of every locked building names exactly its direct requirements
     }
     check('every crew\'s ammunition: the places × the share is the whole («по»), or the share is the nearest whole and marked «около»; the bonus line base → total as the mod rounds', !wrong.length, wrong.slice(0, 6));
     // the building window's placement: under the title row when it fits, else over it, always inside the screen
-    const top = (want, h) => infoTop(want, h, 900, 15, 66);
-    check('a building window: under the title row when it fits; a taller one over the title row, inside the screen; never cut',
-        top(500, 300) === 500 && top(10, 300) === 66 && top(700, 300) === 900 - 4 - 15 - 300 && top(100, 850) === 900 - 4 - 15 - 850 && top(100, 850) < 66 && top(100, 850) + 15 >= 4, [top(500, 300), top(10, 300), top(700, 300), top(100, 850)]);
+    const top = (want, h) => infoTop(want, h, 900, 15, 66, 870);
+    check('a building window: under the title row when it fits; its foot inside the panel when it fits there; a taller one over the title row, inside the screen; never cut',
+        top(500, 300) === 500 && top(10, 300) === 66 && top(700, 300) === 870 - 4 - 300 && top(100, 850) === 900 - 4 - 15 - 850 && top(100, 850) < 66 && top(100, 850) + 15 >= 4
+        && top(700, 790) === 870 - 4 - 790 && top(700, 805) === 900 - 4 - 15 - 805, [top(500, 300), top(10, 300), top(700, 300), top(100, 850), top(700, 790), top(700, 805)]);
     check('percent close to the number and a decimal comma, as the game\'s Russian texts', gameText('Меткость стрелков барки: +5 %') === 'Меткость стрелков барки: +5%' && gameText('16.6') === '16,6' && gameText('Боезапас +100 % (13 → 26 залпов)') === 'Боезапас +100% (13 → 26 залпов)');
 }
 

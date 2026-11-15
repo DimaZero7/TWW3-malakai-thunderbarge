@@ -16,7 +16,7 @@ export function url(path) {
 
 // The text layouts (web/js/ui_text.mjs, the one table the mod's layouts are written from: tools/ship_ui.py). The game's fonts are not on this page:
 // a serif stands in.
-import {TEXT} from './ui_text.mjs';
+import {TEXT, GAME_COLOURS} from './ui_text.mjs';
 
 // Button skins: the picture of each state, as button_layout() of tools/crew_ui.py; margins of the 9-slice in the layout's units.
 const SKIN = {
@@ -44,9 +44,11 @@ let clickHandler = () => {};
 export function onClick(fn) { clickHandler = fn; }    // core:add_listener('ComponentLClickUp', ...)
 
 function colourText(text) {
-    // [[col:yellow]]...[[/col]] of the game's texts
+    // [[col:key]]...[[/col]] of the game's texts: the key a row of the game's ui_colours table (ui_text.mjs GAME_COLOURS), drawn in its colour; a key
+    // the game does not have is drawn as the game draws it, in the text's own colour
     const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return esc(text).replace(/\[\[col:(\w+)\]\]/g, (_, c) => `<span class="col_${c}">`).replace(/\[\[\/col\]\]/g, '</span>').replace(/\n/g, '<br>');
+    return esc(text).replace(/\[\[col:(\w+)\]\]/g, (_, c) => (GAME_COLOURS[c] ? `<span style="color:${GAME_COLOURS[c]}">` : '<span>'))
+        .replace(/\[\[\/col\]\]/g, '</span>').replace(/\n/g, '<br>');
 }
 
 export class Component {

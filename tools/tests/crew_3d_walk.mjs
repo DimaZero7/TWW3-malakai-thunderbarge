@@ -127,13 +127,17 @@ async function walk(scale) {
         if (big) { await b.shot(join(PARTS, 'hiring_3d.png'), await view3d()); await b.shot(join(PARTS, 'hiring_draw.png'), await drawing()); }
         // the nests demolished: the throwers and the lookouts leave the model
         const nests = await b.eval(`mtb.panel.view.tree.filter(v => v.node.row.unlocks.some(u => u.group === 'cupolas' && u.option === 'empty')).sort((a, b) => b.node.row.line_level - a.node.row.line_level).map(v => mtb.panel.view.tree.indexOf(v))`);
-        for (const i of nests) {
-            await b.eval(`(() => { const p = mtb.panel.view.pan, v = mtb.panel.view.tree[${i}]; p.x = p.w / 2 - v.button.x - 37; p.y = p.h / 2 - v.button.y - 37; p.clamp(); })()`);
-            await clickId('mtb_tree_node_' + i);
-            await clickId('mtb_ship_demolish');
-            await button('#end_turn');        // the game takes it at the end of the turn; the next level down after that
-        }
-        check(`${tag} the nests demolished: nobody in them on the model`, Object.entries(await crew3d()).every(([k, v]) => !(k.startsWith('cupolas_') || k === 'lookouts_on') || v === 'hidden'), await crew3d());
+        // the game dismantles the slot's whole building (docs/design/port-to-game.md 8.5): the line's top level has the button, it takes every level
+        const line = await b.eval(`(() => { const v = mtb.panel.view.tree[${nests[0]}]; return mtb.M.chain(v.node.row.chain).levels.filter(l => mtb.game.has_building(l.key)).map(l => l.key); })()`);
+        await b.eval(`(() => { const p = mtb.panel.view.pan, v = mtb.panel.view.tree[${nests[0]}]; p.x = p.w / 2 - v.button.x - 37; p.y = p.h / 2 - v.button.y - 37; p.clamp(); })()`);
+        await clickId('mtb_tree_node_' + nests[0]);
+        await clickId('mtb_ship_demolish');
+        const thrown = Object.entries(await crew3d()).filter(([k, v]) => k.startsWith('cupolas_') && v === 'stand').map(([k]) => k);
+        check(`${tag} the nests' demolish ordered: every level of their line stands till the turn ends, the throwers still on the model`,
+            line.length >= 2 && await b.eval(`${JSON.stringify(line)}.every(k => mtb.M.status(k).state === 'dismantling')`) && thrown.length > 0, {line, thrown});
+        await button('#end_turn');        // the game takes it at the end of the turn, all of the line
+        check(`${tag} the nests demolished: every level of their line gone, nobody in them on the model`, await b.eval(`${JSON.stringify(line)}.every(k => !mtb.game.has_building(k))`)
+            && Object.entries(await crew3d()).every(([k, v]) => !(k.startsWith('cupolas_') || k === 'lookouts_on') || v === 'hidden'), await crew3d());
         // «К месту экипажа»: off by default; on, a click on a tag turns the view to its place
         const target = () => b.eval(`mtb.viewer.controls.target.toArray().map(v => Math.round(v * 10) / 10)`);
         await b.eval(`mtb.viewer.view('all'); 1`);
@@ -351,7 +355,7 @@ async function stages() {
         const refuse = await b.eval(`mtb.M.can_demolish(mtb.M.prefix + 'airship_hull_5')`);
         check('stages: the page refuses to take the hull from under its buildings', !refuse.ok, refuse);
         // the game has no dismantle for the hull (CanDismantle false; game_sim refuses it too): a lost settlement or a script stands in, the hull's
-        // levels marked to go at the end of the turn as a dismantle would, one level a turn (the page's demolish steps one level down)
+        // levels marked to go at the end of the turn as a dismantle would (the game's dismantle takes the whole line: the first turn takes it all)
         for (let n = 5; n >= 2; n--) {
             await b.eval(`mtb.game.dismantles.add(mtb.M.prefix + 'airship_hull_${n}'); 1`);
             await button('#end_turn');
